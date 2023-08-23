@@ -423,10 +423,10 @@ class RawEditorState extends EditorState
         // in the web browser, but we do unfocus for all other kinds of events.
         switch (event.kind) {
           case ui.PointerDeviceKind.touch:
-            // if (kIsWeb) {
-            //   widget.focusNode.unfocus();
-            // }
-            // break;
+            if (kIsWeb) {
+              widget.focusNode.unfocus();
+            }
+            break;
           case ui.PointerDeviceKind.mouse:
           case ui.PointerDeviceKind.stylus:
           case ui.PointerDeviceKind.invertedStylus:
