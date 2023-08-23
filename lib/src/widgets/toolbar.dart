@@ -160,6 +160,9 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
     /// Validate the legitimacy of hyperlinks
     RegExp? linkRegExp,
     LinkDialogAction? linkDialogAction,
+
+    /// Custom link input dialog
+    Widget Function(String, String)? linkDialogBuilder,
     Key? key,
   }) {
     final isButtonGroupShown = [
@@ -559,6 +562,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             afterButtonPressed: afterButtonPressed,
             linkRegExp: linkRegExp,
             linkDialogAction: linkDialogAction,
+            linkDialogBuilder: linkDialogBuilder,
           ),
         if (showSearchButton)
           SearchButton(

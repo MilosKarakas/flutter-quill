@@ -21,6 +21,7 @@ class LinkStyleButton extends StatefulWidget {
     this.tooltip,
     this.linkRegExp,
     this.linkDialogAction,
+    this.linkDialogBuilder,
     Key? key,
   }) : super(key: key);
 
@@ -33,6 +34,7 @@ class LinkStyleButton extends StatefulWidget {
   final String? tooltip;
   final RegExp? linkRegExp;
   final LinkDialogAction? linkDialogAction;
+  final Widget Function(String, String)? linkDialogBuilder;
 
   @override
   _LinkStyleButtonState createState() => _LinkStyleButtonState();
@@ -93,7 +95,7 @@ class _LinkStyleButtonState extends State<LinkStyleButton> {
   }
 
   void _openLinkDialog(BuildContext context) {
-    showDialog<_TextLink>(
+    showDialog<TextLink>(
       context: context,
       builder: (ctx) {
         final link = _getLinkAttributeValue();
@@ -112,6 +114,11 @@ class _LinkStyleButtonState extends State<LinkStyleButton> {
         final len = widget.controller.selection.end - index;
         text ??=
             len == 0 ? '' : widget.controller.document.getPlainText(index, len);
+
+        if (widget.linkDialogBuilder != null) {
+          return widget.linkDialogBuilder!(text, link ?? '');
+        }
+
         return _LinkDialog(
           dialogTheme: widget.dialogTheme,
           link: link,
@@ -134,7 +141,7 @@ class _LinkStyleButtonState extends State<LinkStyleButton> {
         ?.value;
   }
 
-  void _linkSubmitted(_TextLink value) {
+  void _linkSubmitted(TextLink value) {
     var index = widget.controller.selection.start;
     var length = widget.controller.selection.end - index;
     if (_getLinkAttributeValue() != null) {
@@ -264,12 +271,12 @@ class _LinkDialogState extends State<_LinkDialog> {
   }
 
   void _applyLink() {
-    Navigator.pop(context, _TextLink(_text.trim(), _link.trim()));
+    Navigator.pop(context, TextLink(_text.trim(), _link.trim()));
   }
 }
 
-class _TextLink {
-  _TextLink(
+class TextLink {
+  TextLink(
     this.text,
     this.link,
   );
