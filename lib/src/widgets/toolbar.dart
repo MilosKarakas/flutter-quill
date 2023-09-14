@@ -183,10 +183,10 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
           showRightAlignment ||
           showJustifyAlignment ||
           showDirection,
+      showLink || showSearchButton,
       showHeaderStyle,
       showListNumbers || showListBullets || showListCheck || showCodeBlock,
-      showQuote || showIndent,
-      showLink || showSearchButton
+      showQuote || showIndent
     ];
 
     //default font size values
@@ -421,16 +421,49 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
                 isButtonGroupShown[5]))
           QuillDivider(axis,
               color: sectionDividerColor, space: sectionDividerSpace),
+
+        if (showLink)
+          LinkStyleButton(
+            tooltip: buttonTooltips[ToolbarButtons.link],
+            controller: controller,
+            iconSize: toolbarIconSize,
+            iconTheme: iconTheme,
+            dialogTheme: dialogTheme,
+            afterButtonPressed: afterButtonPressed,
+            linkRegExp: linkRegExp,
+            linkDialogAction: linkDialogAction,
+            linkDialogBuilder: linkDialogBuilder,
+          ),
+        if (showSearchButton)
+          SearchButton(
+            icon: Icons.search,
+            iconSize: toolbarIconSize,
+            tooltip: buttonTooltips[ToolbarButtons.search],
+            controller: controller,
+            iconTheme: iconTheme,
+            dialogTheme: dialogTheme,
+            afterButtonPressed: afterButtonPressed,
+          ),
+
+        if (showDividers &&
+            isButtonGroupShown[1] &&
+            (isButtonGroupShown[2] ||
+                isButtonGroupShown[3] ||
+                isButtonGroupShown[4] ||
+                isButtonGroupShown[5]))
+          QuillDivider(axis,
+              color: sectionDividerColor, space: sectionDividerSpace),
+
         if (showAlignmentButtons)
           SelectAlignmentButton(
             controller: controller,
             tooltips: Map.of(buttonTooltips)
               ..removeWhere((key, value) => ![
-                    ToolbarButtons.leftAlignment,
-                    ToolbarButtons.centerAlignment,
-                    ToolbarButtons.rightAlignment,
-                    ToolbarButtons.justifyAlignment,
-                  ].contains(key)),
+                ToolbarButtons.leftAlignment,
+                ToolbarButtons.centerAlignment,
+                ToolbarButtons.rightAlignment,
+                ToolbarButtons.justifyAlignment,
+              ].contains(key)),
             iconSize: toolbarIconSize,
             iconTheme: iconTheme,
             showLeftAlignment: showLeftAlignment,
@@ -449,14 +482,15 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
           ),
+
         if (showDividers &&
-            isButtonGroupShown[1] &&
-            (isButtonGroupShown[2] ||
-                isButtonGroupShown[3] ||
+            isButtonGroupShown[2] &&
+            (isButtonGroupShown[3] ||
                 isButtonGroupShown[4] ||
                 isButtonGroupShown[5]))
           QuillDivider(axis,
               color: sectionDividerColor, space: sectionDividerSpace),
+
         if (showHeaderStyle)
           SelectHeaderStyleButton(
             tooltip: buttonTooltips[ToolbarButtons.headerStyle],
@@ -468,12 +502,11 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
           ),
         if (showDividers &&
             showHeaderStyle &&
-            isButtonGroupShown[2] &&
-            (isButtonGroupShown[3] ||
-                isButtonGroupShown[4] ||
-                isButtonGroupShown[5]))
+            isButtonGroupShown[3] &&
+            (isButtonGroupShown[4] || isButtonGroupShown[5]))
           QuillDivider(axis,
               color: sectionDividerColor, space: sectionDividerSpace),
+
         if (showListNumbers)
           ToggleStyleButton(
             attribute: Attribute.ol,
@@ -514,11 +547,11 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
           ),
-        if (showDividers &&
-            isButtonGroupShown[3] &&
-            (isButtonGroupShown[4] || isButtonGroupShown[5]))
+
+        if (showDividers && isButtonGroupShown[4] && isButtonGroupShown[5])
           QuillDivider(axis,
               color: sectionDividerColor, space: sectionDividerSpace),
+
         if (showQuote)
           ToggleStyleButton(
             attribute: Attribute.blockQuote,
@@ -549,35 +582,12 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
           ),
-        if (showDividers && isButtonGroupShown[4] && isButtonGroupShown[5])
-          QuillDivider(axis,
-              color: sectionDividerColor, space: sectionDividerSpace),
-        if (showLink)
-          LinkStyleButton(
-            tooltip: buttonTooltips[ToolbarButtons.link],
-            controller: controller,
-            iconSize: toolbarIconSize,
-            iconTheme: iconTheme,
-            dialogTheme: dialogTheme,
-            afterButtonPressed: afterButtonPressed,
-            linkRegExp: linkRegExp,
-            linkDialogAction: linkDialogAction,
-            linkDialogBuilder: linkDialogBuilder,
-          ),
-        if (showSearchButton)
-          SearchButton(
-            icon: Icons.search,
-            iconSize: toolbarIconSize,
-            tooltip: buttonTooltips[ToolbarButtons.search],
-            controller: controller,
-            iconTheme: iconTheme,
-            dialogTheme: dialogTheme,
-            afterButtonPressed: afterButtonPressed,
-          ),
+
         if (customButtons.isNotEmpty)
           if (showDividers)
             QuillDivider(axis,
                 color: sectionDividerColor, space: sectionDividerSpace),
+
         for (final customButton in customButtons)
           if (customButton.child != null) ...[
             InkWell(
