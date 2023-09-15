@@ -108,6 +108,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
     bool showSearchButton = true,
     bool showSubscript = true,
     bool showSuperscript = true,
+    bool showDividerForCustomButtons = true,
     List<QuillCustomButton> customButtons = const [],
 
     ///Map of font sizes in string
@@ -584,7 +585,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
           ),
 
         if (customButtons.isNotEmpty)
-          if (showDividers)
+          if (showDividers && showDividerForCustomButtons)
             QuillDivider(axis,
                 color: sectionDividerColor, space: sectionDividerSpace),
 
