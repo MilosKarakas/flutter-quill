@@ -389,7 +389,7 @@ class Delta {
       if (lastOp.isInsert && operation.isInsert) {
         if (lastOp.hasSameAttributes(operation) &&
             operation.data is String &&
-            lastOp.data is String) {
+            lastOp.data is String && !(lastOp.data as String).endsWith('\n')) {
           _mergeWithTail(operation);
           return;
         }
