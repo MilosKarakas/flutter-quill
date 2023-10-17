@@ -14,6 +14,7 @@ export 'src/models/structs/image_url.dart';
 export 'src/models/structs/link_dialog_action.dart';
 export 'src/models/structs/offset_value.dart';
 export 'src/models/structs/optional_size.dart';
+export 'src/models/structs/paste_data.dart';
 export 'src/models/structs/vertical_spacing.dart';
 export 'src/models/themes/quill_custom_button.dart';
 export 'src/models/themes/quill_dialog_theme.dart';
