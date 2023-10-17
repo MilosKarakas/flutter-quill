@@ -1525,6 +1525,20 @@ class RawEditorState extends EditorState
 
     if (pasteData.delta != null) {
       _replaceText(ReplaceTextIntent(textEditingValue, '', selection, cause));
+
+      bringIntoView(textEditingValue.selection.extent);
+
+      // Collapse the selection and hide the toolbar and handles.
+      userUpdateTextEditingValue(
+        TextEditingValue(
+          text: textEditingValue.text,
+          selection:
+          TextSelection.collapsed(offset: textEditingValue.selection.end),
+        ),
+        cause,
+      );
+
+      return;
     } else if (pasteData.text != null) {
       _replaceText(
           ReplaceTextIntent(textEditingValue, pasteData.text!, selection, cause)
