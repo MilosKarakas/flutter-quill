@@ -15,6 +15,7 @@ import '../models/documents/document.dart';
 import '../models/documents/nodes/container.dart' as container_node;
 import '../models/documents/nodes/leaf.dart';
 import '../models/structs/offset_value.dart';
+import '../models/structs/paste_data.dart';
 import '../models/themes/quill_dialog_theme.dart';
 import '../utils/platform.dart';
 import 'box.dart';
@@ -193,6 +194,7 @@ class QuillEditor extends StatefulWidget {
     this.contentInsertionConfiguration,
     this.contextMenuBuilder,
     this.editorKey,
+    this.onPaste,
     Key? key,
   }) : super(key: key);
 
@@ -455,6 +457,9 @@ class QuillEditor extends StatefulWidget {
   /// editorKey.currentState?.renderEditor.getLocalRectForCaret
   final GlobalKey<EditorState>? editorKey;
 
+  /// Clipboard data retriever
+  final Future<PasteData> Function()? onPaste;
+
   @override
   QuillEditorState createState() => QuillEditorState();
 }
@@ -559,6 +564,7 @@ class QuillEditorState extends State<QuillEditor>
       enableUnfocusOnTapOutside: widget.enableUnfocusOnTapOutside,
       dialogTheme: widget.dialogTheme,
       contentInsertionConfiguration: widget.contentInsertionConfiguration,
+      onPaste: widget.onPaste,
     );
 
     final editor = I18n(

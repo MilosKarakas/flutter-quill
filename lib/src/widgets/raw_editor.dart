@@ -21,6 +21,7 @@ import '../models/documents/nodes/leaf.dart' as leaf;
 import '../models/documents/nodes/line.dart';
 import '../models/documents/nodes/node.dart';
 import '../models/structs/offset_value.dart';
+import '../models/structs/paste_data.dart';
 import '../models/structs/vertical_spacing.dart';
 import '../models/themes/quill_dialog_theme.dart';
 import '../utils/cast.dart';
@@ -84,6 +85,7 @@ class RawEditor extends StatefulWidget {
     this.customLinkPrefixes = const <String>[],
     this.dialogTheme,
     this.contentInsertionConfiguration,
+    this.onPaste,
   })  : assert(maxHeight == null || maxHeight > 0, 'maxHeight cannot be null'),
         assert(minHeight == null || minHeight >= 0, 'minHeight cannot be null'),
         assert(maxHeight == null || minHeight == null || maxHeight >= minHeight,
@@ -275,6 +277,9 @@ class RawEditor extends StatefulWidget {
   ///
   /// See [https://api.flutter.dev/flutter/widgets/EditableText/contentInsertionConfiguration.html]
   final ContentInsertionConfiguration? contentInsertionConfiguration;
+
+  /// Clipboard data retriever
+  final Future<PasteData> Function()? onPaste;
 
   @override
   State<StatefulWidget> createState() => RawEditorState();
@@ -1483,7 +1488,7 @@ class RawEditorState extends EditorState
     }
   }
 
-  /// Paste text from [Clipboard].
+  /// Paste text from [Clipboard] or using [onPaste] if it's defined.
   @override
   Future<void> pasteText(SelectionChangedCause cause) async {
     if (widget.readOnly) {
@@ -1510,10 +1515,20 @@ class RawEditorState extends EditorState
     }
     // Snapshot the input before using `await`.
     // See https://github.com/flutter/flutter/issues/11427
-    final text = await Clipboard.getData(Clipboard.kTextPlain);
-    if (text != null) {
+    late PasteData pasteData;
+    if (widget.onPaste != null) {
+      pasteData = await widget.onPaste!();
+    } else {
+      final text = await Clipboard.getData(Clipboard.kTextPlain);
+      pasteData = PasteData(text: text?.text);
+    }
+
+    if (pasteData.delta != null) {
+      _replaceText(ReplaceTextIntent(textEditingValue, '', selection, cause));
+    } else if (pasteData.text != null) {
       _replaceText(
-          ReplaceTextIntent(textEditingValue, text.text!, selection, cause));
+          ReplaceTextIntent(textEditingValue, pasteData.text!, selection, cause)
+      );
 
       bringIntoView(textEditingValue.selection.extent);
 
