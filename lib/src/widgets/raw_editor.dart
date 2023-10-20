@@ -1508,6 +1508,8 @@ class RawEditorState extends EditorState
       widget.controller.compose(
           pasteData.delta!, textEditingValue.selection, ChangeSource.LOCAL);
 
+      widget.controller.moveCursorToPosition(textEditingValue.selection.end);
+
       // Collapse the selection and hide the toolbar and handles.
       userUpdateTextEditingValue(
         TextEditingValue(
