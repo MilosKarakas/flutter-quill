@@ -328,8 +328,8 @@ class Document {
       throw '_delta compose failed';
     }
 
-    print('COMPOSING: #rootToDelta ${_root.toDelta()}');
-    if (_delta != _root.toDelta()) {
+    print('COMPOSING: #rootToDelta ${_root.toDelta().compose(_root.toDelta())}');
+    if (_delta != _root.toDelta().compose(_root.toDelta())) {
       throw 'Compose failed';
     }
 
