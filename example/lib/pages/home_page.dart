@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'dart:io' show File, Platform;
 import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
@@ -104,7 +104,7 @@ class _HomePageState extends State<HomePage> {
       ),
       drawer: Container(
         constraints:
-            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.7),
+            BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.7),
         color: Colors.grey.shade800,
         child: _buildMenuBar(context),
       ),
@@ -190,23 +190,23 @@ class _HomePageState extends State<HomePage> {
       onTapUp: (details, p1) {
         return _onTripleClickSelection();
       },
-      customStyles: DefaultStyles(
+      customStyles: const DefaultStyles(
         h1: DefaultTextBlockStyle(
-            const TextStyle(
+            TextStyle(
               fontSize: 32,
               color: Colors.black,
               height: 1.15,
               fontWeight: FontWeight.w300,
             ),
-            const VerticalSpacing(16, 0),
-            const VerticalSpacing(0, 0),
+            VerticalSpacing(16, 0),
+            VerticalSpacing(0, 0),
             null),
-        sizeSmall: const TextStyle(fontSize: 9),
-        subscript: const TextStyle(
+        sizeSmall: TextStyle(fontSize: 9),
+        subscript: TextStyle(
           fontFamily: 'SF-UI-Display',
           fontFeatures: [FontFeature.subscripts()],
         ),
-        superscript: const TextStyle(
+        superscript: TextStyle(
           fontFamily: 'SF-UI-Display',
           fontFeatures: [FontFeature.superscripts()],
         ),
@@ -230,18 +230,18 @@ class _HomePageState extends State<HomePage> {
           onTapUp: (details, p1) {
             return _onTripleClickSelection();
           },
-          customStyles: DefaultStyles(
+          customStyles: const DefaultStyles(
             h1: DefaultTextBlockStyle(
-                const TextStyle(
+                TextStyle(
                   fontSize: 32,
                   color: Colors.black,
                   height: 1.15,
                   fontWeight: FontWeight.w300,
                 ),
-                const VerticalSpacing(16, 0),
-                const VerticalSpacing(0, 0),
+                VerticalSpacing(16, 0),
+                VerticalSpacing(0, 0),
                 null),
-            sizeSmall: const TextStyle(fontSize: 9),
+            sizeSmall: TextStyle(fontSize: 9),
           ),
           embedBuilders: [
             ...defaultEmbedBuildersWeb,
@@ -408,7 +408,7 @@ class _HomePageState extends State<HomePage> {
       );
 
   Widget _buildMenuBar(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final size = MediaQuery.sizeOf(context);
     const itemStyle = TextStyle(
       color: Colors.white,
       fontSize: 18,

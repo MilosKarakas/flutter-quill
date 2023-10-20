@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' show File;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -35,7 +35,22 @@ class LinkDialogState extends State<LinkDialog> {
     super.initState();
     _link = widget.link ?? '';
     _controller = TextEditingController(text: _link);
-    _linkRegExp = widget.linkRegExp ?? AutoFormatMultipleLinksRule.linkRegExp;
+
+    final defaultLinkNonSecureRegExp = RegExp(
+      r'https?://.*?\.(?:png|jpe?g|gif|bmp|webp|tiff?)',
+      caseSensitive: false,
+    ); // Not secure
+    // final defaultLinkRegExp = RegExp(
+    //   r'https://.*?\.(?:png|jpe?g|gif|bmp|webp|tiff?)',
+    //   caseSensitive: false,
+    // ); // Secure
+    _linkRegExp = widget.linkRegExp ?? defaultLinkNonSecureRegExp;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
@@ -43,22 +58,29 @@ class LinkDialogState extends State<LinkDialog> {
     return AlertDialog(
       backgroundColor: widget.dialogTheme?.dialogBackgroundColor,
       content: TextField(
-        keyboardType: TextInputType.multiline,
+        keyboardType: TextInputType.url,
+        textInputAction: TextInputAction.done,
         maxLines: null,
         style: widget.dialogTheme?.inputTextStyle,
         decoration: InputDecoration(
-            labelText: 'Paste a link'.i18n,
-            labelStyle: widget.dialogTheme?.labelTextStyle,
-            floatingLabelStyle: widget.dialogTheme?.labelTextStyle),
+          labelText: 'Paste a link'.i18n,
+          hintText: 'Please enter a valid image url'.i18n,
+          labelStyle: widget.dialogTheme?.labelTextStyle,
+          floatingLabelStyle: widget.dialogTheme?.labelTextStyle,
+        ),
         autofocus: true,
         onChanged: _linkChanged,
         controller: _controller,
+        onEditingComplete: () {
+          if (!_canPress()) {
+            return;
+          }
+          _applyLink();
+        },
       ),
       actions: [
         TextButton(
-          onPressed: _link.isNotEmpty && _linkRegExp.hasMatch(_link)
-              ? _applyLink
-              : null,
+          onPressed: _canPress() ? _applyLink : null,
           child: Text(
             'Ok'.i18n,
             style: widget.dialogTheme?.labelTextStyle,
@@ -76,6 +98,10 @@ class LinkDialogState extends State<LinkDialog> {
 
   void _applyLink() {
     Navigator.pop(context, _link.trim());
+  }
+
+  bool _canPress() {
+    return _link.isNotEmpty && _linkRegExp.hasMatch(_link);
   }
 }
 
@@ -113,12 +139,13 @@ class ImageVideoUtils {
 
   /// For image picking logic
   static Future<void> handleImageButtonTap(
-      BuildContext context,
-      QuillController controller,
-      ImageSource imageSource,
-      OnImagePickCallback onImagePickCallback,
-      {FilePickImpl? filePickImpl,
-      WebImagePickImpl? webImagePickImpl}) async {
+    BuildContext context,
+    QuillController controller,
+    ImageSource imageSource,
+    OnImagePickCallback onImagePickCallback, {
+    FilePickImpl? filePickImpl,
+    WebImagePickImpl? webImagePickImpl,
+  }) async {
     final index = controller.selection.baseOffset;
     final length = controller.selection.extentOffset - index;
 
@@ -143,7 +170,9 @@ class ImageVideoUtils {
   }
 
   static Future<String?> _pickImage(
-      ImageSource source, OnImagePickCallback onImagePickCallback) async {
+    ImageSource source,
+    OnImagePickCallback onImagePickCallback,
+  ) async {
     final pickedFile = await ImagePicker().pickImage(source: source);
     if (pickedFile == null) {
       return null;
@@ -165,12 +194,13 @@ class ImageVideoUtils {
 
   /// For video picking logic
   static Future<void> handleVideoButtonTap(
-      BuildContext context,
-      QuillController controller,
-      ImageSource videoSource,
-      OnVideoPickCallback onVideoPickCallback,
-      {FilePickImpl? filePickImpl,
-      WebVideoPickImpl? webVideoPickImpl}) async {
+    BuildContext context,
+    QuillController controller,
+    ImageSource videoSource,
+    OnVideoPickCallback onVideoPickCallback, {
+    FilePickImpl? filePickImpl,
+    WebVideoPickImpl? webVideoPickImpl,
+  }) async {
     final index = controller.selection.baseOffset;
     final length = controller.selection.extentOffset - index;
 

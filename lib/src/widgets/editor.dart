@@ -157,6 +157,7 @@ class QuillEditor extends StatefulWidget {
     required this.autoFocus,
     required this.readOnly,
     required this.expands,
+    this.textSelectionThemeData,
     this.showCursor,
     this.paintCursorAboveText,
     this.placeholder,
@@ -201,6 +202,7 @@ class QuillEditor extends StatefulWidget {
   factory QuillEditor.basic({
     required QuillController controller,
     required bool readOnly,
+    TextSelectionThemeData? textSelectionThemeData,
     Brightness? keyboardAppearance,
     Iterable<EmbedBuilder>? embedBuilders,
     EdgeInsetsGeometry padding = EdgeInsets.zero,
@@ -219,6 +221,7 @@ class QuillEditor extends StatefulWidget {
       scrollController: ScrollController(),
       scrollable: true,
       focusNode: focusNode ?? FocusNode(),
+      textSelectionThemeData: textSelectionThemeData,
       autoFocus: autoFocus,
       readOnly: readOnly,
       expands: expands,
@@ -457,6 +460,13 @@ class QuillEditor extends StatefulWidget {
   /// editorKey.currentState?.renderEditor.getLocalRectForCaret
   final GlobalKey<EditorState>? editorKey;
 
+  /// By default we will use
+  /// ```
+  /// TextSelectionTheme.of(context)
+  /// ```
+  /// to change it please pass a different value
+  final TextSelectionThemeData? textSelectionThemeData;
+
   /// Clipboard data retriever
   final Future<PasteData> Function()? onPaste;
 
@@ -482,7 +492,8 @@ class QuillEditorState extends State<QuillEditor>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final selectionTheme = TextSelectionTheme.of(context);
+    final selectionTheme =
+        widget.textSelectionThemeData ?? TextSelectionTheme.of(context);
 
     TextSelectionControls textSelectionControls;
     bool paintCursorAboveText;
@@ -502,7 +513,7 @@ class QuillEditorState extends State<QuillEditor>
           cupertinoTheme.primaryColor.withOpacity(0.40);
       cursorRadius ??= const Radius.circular(2);
       cursorOffset = Offset(
-          iOSHorizontalOffset / MediaQuery.of(context).devicePixelRatio, 0);
+          iOSHorizontalOffset / MediaQuery.devicePixelRatioOf(context), 0);
     } else {
       textSelectionControls = materialTextSelectionControls;
       paintCursorAboveText = false;

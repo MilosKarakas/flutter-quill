@@ -111,6 +111,39 @@ It is required to provide `filePickImpl` for toolbar image button, e.g. [Sample 
 The `QuillToolbar` class lets you customize which formatting options are available.
 [Sample Page] provides sample code for advanced usage and configuration.
 
+### Using Custom App Widget
+
+This project use some adaptive widgets like `AdaptiveTextSelectionToolbar` which require the following delegates:
+
+1. Default Material Localizations delegate
+2. Default Cupertino Localizations delegate
+3. Defualt Widgets Localizations delegate
+
+You don't need to include those since there are defined by default
+ but if you are using Custom app or you are overriding the `localizationsDelegates` in the App widget
+then please make sure it's including those:
+
+```dart
+localizationsDelegates: const [
+    DefaultCupertinoLocalizations.delegate,
+    DefaultMaterialLocalizations.delegate,
+    DefaultWidgetsLocalizations.delegate,
+],
+```
+
+And you might need more depending on your use case, for example if you are using custom localizations for your app, using custom app widget like [FluentApp](https://pub.dev/packages/fluent_ui)
+which will also need
+
+```dart
+localizationsDelegates: const [
+    // Required localizations delegates ...
+    FluentLocalizations.delegate,
+    AppLocalizations.delegate,
+],
+```
+
+in addition to the required delegates by this library
+
 ### Font Size
 
 Within the editor toolbar, a drop-down with font-sizing capabilities is available. This can be enabled or disabled with `showFontSize`.
@@ -197,6 +230,14 @@ QuillToolbar.basic(
 );
 ```
 
+> [!WARNING]
+>
+> This package uses [`gal`](https://github.com/natsuk4ze/) to save images.
+> For this to work, you need to add the appropriate permissions
+> to your `Info.plist` and `AndroidManifest.xml` files.
+>
+> See <https://github.com/natsuk4ze/gal#-get-started> to add the needed lines.
+
 ### Custom Size Image for Mobile
 
 Define `mobileWidth`, `mobileHeight`, `mobileMargin`, `mobileAlignment` as follows:
@@ -254,6 +295,7 @@ class NotesEmbedBuilder extends EmbedBuilder {
     Embed node,
     bool readOnly,
     bool inline,
+    TextStyle textStyle,
   ) {
     final notes = NotesBlockEmbed(node.value.data).document;
 
@@ -345,7 +387,7 @@ QuillToolbar(locale: Locale('fr'), ...)
 QuillEditor(locale: Locale('fr'), ...)
 ```
 
-Currently, translations are available for these 30 locales:
+Currently, translations are available for these 31 locales:
 
 * `Locale('en')`
 * `Locale('ar')`
@@ -376,6 +418,7 @@ Currently, translations are available for these 30 locales:
 * `Locale('fa')`
 * `Locale('hi')`
 * `Locale('sr')`
+* `Locale('sw')`
 * `Locale('ja')`
 
 #### Contributing to translations

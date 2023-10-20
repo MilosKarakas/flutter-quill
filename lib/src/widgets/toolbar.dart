@@ -66,6 +66,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
     this.sectionDividerColor,
     this.sectionDividerSpace,
     this.linkDialogAction,
+    this.decoration,
     Key? key,
   }) : super(key: key);
 
@@ -111,6 +112,9 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
     bool showSuperscript = true,
     bool showDividerForCustomButtons = true,
     List<QuillCustomButton> customButtons = const [],
+
+    /// The decoration to use for the toolbar.
+    Decoration? decoration,
 
     ///Map of font sizes in string
     Map<String, String>? fontSizeValues,
@@ -253,6 +257,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
       key: key,
       axis: axis,
       color: color,
+      decoration: decoration,
       toolbarSize: toolbarSize,
       toolbarSectionSpacing: toolbarSectionSpacing,
       toolbarIconAlignment: toolbarIconAlignment,
@@ -644,6 +649,9 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
   /// The space occupied by toolbar section divider.
   final double? sectionDividerSpace;
 
+  /// The decoration to use for the toolbar.
+  final Decoration? decoration;
+
   @override
   Size get preferredSize => axis == Axis.horizontal
       ? Size.fromHeight(toolbarSize)
@@ -663,11 +671,14 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
               children: children,
             )
           : Container(
+              decoration: decoration ??
+                  BoxDecoration(
+                    color: color ?? Theme.of(context).canvasColor,
+                  ),
               constraints: BoxConstraints.tightFor(
                 height: axis == Axis.horizontal ? toolbarSize : null,
                 width: axis == Axis.vertical ? toolbarSize : null,
               ),
-              color: color ?? Theme.of(context).canvasColor,
               child: ArrowIndicatedButtonList(
                 axis: axis,
                 buttons: children,
