@@ -323,13 +323,13 @@ class Document {
     try {
       print('COMPOSING: #deltaBeforeCompose $_delta');
       _delta = _delta.compose(delta);
-      print('COMPOSING: #deltaAfterCompose ${Document.fromDelta(delta).toPlainText()}');
+      print('COMPOSING: #deltaAfterCompose ${Document.fromDelta(_delta).toPlainText()}');
     } catch (e) {
       throw '_delta compose failed';
     }
 
     print('COMPOSING: #rootToDelta ${_root.toPlainText()}');
-    if (Document.fromDelta(delta).toPlainText() != _root.toPlainText()) {
+    if (Document.fromDelta(_delta).toPlainText() != _root.toPlainText()) {
       throw 'Compose failed';
     }
 
