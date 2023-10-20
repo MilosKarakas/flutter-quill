@@ -286,39 +286,53 @@ class Document {
   /// In case the [change] is invalid, behavior of this method is unspecified.
   void compose(Delta delta, ChangeSource changeSource) {
     assert(!_observer.isClosed);
+    print('COMPOSING: #beforeTrim $delta');
     delta.trim();
+    print('COMPOSING: #afterTrim $delta');
     assert(delta.isNotEmpty);
 
     var offset = 0;
     delta = _transform(delta);
+    print('COMPOSING: #afterTransform $delta');
     final originalDelta = toDelta();
+    print('COMPOOSING: #originalDelta $originalDelta');
     for (final op in delta.toList()) {
+      print('COMPOSING: #op $op #attributes ${op.attributes}');
       final style =
           op.attributes != null ? Style.fromJson(op.attributes) : null;
 
       if (op.isInsert) {
+        print('COMPOSING: #insert ${op.data} #normalized ${_normalize(op.data)} #offset $offset #style $style');
         // Must normalize data before inserting into the document, makes sure
         // that any embedded objects are converted into EmbeddableObject type.
         _root.insert(offset, _normalize(op.data), style);
       } else if (op.isDelete) {
+        print('COMPOSING: #delete #offset $offset #length ${op.length}');
         _root.delete(offset, op.length);
       } else if (op.attributes != null) {
+        print('COMPOSING: #retain #offset $offset #length ${op.length} #style $style');
         _root.retain(offset, op.length, style);
       }
 
       if (!op.isDelete) {
+        print('COMPOSING: #offset $offset #length ${op.length}');
         offset += op.length!;
+        print('COMPOSING: #offset $offset');
       }
     }
     try {
+      print('COMPOSING: #deltaBeforeCompose $_delta');
       _delta = _delta.compose(delta);
+      print('COMPOSING: #deltaAfterCompose $_delta');
     } catch (e) {
       throw '_delta compose failed';
     }
 
+    print('COMPOSING: #rootToDelta ${_root.toDelta()}');
     if (_delta != _root.toDelta()) {
       throw 'Compose failed';
     }
+
     final change = DocChange(originalDelta, delta, changeSource);
     _observer.add(change);
     _history.handleDocChange(change);
