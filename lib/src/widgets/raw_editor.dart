@@ -1501,14 +1501,14 @@ class RawEditorState extends EditorState
     }
 
     if (pasteData.delta != null) {
-      //_replaceText(ReplaceTextIntent(textEditingValue, '', selection, cause));
+      _replaceText(ReplaceTextIntent(textEditingValue, '', selection, cause));
 
       bringIntoView(textEditingValue.selection.extent);
 
       widget.controller.compose(
           pasteData.delta!, textEditingValue.selection, ChangeSource.LOCAL);
 
-      widget.controller.moveCursorToPosition(textEditingValue.selection.end);
+      widget.controller.moveCursorToPosition(textEditingValue.selection.extentOffset);
 
       // Collapse the selection and hide the toolbar and handles.
       userUpdateTextEditingValue(
