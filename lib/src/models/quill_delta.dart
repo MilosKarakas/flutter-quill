@@ -345,6 +345,7 @@ class Delta {
   }
 
   void _mergeWithTail(Operation operation) {
+    print('_mergeWithTail $operation');
     assert(isNotEmpty);
     assert(last.key == operation.key);
     assert(operation.data is String && last.data is String);

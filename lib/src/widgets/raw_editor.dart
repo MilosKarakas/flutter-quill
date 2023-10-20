@@ -1508,10 +1508,6 @@ class RawEditorState extends EditorState
       widget.controller.compose(
           pasteData.delta!, textEditingValue.selection, ChangeSource.LOCAL);
 
-      widget.controller.moveCursorToPosition(
-           pasteData.delta!.transformPosition(textEditingValue.selection.start)
-      );
-
       // Collapse the selection and hide the toolbar and handles.
       userUpdateTextEditingValue(
         TextEditingValue(
@@ -1521,6 +1517,10 @@ class RawEditorState extends EditorState
           ),
         ),
         cause,
+      );
+
+      widget.controller.moveCursorToPosition(
+          pasteData.delta!.transformPosition(textEditingValue.selection.start)
       );
 
       return;
