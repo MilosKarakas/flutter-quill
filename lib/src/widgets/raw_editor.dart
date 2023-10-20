@@ -1508,7 +1508,11 @@ class RawEditorState extends EditorState
       widget.controller.compose(
           pasteData.delta!, textEditingValue.selection, ChangeSource.LOCAL);
 
-      widget.controller.moveCursorToPosition(textEditingValue.selection.extentOffset);
+      print('start position is ${textEditingValue.selection.start}');
+      print('moving cursor to ${pasteData.delta!.transformPosition(textEditingValue.selection.start)}');
+      widget.controller.moveCursorToPosition(
+           pasteData.delta!.transformPosition(textEditingValue.selection.start)
+      );
 
       // Collapse the selection and hide the toolbar and handles.
       userUpdateTextEditingValue(
