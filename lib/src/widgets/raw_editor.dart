@@ -1501,7 +1501,7 @@ class RawEditorState extends EditorState
     }
 
     if (pasteData.delta != null) {
-      _replaceText(ReplaceTextIntent(textEditingValue, '', selection, cause));
+      //_replaceText(ReplaceTextIntent(textEditingValue, '', selection, cause));
 
       bringIntoView(textEditingValue.selection.extent);
 
@@ -1514,7 +1514,9 @@ class RawEditorState extends EditorState
       userUpdateTextEditingValue(
         TextEditingValue(
           text: textEditingValue.text,
-          selection: TextSelection.collapsed(offset: textEditingValue.selection.end),
+          selection: TextSelection.collapsed(
+              offset: textEditingValue.selection.end
+          ),
         ),
         cause,
       );
