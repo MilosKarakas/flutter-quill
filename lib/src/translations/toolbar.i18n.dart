@@ -2304,10 +2304,6 @@ extension Localization on String {
           'Clear': 'Očisti',
           'Font': 'Font',
           'Search': 'Pretraži',
-          'matches': 'poklapa se',
-          'showing match': 'prikazuje poklapanje',
-          'Prev': 'Pret.',
-          'Next': 'Dalje',
           'Camera': 'Kamera',
           'Video': 'Video',
           'Undo': 'Nazad',
@@ -2343,9 +2339,18 @@ extension Localization on String {
           'Enter media': 'Unesi medij',
           'Edit': 'Uredi',
           'Apply': 'Primeni',
+          'Hex': 'Hex',
+          'Material': 'Material',
+          'Color': 'Boja',
           'Find text': 'Pronađi tekst',
           'Move to previous occurrence': 'Idi na prethodno poklapanje',
           'Move to next occurrence': 'Idi na sledeće poklapanje',
+          'Saved using the network': 'Sačuvano koristeći mrežu',
+          'Saved using the local storage': 'Sačuvano koristeći lokalnu memoriju',
+          'Error while saving image': 'Greška tokom čuvanja slike',
+          'Please enter a text for your link': "npr. , 'Saznaj više')",
+          'Please enter the link url': "npr., 'https://example.com'",
+          'Please enter a valid image url': 'Molimo unesite ispravan link slike'
         },
         'sr_cyrl': {
           'Paste a link': 'Налепи везу',
@@ -2373,10 +2378,6 @@ extension Localization on String {
           'Clear': 'Очисти',
           'Font': 'Фонт',
           'Search': 'Претражи',
-          'matches': 'поклапа се',
-          'showing match': 'приказује поклапање',
-          'Prev': 'Прет.',
-          'Next': 'Даље',
           'Camera': 'Камера',
           'Video': 'Видео',
           'Undo': 'Назад',
@@ -2415,8 +2416,15 @@ extension Localization on String {
           'Find text': 'Пронађи текст',
           'Move to previous occurrence': 'Иди на претходно поклапање',
           'Move to next occurrence': 'Иди на следеће поклапање',
+          'Saved using the network': 'Сачувано користећи мрежу',
+          'Saved using the local storage': 'Сачувано користећи локалну меморију',
+          'Error while saving image': 'Грешка током чувања слике',
+          'Please enter a text for your link': "нпр. , 'Сазнај више')",
+          'Please enter the link url': "нпр., 'https://example.com'",
+          'Please enter a valid image url': 'Молимо унесите исправан линк слике'
         },
       };
+
 
   String get i18n => localize(this, _t);
 }
