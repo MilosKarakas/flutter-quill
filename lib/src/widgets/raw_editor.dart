@@ -1552,8 +1552,8 @@ class RawEditorState extends EditorState
             final attr = getAttribute(attribute,
                 newOperations[opIndex].attributes?[attribute]);
             if ((newOperations[opIndex].length ?? 0) > 0) {
-              // controller.document.format(opIndex,
-              //     newOperations[opIndex].length ?? 0, attr);
+              controller.document.format(opIndex,
+                  newOperations[opIndex].length ?? 0, attr);
             }
           }
         }
