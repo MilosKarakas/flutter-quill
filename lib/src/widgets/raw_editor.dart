@@ -1546,6 +1546,7 @@ class RawEditorState extends EditorState
         final operations = <Operation>[...newOperations, ...currentOperations];
         controller.document =
             Document.fromDelta(Delta.fromOperations(operations));
+        print('concatenated delta is ${controller.document.toDelta()}');
         //var cursorPosition = 0;
         // for (final operation in newOperations) {
         //   if (operation.length != null) {
