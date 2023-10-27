@@ -1545,7 +1545,8 @@ class RawEditorState extends EditorState
       if (index == 0) {
         for (var opIndex = 0; opIndex < newOperations.length; opIndex++) {
           print('insert following data ${newOperations[opIndex].data} at index $opIndex');
-          controller.document.insert(opIndex, newOperations[opIndex].data,);
+          controller.document.insert(opIndex, newOperations[opIndex].data,
+              replaceLength: newOperations[opIndex].length ?? 0);
           final attributes = (newOperations[opIndex].attributes?.keys ?? [])
               .toList();
           for (final attribute in attributes) {
