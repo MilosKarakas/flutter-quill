@@ -354,7 +354,7 @@ class QuillController extends ChangeNotifier {
 
   void compose(Delta delta, TextSelection textSelection, ChangeSource source) {
     if (delta.isNotEmpty) {
-      document.compose(delta, source);
+      document.compose(delta, source, offset: textSelection.start);
     }
 
     textSelection = selection.copyWith(
