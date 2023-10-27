@@ -1455,6 +1455,26 @@ class RawEditorState extends EditorState
     }
   }
 
+  Attribute? getAttribute(String key, Object? value) {
+    if (key == 'bold' && value is bool && value == true) {
+      return const BoldAttribute();
+    } else if (key =='italic' && value is bool && value == true) {
+      return const ItalicAttribute();
+    } else if (key == 'underline' && value is bool && value == true) {
+      return const UnderlineAttribute();
+    } else if (key == 'list' && value is String) {
+      if (value == 'ordered') {
+        return const ListAttribute('ordered');
+      } else if (value == 'bullet') {
+        return const ListAttribute('bullet');
+      }
+    } else if (key == 'link' && value is String) {
+      return LinkAttribute(value);
+    }
+
+    return null;
+  }
+
   /// Paste text from [Clipboard] or using [onPaste] if it's defined.
   @override
   Future<void> pasteText(SelectionChangedCause cause) async {
@@ -1524,7 +1544,15 @@ class RawEditorState extends EditorState
       //selection is at the beginning of the document
       if (index == 0) {
         for (var opIndex = 0; opIndex < newOperations.length; opIndex++) {
-          controller.document.insert(opIndex, newOperations[opIndex].data);
+          controller.document.insert(opIndex, newOperations[opIndex].data,);
+          final attributes = (newOperations[opIndex].attributes?.keys ?? [])
+              .toList();
+          for (final attribute in attributes) {
+            final attr = getAttribute(attribute,
+                newOperations[opIndex].attributes?[attribute]);
+            controller.document.format(opIndex,
+                newOperations[opIndex].length ?? 0, attr);
+          }
         }
       }
       //selection is not at the beginning of the document
