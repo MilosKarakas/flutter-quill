@@ -1543,20 +1543,22 @@ class RawEditorState extends EditorState
 
       //selection is at the beginning of the document
       if (index == 0) {
+        var previousLengths = 0;
         for (var opIndex = 0; opIndex < newOperations.length; opIndex++) {
           print('insert following data ${newOperations[opIndex].data} at index $opIndex');
-          controller.document.pushOperation(newOperations[opIndex]);
-          // controller.document.insert(opIndex, newOperations[opIndex].data);
-          // final attributes = (newOperations[opIndex].attributes?.keys ?? [])
-          //     .toList();
-          // for (final attribute in attributes) {
-          //   final attr = getAttribute(attribute,
-          //       newOperations[opIndex].attributes?[attribute]);
-          //   if ((newOperations[opIndex].length ?? 0) > 0) {
-          //     controller.document.format(opIndex,
-          //         newOperations[opIndex].length ?? 0, attr);
-          //   }
-          // }
+          controller.document.insert(previousLengths, newOperations[opIndex].data);
+          previousLengths += (newOperations[opIndex].data as String?)?.length
+              ?? 0;
+          final attributes = (newOperations[opIndex].attributes?.keys ?? [])
+              .toList();
+          for (final attribute in attributes) {
+            final attr = getAttribute(attribute,
+                newOperations[opIndex].attributes?[attribute]);
+            if ((newOperations[opIndex].length ?? 0) > 0) {
+              controller.document.format(opIndex,
+                  newOperations[opIndex].length ?? 0, attr);
+            }
+          }
         }
       }
       //selection is not at the beginning of the document

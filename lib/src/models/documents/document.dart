@@ -87,10 +87,6 @@ class Document {
     return delta;
   }
 
-  void pushOperation(Operation op) {
-    _delta.push(op);
-  }
-
   /// Deletes [length] of characters from this document starting at [index].
   ///
   /// This method applies heuristic rules before modifying this document and
