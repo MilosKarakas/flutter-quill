@@ -43,6 +43,7 @@ class ResolveLineFormatRule extends FormatRule {
       op = itr.next(len - cur);
       final opText = op.data is String ? op.data as String : '';
       if (!opText.contains('\n')) {
+        print('ADDING RETAIN IN ResolveLineFormatRule');
         result.retain(op.length!);
         continue;
       }

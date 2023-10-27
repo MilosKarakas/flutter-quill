@@ -52,6 +52,7 @@ class PreserveLineStyleOnSplitRule extends InsertRule {
       return null;
     }
 
+    print('Adding retain in PreserveLineStyleOnSplitRule');
     final delta = Delta()..retain(index + (len ?? 0));
     if (after.data is String && (after.data as String).contains('\n')) {
       assert(after.isPlain);
@@ -112,6 +113,7 @@ class PreserveBlockStyleOnInsertRule extends InsertRule {
 
     // Go over each inserted line and ensure block style is applied.
     final lines = data.split('\n');
+    print('Adding retain in PreserveBlockStyleOnInsertRule');
     final delta = Delta()..retain(index + (len ?? 0));
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
@@ -133,6 +135,7 @@ class PreserveBlockStyleOnInsertRule extends InsertRule {
 
     // Reset style of the original newline character if needed.
     if (resetStyle.isNotEmpty) {
+      print('Adding retain in PreserveBlockStyleOnInsertRule #2');
       delta
         ..retain(nextNewLine.skipped!)
         ..retain((nextNewLine.operation!.data as String).indexOf('\n'))
@@ -216,6 +219,7 @@ class AutoExitBlockRule extends InsertRule {
     final k =
         attributes.keys.firstWhere(Attribute.blockKeysExceptHeader.contains);
     attributes[k] = null;
+    print('Adding retain in AutoExitBlockRule');
     // retain(1) should be '\n', set it with no attribute
     return Delta()
       ..retain(index + (len ?? 0))
@@ -254,6 +258,8 @@ class ResetLineFormatOnNewLineRule extends InsertRule {
         cur.attributes!.containsKey(Attribute.header.key)) {
       resetStyle = Attribute.header.toJson();
     }
+
+    print('Adding retain in ResetLineFormatOnNewLineRule');
     return Delta()
       ..retain(index + (len ?? 0))
       ..insert('\n', cur.attributes)
@@ -285,6 +291,7 @@ class InsertEmbedsRule extends InsertRule {
       return null;
     }
 
+    print('Adding retain in InsertEmbedsRule');
     final delta = Delta()..retain(index + (len ?? 0));
     final itr = DeltaIterator(document);
     final prev = itr.skip(index), cur = itr.next();
@@ -449,6 +456,7 @@ class AutoFormatMultipleLinksRule extends InsertRule {
 
     // Build base delta.
     // The base delta is a simple insertion delta.
+    print('Adding retain in AutoFormatMultipleLinksRule');
     final baseDelta = Delta()
       ..retain(index)
       ..insert(data);
@@ -458,6 +466,7 @@ class AutoFormatMultipleLinksRule extends InsertRule {
 
     // Create formatter delta.
     // The formatter delta will only include links formatting when needed.
+    print('Adding retain in AutoFormatMultipleLinksRule #2');
     final formatterDelta = Delta()..retain(unmodifiedLength);
 
     var previousLinkEndRelativeIndex = 0;
@@ -471,6 +480,7 @@ class AutoFormatMultipleLinksRule extends InsertRule {
 
       // Keep the leading segment of text and add link with its proper
       // attribute.
+      print('Adding retain in AutoFormatMultipleLinksRule #3');
       formatterDelta
         ..retain(separationLength, Attribute.link.toJson())
         ..retain(link.length, LinkAttribute(link).toJson());
@@ -483,6 +493,7 @@ class AutoFormatMultipleLinksRule extends InsertRule {
     final remainingLength = affectedWords.length - previousLinkEndRelativeIndex;
 
     // Remove links from remaining non-link text.
+    print('Adding retain in AutoFormatMultipleLinksRule #4');
     formatterDelta.retain(remainingLength, Attribute.link.toJson());
 
     // Build and return resulting change delta.
@@ -526,6 +537,8 @@ class AutoFormatLinksRule extends InsertRule {
       }
 
       attributes.addAll(LinkAttribute(link.toString()).toJson());
+
+      print('Adding retain in AutoFormatLinksRule');
       return Delta()
         ..retain(index + (len ?? 0) - cand.length)
         ..retain(cand.length, attributes)
@@ -563,12 +576,14 @@ class PreserveInlineStylesRule extends InsertRule {
     final attributes = prev.attributes;
     final text = data;
     if (attributes == null || !attributes.containsKey(Attribute.link.key)) {
+      print('Adding retain in PreserveInlineStylesRule');
       return Delta()
         ..retain(index + (len ?? 0))
         ..insert(text, attributes);
     }
 
     attributes.remove(Attribute.link.key);
+    print('Adding retain in PreserveInlineStylesRule #2');
     final delta = Delta()
       ..retain(index + (len ?? 0))
       ..insert(text, attributes.isEmpty ? null : attributes);
@@ -579,6 +594,7 @@ class PreserveInlineStylesRule extends InsertRule {
       return delta;
     }
     if (attributes[Attribute.link.key] == nextAttributes[Attribute.link.key]) {
+      print('Adding retain in PreserveInlineStylesRule #3');
       return Delta()
         ..retain(index + (len ?? 0))
         ..insert(text, attributes);
@@ -599,6 +615,7 @@ class CatchAllInsertRule extends InsertRule {
     Object? data,
     Attribute? attribute,
   }) {
+    print('Adding retain in CatchAllInsertRule');
     return Delta()
       ..retain(index + (len ?? 0))
       ..insert(data);
