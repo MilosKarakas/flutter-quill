@@ -1505,8 +1505,35 @@ class RawEditorState extends EditorState
 
       bringIntoView(textEditingValue.selection.extent);
 
-      widget.controller.compose(
-          pasteData.delta!, textEditingValue.selection, ChangeSource.LOCAL);
+      final newOperations = pasteData.delta!.toList();
+      final currentOperations = controller.document.toDelta().toList();
+      final currentCursorPosition =
+          controller.plainTextEditingValue.selection.end;
+      var index = 0;
+      var length = 0;
+
+      for (final currentOperation in currentOperations) {
+        if (length < currentCursorPosition) {
+          index++;
+          length += currentOperation.length ?? 0;
+        } else {
+          break;
+        }
+      }
+
+      //selection is at the beginning of the document
+      if (index == 0) {
+        for (var opIndex = 0; opIndex < newOperations.length; opIndex++) {
+          controller.document.insert(opIndex, newOperations[opIndex].data);
+        }
+      }
+      //selection is not at the beginning of the document
+      else {
+        print('SELECTION IS NOT AT THE BEGINNING');
+      }
+
+      // widget.controller.compose(
+      //     pasteData.delta!, textEditingValue.selection, ChangeSource.LOCAL);
 
       // Collapse the selection and hide the toolbar and handles.
       userUpdateTextEditingValue(
@@ -1520,7 +1547,7 @@ class RawEditorState extends EditorState
       );
 
       widget.controller.moveCursorToPosition(
-          pasteData.delta!.transformPosition(textEditingValue.selection.start)
+          pasteData.delta!.transformPosition(textEditingValue.selection.end)
       );
 
       return;
