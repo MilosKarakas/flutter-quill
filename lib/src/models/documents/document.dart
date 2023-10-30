@@ -80,10 +80,8 @@ class Document {
 
     final delta = _rules.apply(RuleType.INSERT, this, index,
         data: data, len: replaceLength);
-    print('delta to be added is $delta');
     compose(delta, ChangeSource.LOCAL);
 
-    print('delta is $delta');
     return delta;
   }
 
