@@ -1527,41 +1527,81 @@ class RawEditorState extends EditorState
 
       final newOperations = pasteData.delta!.toList();
       final currentOperations = controller.document.toDelta().toList();
-      final currentCursorPosition =
-          controller.plainTextEditingValue.selection.end;
-      var index = 0;
-      var length = 0;
+      final selectionStart = controller.plainTextEditingValue.selection.start;
+      final selectionEnd = controller.plainTextEditingValue.selection.end;
+      final selectionPresent = selectionStart != selectionEnd;
 
-      for (final currentOperation in currentOperations) {
-        if (length < currentCursorPosition) {
-          index++;
-          length += currentOperation.length ?? 0;
-        } else {
-          break;
+      // if there is selection we clear it
+      if (selectionPresent == true) {
+        _replaceText(ReplaceTextIntent(textEditingValue, '', selection, cause));
+      }
+
+      var totalLength = 0;
+      // calculate which current operation we are in
+      var indexOfCurrentOperation = 0;
+      if (selectionStart == 0) {
+        indexOfCurrentOperation = 0;
+      } else {
+        for (final operation in currentOperations) {
+          if (totalLength + (operation.length ?? 0) >= selectionStart) {
+            break;
+          }
+          totalLength += operation.length ?? 0;
+          indexOfCurrentOperation++;
         }
       }
 
-      //selection is at the beginning of the document
-      if (index == 0) {
-        final operations = <Operation>[...newOperations, ...currentOperations];
-        controller.document =
-            Document.fromDelta(Delta.fromOperations(operations));
-        print('concatenated delta is ${controller.document.toDelta().toJson()}');
-        //var cursorPosition = 0;
-        // for (final operation in newOperations) {
-        //   if (operation.length != null) {
-        //     cursorPosition += operation.length!;
-        //   }
-        // }
-        // controller.moveCursorToPosition(cursorPosition);
-      }
-      //selection is not at the beginning of the document
-      else {
-        print('SELECTION IS NOT AT THE BEGINNING');
+      // check the type of operation we are in
+      var currentOperationType = '';
+      if (currentOperations[indexOfCurrentOperation].attributes != null) {
+        for (final attribute in currentOperations[indexOfCurrentOperation].attributes!.keys) {
+          if (attribute == 'bold') {
+            currentOperationType = 'bold';
+          } else if (attribute == 'italic') {
+            currentOperationType = 'italic';
+          } else if (attribute == 'underline') {
+            currentOperationType = 'underline';
+          } else if (attribute == 'list') {
+            currentOperationType = 'list';
+          } else if (attribute == 'link') {
+            currentOperationType = 'link';
+          }
+        }
       }
 
-      // widget.controller.compose(
-      //     pasteData.delta!, textEditingValue.selection, ChangeSource.LOCAL);
+      // if operation type is not a list we only check if we are at the start/end of the operation of we are in the middle
+      if (currentOperationType != 'list') {
+        List<Operation> operations = [];
+        if (totalLength == selectionStart) {
+          // add all new operations before the current one
+          operations.addAll(currentOperations.sublist(0, indexOfCurrentOperation).toList());
+          operations.addAll(newOperations);
+          operations.addAll(currentOperations.sublist(indexOfCurrentOperation).toList());
+        } else if (totalLength + (currentOperations[indexOfCurrentOperation].length ?? 0) == selectionStart) {
+          // add all new operations after the current one
+          operations.addAll(currentOperations.sublist(0, indexOfCurrentOperation + 1).toList());
+          operations.addAll(newOperations);
+          operations.addAll(currentOperations.sublist(indexOfCurrentOperation + 1).toList());
+        } else {
+          // split current operation and add new operations in between
+          final currentOperation = currentOperations[indexOfCurrentOperation];
+          if (currentOperation.data is String) {
+            final currentOperationData = currentOperation.data as String;
+            final firstPart = currentOperationData.substring(0, selectionStart - totalLength);
+            final secondPart = currentOperationData.substring(selectionStart - totalLength);
+            final firstPartOperation = Operation.insert(firstPart, currentOperation.attributes);
+            final secondPartOperation = Operation.insert(secondPart, currentOperation.attributes);
+            operations.addAll(currentOperations.sublist(0, indexOfCurrentOperation).toList());
+            operations.add(firstPartOperation);
+            operations.addAll(newOperations);
+            operations.add(secondPartOperation);
+            operations.addAll(currentOperations.sublist(indexOfCurrentOperation + 1).toList());
+          }
+        }
+
+        controller.document =
+            Document.fromDelta(Delta.fromOperations(operations));
+      }
 
       // Collapse the selection and hide the toolbar and handles.
       userUpdateTextEditingValue(
