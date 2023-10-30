@@ -1604,6 +1604,12 @@ class RawEditorState extends EditorState
         controller.document =
             Document.fromDelta(Delta.fromOperations(operations));
 
+        controller.onReplaceText?.call(
+          selectionStart,
+          selectionEnd - selectionStart,
+          pasteData.text ?? '',
+        );
+
         // Calculate new caret position
         int caretPosition = selectionStart + totalLengthWithNewOperations;
 
