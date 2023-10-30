@@ -1619,7 +1619,7 @@ class RawEditorState extends EditorState
         );
 
         widget.controller.moveCursorToPosition(
-            pasteData.delta!.transformPosition(caretPosition)
+            caretPosition
         );
       }
 
