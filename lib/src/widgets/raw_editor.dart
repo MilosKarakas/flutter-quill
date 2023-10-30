@@ -1537,6 +1537,8 @@ class RawEditorState extends EditorState
       }
 
       var totalLength = 0;
+      int totalLengthWithNewOperations = newOperations.fold(0, (previousValue, element) => previousValue + (element.length ?? 0));
+
       // calculate which current operation we are in
       var indexOfCurrentOperation = 0;
       if (selectionStart == 0) {
@@ -1601,22 +1603,25 @@ class RawEditorState extends EditorState
 
         controller.document =
             Document.fromDelta(Delta.fromOperations(operations));
-      }
 
-      // Collapse the selection and hide the toolbar and handles.
-      userUpdateTextEditingValue(
-        TextEditingValue(
-          text: textEditingValue.text,
-          selection: TextSelection.collapsed(
-              offset: textEditingValue.selection.end
+        // Calculate new caret position
+        int caretPosition = selectionStart + totalLengthWithNewOperations;
+
+        // Collapse the selection and hide the toolbar and handles.
+        userUpdateTextEditingValue(
+          TextEditingValue(
+            text: textEditingValue.text,
+            selection: TextSelection.collapsed(
+                offset: caretPosition
+            ),
           ),
-        ),
-        cause,
-      );
+          cause,
+        );
 
-      widget.controller.moveCursorToPosition(
-          pasteData.delta!.transformPosition(textEditingValue.selection.end)
-      );
+        widget.controller.moveCursorToPosition(
+            pasteData.delta!.transformPosition(caretPosition)
+        );
+      }
 
       return;
     } else if (pasteData.text != null) {
