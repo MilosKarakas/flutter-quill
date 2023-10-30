@@ -1458,7 +1458,7 @@ class RawEditorState extends EditorState
   Attribute? getAttribute(String key, Object? value) {
     if (key == 'bold' && value is bool && value == true) {
       return const BoldAttribute();
-    } else if (key =='italic' && value is bool && value == true) {
+    } else if (key == 'italic' && value is bool && value == true) {
       return const ItalicAttribute();
     } else if (key == 'underline' && value is bool && value == true) {
       return const UnderlineAttribute();
@@ -1555,7 +1555,25 @@ class RawEditorState extends EditorState
 
       // check the type of operation we are in
       var currentOperationType = '';
-      if (currentOperations[indexOfCurrentOperation].attributes != null) {
+      var newOperationType = '';
+
+      for (var index = indexOfCurrentOperation; index < currentOperations.length; index++) {
+        final operation = currentOperations[index];
+        if (operation.data != null && operation.data is String) {
+          if ((operation.data as String).contains('\n')) {
+            break;
+          }
+        } else if (operation.data == null && operation.attributes != null) {
+          for (final attribute in operation.attributes!.keys) {
+            if (attribute == 'list') {
+              currentOperationType = 'list_${operation.attributes![attribute]}';
+              break;
+            }
+          }
+        }
+      }
+
+      if (currentOperationType == '' && currentOperations[indexOfCurrentOperation].attributes != null) {
         for (final attribute in currentOperations[indexOfCurrentOperation].attributes!.keys) {
           if (attribute == 'bold') {
             currentOperationType = 'bold';
@@ -1564,15 +1582,51 @@ class RawEditorState extends EditorState
           } else if (attribute == 'underline') {
             currentOperationType = 'underline';
           } else if (attribute == 'list') {
-            currentOperationType = 'list';
+            currentOperationType = 'list_${currentOperations[indexOfCurrentOperation].attributes![attribute]}';
           } else if (attribute == 'link') {
             currentOperationType = 'link';
           }
         }
       }
 
+      for (var index = 0; index < newOperations.length; index++) {
+        final operation = newOperations[index];
+        if (operation.data != null && operation.data is String) {
+          if ((operation.data as String).contains('\n')) {
+            break;
+          }
+        } else if (operation.data == null && operation.attributes != null) {
+          for (final attribute in operation.attributes!.keys) {
+            if (attribute == 'list') {
+              newOperationType = 'list_${operation.attributes![attribute]}';
+              break;
+            }
+          }
+        }
+      }
+
+      if (newOperationType == '' && newOperations[0].attributes != null) {
+        for (final attribute in newOperations[0].attributes!.keys) {
+          if (attribute == 'bold') {
+            newOperationType = 'bold';
+          } else if (attribute == 'italic') {
+            newOperationType = 'italic';
+          } else if (attribute == 'underline') {
+            newOperationType = 'underline';
+          } else if (attribute == 'list') {
+            newOperationType = 'list_${newOperations[0].attributes![attribute]}';
+          } else if (attribute == 'link') {
+            newOperationType = 'link';
+          }
+        }
+      }
+
+      // determins if we should perform paste where lists need to be merged and adjusted
+      bool shouldPerformListPaste = (currentOperationType == 'list_ordered' || currentOperationType == 'list_bullet') &&
+          (newOperationType == 'list_ordered' || newOperationType == 'list_bullet');
+
       // if operation type is not a list we only check if we are at the start/end of the operation of we are in the middle
-      if (currentOperationType != 'list') {
+      if (shouldPerformListPaste == false) {
         List<Operation> operations = [];
         if (totalLength == selectionStart) {
           // add all new operations before the current one
@@ -1601,8 +1655,7 @@ class RawEditorState extends EditorState
           }
         }
 
-        controller.document =
-            Document.fromDelta(Delta.fromOperations(operations));
+        controller.document = Document.fromDelta(Delta.fromOperations(operations));
 
         // Calculate new caret position
         int caretPosition = selectionStart + totalLengthWithNewOperations;
@@ -1611,22 +1664,95 @@ class RawEditorState extends EditorState
         userUpdateTextEditingValue(
           TextEditingValue(
             text: textEditingValue.text,
-            selection: TextSelection.collapsed(
-                offset: caretPosition
-            ),
+            selection: TextSelection.collapsed(offset: caretPosition),
           ),
           cause,
         );
 
-        widget.controller.moveCursorToPosition(
-            caretPosition
-        );
+        widget.controller.moveCursorToPosition(caretPosition);
 
         controller.onReplaceText?.call(
           selectionStart,
           selectionEnd - selectionStart,
           pasteData.text ?? '',
         );
+      } else {
+        /// Special adjustments when pasting list to a list
+        /// We need to merge the lists and adjust the list items
+        /// We also need to adjust the selection to the end of the pasted list
+        var selectionAtStartOfElement = false;
+        var selectionAtEndOfElement = false;
+        List<Operation> elementOperations = [];
+
+        // check if selection is at the start of the element
+        if (totalLength == selectionStart) {
+          selectionAtStartOfElement = true;
+        }
+
+        // check if selection is at the end of the element
+        if (selectionAtStartOfElement == false) {
+          var indexOfFirstElementOperation = 0;
+          var indexOfLastElementOperation = 0;
+
+          for (var index = indexOfCurrentOperation; index >= 0; index--) {
+            final operation = currentOperations[index];
+            if (operation.data != null && operation.data is String) {
+              if ((operation.data as String).contains('\n')) {
+                indexOfFirstElementOperation = index + 1;
+                break;
+              } else if (index == 0) {
+                indexOfFirstElementOperation = index;
+              }
+            }
+          }
+
+          for (var index = indexOfCurrentOperation; index < currentOperations.length; index++) {
+            final operation = currentOperations[index];
+            if (operation.data != null && operation.data is String) {
+              if ((operation.data as String).contains('\n')) {
+                indexOfLastElementOperation = index - 1;
+                break;
+              } else if (index == currentOperations.length - 1) {
+                indexOfLastElementOperation = index;
+              }
+            }
+          }
+
+          elementOperations = currentOperations.sublist(indexOfFirstElementOperation, indexOfLastElementOperation + 1).toList();
+          var lengthOfElementOperations = elementOperations.fold<int>(0, (previousValue, element) => previousValue + (element.length ?? 0));
+          if (selectionStart == totalLength + lengthOfElementOperations) {
+            selectionAtEndOfElement = true;
+          }
+        }
+
+        if (selectionAtStartOfElement) {
+          List<Operation> operations = [];
+          operations.addAll(currentOperations.sublist(0, indexOfCurrentOperation).toList());
+          operations.addAll(newOperations);
+          operations.addAll(currentOperations.sublist(indexOfCurrentOperation).toList());
+        } else if (selectionAtEndOfElement) {
+          List<Operation> operations = [];
+          operations.addAll(currentOperations.sublist(0, indexOfCurrentOperation + 1).toList());
+          operations.addAll(newOperations);
+          operations.addAll(currentOperations.sublist(indexOfCurrentOperation + 1).toList());
+        } else {
+          List<Operation> operations = [];
+          operations.addAll(currentOperations.sublist(0, indexOfCurrentOperation).toList());
+
+          final currentOperation = currentOperations[indexOfCurrentOperation];
+          if (currentOperation.data is String) {
+            final currentOperationData = currentOperation.data as String;
+            final firstPart = currentOperationData.substring(0, selectionStart - totalLength);
+            final secondPart = currentOperationData.substring(selectionStart - totalLength);
+            final firstPartOperation = Operation.insert(firstPart, currentOperation.attributes);
+            final secondPartOperation = Operation.insert(secondPart, currentOperation.attributes);
+            operations.addAll(currentOperations.sublist(0, indexOfCurrentOperation).toList());
+            operations.add(firstPartOperation);
+            operations.addAll(newOperations);
+            operations.add(secondPartOperation);
+            operations.addAll(currentOperations.sublist(indexOfCurrentOperation + 1).toList());
+          }
+        }
       }
 
       return;
