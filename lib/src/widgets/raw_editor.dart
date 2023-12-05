@@ -1354,7 +1354,7 @@ class RawEditorState extends EditorState
     }
     if (_hasFocus) {
       final keyboardAlreadyShown = _keyboardVisible;
-      openConnectionIfNeeded();
+      Future.delayed(const Duration(milliseconds: 125), openConnectionIfNeeded);
       if (!keyboardAlreadyShown) {
         /// delay 500 milliseconds for waiting keyboard show up
         Future.delayed(const Duration(milliseconds: 500), _showCaretOnScreen);
