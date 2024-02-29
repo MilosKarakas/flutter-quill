@@ -357,7 +357,6 @@ class Delta {
     _operations.replaceRange(index - 1, index, [
       Operation._(operation.key, length, resultText, operation.attributes),
     ]);
-    print('result text is $resultText');
   }
 
   /// Pushes new operation into this delta.
@@ -391,7 +390,6 @@ class Delta {
         if (lastOp.hasSameAttributes(operation) &&
             operation.data is String &&
             lastOp.data is String && !(lastOp.data as String).endsWith('\n')) {
-          print('merging with tail ${operation.data} ${operation.attributes}');
           _mergeWithTail(operation);
           return;
         }
@@ -405,11 +403,9 @@ class Delta {
       }
     }
     if (index == _operations.length) {
-      print('adding operation to end ${operation.data} ${operation.attributes}');
       _operations.add(operation);
     } else {
       final opAtIndex = _operations.elementAt(index);
-      print('replacing operation at index $index ${operation.data} ${operation.attributes} ${opAtIndex.data} ${opAtIndex.attributes}');
       _operations.replaceRange(index, index + 1, [operation, opAtIndex]);
     }
     _modificationCount++;
