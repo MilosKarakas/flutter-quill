@@ -183,7 +183,7 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
     final effectiveLastKnownValue = _lastKnownRemoteTextEditingValue!;
     _lastKnownRemoteTextEditingValue = value;
-    final oldText = effectiveLastKnownValue.text;
+    final oldText = effectiveLastKnownValue.text == '\n' ? '' : effectiveLastKnownValue.text;
     final text = value.text;
     final cursorPosition = value.selection.extentOffset;
     final diff = getDiff(oldText, text, cursorPosition);

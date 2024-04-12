@@ -31,6 +31,7 @@ extension QuillEnterText on WidgetTester {
   Future<void> quillEnterText(Finder finder, String text) async {
     return TestAsyncUtils.guard(() async {
       await quillGiveFocus(finder);
+      await pumpAndSettle(const Duration(milliseconds: 500));
       await quillUpdateEditingValue(finder, text);
       await idle();
     });

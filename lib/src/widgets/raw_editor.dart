@@ -357,15 +357,9 @@ class RawEditorState extends EditorState
       onCut: cutEnabled ? () => cutSelection(SelectionChangedCause.toolbar) : null,
       onPaste: pasteEnabled ? () => pasteText(SelectionChangedCause.toolbar) : null,
       onSelectAll: selectAllEnabled ? () => selectAll(SelectionChangedCause.toolbar) : null,
-      onLookUp: lookUpEnabled
-          ? () => lookUpSelection(SelectionChangedCause.toolbar)
-          : null,
-      onSearchWeb: searchWebEnabled
-          ? () => searchWebForSelection(SelectionChangedCause.toolbar)
-          : null,
-      onShare: shareEnabled
-          ? () => shareSelection(SelectionChangedCause.toolbar)
-          : null,
+      onLookUp: lookUpEnabled ? () => lookUpSelection(SelectionChangedCause.toolbar) : null,
+      onSearchWeb: searchWebEnabled ? () => searchWebForSelection(SelectionChangedCause.toolbar) : null,
+      onShare: shareEnabled ? () => shareSelection(SelectionChangedCause.toolbar) : null,
       onLiveTextInput: liveTextInputEnabled ? () {} : null,
     );
   }
@@ -1318,6 +1312,7 @@ class RawEditorState extends EditorState
 
   void _handleFocusChanged() {
     if (dirty) {
+      requestKeyboard();
       SchedulerBinding.instance.addPostFrameCallback((_) => _handleFocusChanged());
       return;
     }
