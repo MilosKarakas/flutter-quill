@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../widgets/editor.dart';
-import '../widgets/raw_editor.dart';
 
 /// Extends
 extension QuillEnterText on WidgetTester {
@@ -10,11 +9,7 @@ extension QuillEnterText on WidgetTester {
   Future<void> quillGiveFocus(Finder finder) {
     return TestAsyncUtils.guard(() async {
       final editor = state<QuillEditorState>(
-        find.descendant(
-            of: finder,
-            matching:
-                find.byType(QuillEditor, skipOffstage: finder.skipOffstage),
-            matchRoot: true),
+        find.descendant(of: finder, matching: find.byType(QuillEditor, skipOffstage: finder.skipOffstage), matchRoot: true),
       );
       editor.widget.focusNode.requestFocus();
       await pump();
@@ -45,16 +40,7 @@ extension QuillEnterText on WidgetTester {
   /// `find.byType(QuillEditor)`.
   Future<void> quillUpdateEditingValue(Finder finder, String text) async {
     return TestAsyncUtils.guard(() async {
-      final editor = state<RawEditorState>(
-        find.descendant(
-            of: finder,
-            matching: find.byType(RawEditor, skipOffstage: finder.skipOffstage),
-            matchRoot: true),
-      );
-      testTextInput.updateEditingValue(TextEditingValue(
-          text: text,
-          selection: TextSelection.collapsed(
-              offset: editor.textEditingValue.text.length)));
+      testTextInput.updateEditingValue(TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length)));
       await idle();
     });
   }
