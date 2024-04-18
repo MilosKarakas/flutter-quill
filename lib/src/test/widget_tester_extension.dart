@@ -40,7 +40,15 @@ extension QuillEnterText on WidgetTester {
   /// `find.byType(QuillEditor)`.
   Future<void> quillUpdateEditingValue(Finder finder, String text) async {
     return TestAsyncUtils.guard(() async {
-      testTextInput.updateEditingValue(TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length)));
+      final editor = state<QuillEditorState>(
+        find.descendant(
+            of: finder,
+            matching: find.byType(QuillEditor, skipOffstage: finder.skipOffstage),
+            matchRoot: true),
+      );
+
+      editor.widget.controller.clear();
+      testTextInput.enterText(text);
       await idle();
     });
   }
