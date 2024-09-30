@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:i18n_extension/i18n_widget.dart';
+import 'package:i18n_extension/i18n_extension.dart';
 
 import '../models/documents/attribute.dart';
 import '../models/structs/link_dialog_action.dart';

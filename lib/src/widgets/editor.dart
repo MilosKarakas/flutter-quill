@@ -9,7 +9,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:i18n_extension/i18n_widget.dart';
+import 'package:i18n_extension/i18n_extension.dart';
 
 import '../models/documents/document.dart';
 import '../models/documents/nodes/container.dart' as container_node;
