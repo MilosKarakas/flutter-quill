@@ -329,9 +329,7 @@ class RawEditorState extends EditorState
   String get pastePlainText => _pastePlainText;
   String _pastePlainText = '';
 
-  final ClipboardStatusNotifier _clipboardStatus = ClipboardStatusNotifier(
-      value: kIsWeb ? ClipboardStatus.pasteable : ClipboardStatus.unknown
-  );
+  final ClipboardStatusNotifier _clipboardStatus = ClipboardStatusNotifier(value: kIsWeb ? ClipboardStatus.pasteable : ClipboardStatus.unknown);
   final LayerLink _toolbarLayerLink = LayerLink();
   final LayerLink _startHandleLayerLink = LayerLink();
   final LayerLink _endHandleLayerLink = LayerLink();
@@ -359,15 +357,9 @@ class RawEditorState extends EditorState
       onCut: cutEnabled ? () => cutSelection(SelectionChangedCause.toolbar) : null,
       onPaste: pasteEnabled ? () => pasteText(SelectionChangedCause.toolbar) : null,
       onSelectAll: selectAllEnabled ? () => selectAll(SelectionChangedCause.toolbar) : null,
-      onLookUp: lookUpEnabled
-          ? () => lookUpSelection(SelectionChangedCause.toolbar)
-          : null,
-      onSearchWeb: searchWebEnabled
-          ? () => searchWebForSelection(SelectionChangedCause.toolbar)
-          : null,
-      onShare: shareEnabled
-          ? () => shareSelection(SelectionChangedCause.toolbar)
-          : null,
+      onLookUp: lookUpEnabled ? () => lookUpSelection(SelectionChangedCause.toolbar) : null,
+      onSearchWeb: searchWebEnabled ? () => searchWebForSelection(SelectionChangedCause.toolbar) : null,
+      onShare: shareEnabled ? () => shareSelection(SelectionChangedCause.toolbar) : null,
       onLiveTextInput: liveTextInputEnabled ? () {} : null,
     );
   }
@@ -1399,7 +1391,10 @@ class RawEditorState extends EditorState
   ///
   /// This property is typically used to notify the renderer of input gestures.
   @override
-  RenderEditor get renderEditor => _editorKey.currentContext!.findRenderObject() as RenderEditor;
+  RenderEditor get renderEditor {
+    return (_editorKey.currentContext?.findRenderObject() as RenderEditor?)
+        ?? RenderEditor.empty(tickerProvider: this);
+  }
 
   /// Express interest in interacting with the keyboard.
   ///
