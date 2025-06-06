@@ -52,4 +52,73 @@ extension QuillEnterText on WidgetTester {
       await idle();
     });
   }
+
+  Future<void> quillUpdateEditingValueWithSelection(
+      Finder finder, String text, TextSelection selection) async {
+    expect(selection.isValid, isTrue,
+        reason:
+        'The TextSelection passed is not valid to be used for text editing values');
+    return TestAsyncUtils.guard(() async {
+      testTextInput.updateEditingValue(
+        TextEditingValue(
+          text: text,
+          selection: selection,
+        ),
+      );
+      await idle();
+    });
+  }
+
+  Future<void> quillReplaceTextWithSelection(
+      Finder finder, String replacement, TextSelection selection) async {
+    final editor = findRawEditor(finder: finder);
+    expect(selection.isValid, isTrue,
+        reason: 'The selection in the editor is not valid');
+    final effectivePlainText = editor.widget.controller.document
+        .toPlainText()
+        .replaceRange(
+        selection.baseOffset, selection.extentOffset, replacement);
+    return TestAsyncUtils.guard(() async {
+      await quillGiveFocus(finder);
+      await quillUpdateEditingValueWithSelection(
+        finder,
+        effectivePlainText,
+        TextSelection.collapsed(
+          offset: selection.baseOffset + replacement.length,
+        ),
+      );
+      await idle();
+    });
+  }
+
+  Future<void> quillReplaceText(Finder finder, String replacement) async {
+    final editor = findRawEditor(finder: finder);
+    final selection = editor.widget.controller.selection;
+    expect(selection.isValid, isTrue,
+        reason: 'The selection in the editor is not valid');
+    final effectivePlainText = editor.widget.controller.document
+        .toPlainText()
+        .replaceRange(
+        selection.baseOffset, selection.extentOffset, replacement);
+    return TestAsyncUtils.guard(() async {
+      await quillGiveFocus(finder);
+      await quillUpdateEditingValueWithSelection(
+        finder,
+        effectivePlainText,
+        TextSelection.collapsed(
+          offset: selection.baseOffset + replacement.length,
+        ),
+      );
+      await idle();
+    });
+  }
+
+  QuillEditorState findRawEditor({required Finder finder}) {
+    return state<QuillEditorState>(
+      find.descendant(
+          of: finder,
+          matching: find.byType(QuillEditor, skipOffstage: finder.skipOffstage),
+          matchRoot: true),
+    );
+  }
 }
