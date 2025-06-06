@@ -1,4 +1,3 @@
-import '../../models/documents/document.dart';
 import '../documents/attribute.dart';
 import '../documents/nodes/embeddable.dart';
 import '../documents/style.dart';
@@ -390,104 +389,33 @@ class AutoFormatMultipleLinksRule extends InsertRule {
     Attribute? attribute,
     Object? extraData,
   }) {
-    // Only format when inserting text.
-    if (data is! String) return null;
-
-    // Get current text.
-    final entireText = Document.fromDelta(document).toPlainText();
-
-    // Get word before insertion.
-    final leftWordPart = entireText
-        // Keep all text before insertion.
-        .substring(0, index)
-        // Keep last paragraph.
-        .split('\n')
-        .last
-        // Keep last word.
-        .split(' ')
-        .last
-        .trimLeft();
-
-    // Get word after insertion.
-    final rightWordPart = entireText
-        // Keep all text after insertion.
-        .substring(index)
-        // Keep first paragraph.
-        .split('\n')
-        .first
-        // Keep first word.
-        .split(' ')
-        .first
-        .trimRight();
-
-    // Build the segment of affected words.
-    final affectedWords = '$leftWordPart$data$rightWordPart';
-
-    var usedRegExp = detectLinkRegExp;
-    final alternativeLinkRegExp = extraData;
-    if (alternativeLinkRegExp != null) {
-      try {
-        if (alternativeLinkRegExp is! String) {
-          throw ArgumentError.value(
-            alternativeLinkRegExp,
-            'alternativeLinkRegExp',
-            '`alternativeLinkRegExp` should be of type String',
-          );
-        }
-        final regPattern = alternativeLinkRegExp;
-        usedRegExp = RegExp(
-          regPattern,
-          caseSensitive: false,
-        );
-      } catch (_) {}
+    if (data is! String || data != '\n') {
+      return null;
+    }
+    final itr = DeltaIterator(document);
+    final before = itr.skip(index);
+    if (before == null) {
+      return null;
+    }
+    if (before.data is String && (before.data as String).endsWith('\n')) {
+      return null;
     }
 
-    // Check for URL pattern.
-    final matches = usedRegExp.allMatches(affectedWords);
-
-    // If there are no matches, do not apply any format.
-    if (matches.isEmpty) return null;
-
-    // Build base delta.
-    // The base delta is a simple insertion delta.
-    final baseDelta = Delta()
-      ..retain(index)
-      ..insert(data);
-
-    // Get unchanged text length.
-    final unmodifiedLength = index - leftWordPart.length;
-
-    // Create formatter delta.
-    // The formatter delta will only include links formatting when needed.
-    final formatterDelta = Delta()..retain(unmodifiedLength);
-
-    var previousLinkEndRelativeIndex = 0;
-    for (final match in matches) {
-      // Get the size of the leading segment of text that is not part of the
-      // link.
-      final separationLength = match.start - previousLinkEndRelativeIndex;
-
-      // Get the identified link.
-      final link = affectedWords.substring(match.start, match.end);
-
-      // Keep the leading segment of text and add link with its proper
-      // attribute.
-      formatterDelta
-        ..retain(separationLength, Attribute.link.toJson())
-        ..retain(link.length, LinkAttribute(link).toJson());
-
-      // Update reference index.
-      previousLinkEndRelativeIndex = match.end;
+    final after = itr.next();
+    if (after.data is String && (after.data as String).startsWith('\n')) {
+      return null;
     }
 
-    // Get remaining text length.
-    final remainingLength = affectedWords.length - previousLinkEndRelativeIndex;
+    final delta = Delta()..retain(index + (len ?? 0));
+    if (after.data is String && (after.data as String).contains('\n')) {
+      assert(after.isPlain);
+      delta.insert('\n');
+      return delta;
+    }
+    final nextNewLine = _getNextNewLine(itr);
+    final attributes = nextNewLine.operation?.attributes;
 
-    // Remove links from remaining non-link text.
-    formatterDelta.retain(remainingLength, Attribute.link.toJson());
-
-    // Build and return resulting change delta.
-    return baseDelta.compose(formatterDelta);
+    return delta..insert('\n', attributes);
   }
 }
 
