@@ -40,12 +40,6 @@ class QuillKeyboardListenerState extends State<QuillKeyboardListener> {
   final QuillPressedKeys _pressedKeys = QuillPressedKeys();
 
   bool _keyEvent(KeyEvent event) {
-    // var pressedKeys = HardwareKeyboard.instance.logicalKeysPressed;
-    //
-    // if (pressedKeys.length > 1 && pressedKeys.elementAt(0) == LogicalKeyboardKey.enter) {
-    //   pressedKeys = pressedKeys.skip(1).toSet();
-    // }
-
     _pressedKeys._updatePressedKeys(HardwareKeyboard.instance.logicalKeysPressed);
     return false;
   }
@@ -54,13 +48,6 @@ class QuillKeyboardListenerState extends State<QuillKeyboardListener> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_keyEvent);
-
-    // var pressedKeys = HardwareKeyboard.instance.logicalKeysPressed;
-    //
-    // if (pressedKeys.length > 1 && pressedKeys.elementAt(0) == LogicalKeyboardKey.enter) {
-    //   pressedKeys = pressedKeys.skip(1).toSet();
-    // }
-
     _pressedKeys._updatePressedKeys(HardwareKeyboard.instance.logicalKeysPressed);
   }
 
