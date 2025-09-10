@@ -517,6 +517,7 @@ class RawEditorState extends EditorState
         onCopy: () {},
         onPaste: () {},
         onCut: () {},
+        onSetText: (_) {},
         child: MouseRegion(
           cursor: SystemMouseCursors.text,
           child: _Editor(
@@ -567,6 +568,7 @@ class RawEditorState extends EditorState
               onCopy: () {},
               onPaste: () {},
               onCut: () {},
+              onSetText: (_) {},
               child: MouseRegion(
                 cursor: SystemMouseCursors.text,
                 child: _Editor(
