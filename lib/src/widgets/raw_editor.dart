@@ -329,9 +329,7 @@ class RawEditorState extends EditorState
   String get pastePlainText => _pastePlainText;
   String _pastePlainText = '';
 
-  final ClipboardStatusNotifier _clipboardStatus = ClipboardStatusNotifier(
-      value: kIsWeb ? ClipboardStatus.pasteable : ClipboardStatus.unknown
-  );
+  final ClipboardStatusNotifier _clipboardStatus = ClipboardStatusNotifier(value: kIsWeb ? ClipboardStatus.pasteable : ClipboardStatus.unknown);
   final LayerLink _toolbarLayerLink = LayerLink();
   final LayerLink _startHandleLayerLink = LayerLink();
   final LayerLink _endHandleLayerLink = LayerLink();
@@ -359,15 +357,9 @@ class RawEditorState extends EditorState
       onCut: cutEnabled ? () => cutSelection(SelectionChangedCause.toolbar) : null,
       onPaste: pasteEnabled ? () => pasteText(SelectionChangedCause.toolbar) : null,
       onSelectAll: selectAllEnabled ? () => selectAll(SelectionChangedCause.toolbar) : null,
-      onLookUp: lookUpEnabled
-          ? () => lookUpSelection(SelectionChangedCause.toolbar)
-          : null,
-      onSearchWeb: searchWebEnabled
-          ? () => searchWebForSelection(SelectionChangedCause.toolbar)
-          : null,
-      onShare: shareEnabled
-          ? () => shareSelection(SelectionChangedCause.toolbar)
-          : null,
+      onLookUp: lookUpEnabled ? () => lookUpSelection(SelectionChangedCause.toolbar) : null,
+      onSearchWeb: searchWebEnabled ? () => searchWebForSelection(SelectionChangedCause.toolbar) : null,
+      onShare: shareEnabled ? () => shareSelection(SelectionChangedCause.toolbar) : null,
       onLiveTextInput: liveTextInputEnabled ? () {} : null,
     );
   }
@@ -516,6 +508,15 @@ class RawEditorState extends EditorState
     Widget child = CompositedTransformTarget(
       link: _toolbarLayerLink,
       child: Semantics(
+        inputType: ui.SemanticsInputType.text,
+        textField: true,
+        multiline: true,
+        enabled: true,
+        value: currentTextEditingValue?.text,
+        textDirection: _textDirection,
+        onCopy: () {},
+        onPaste: () {},
+        onCut: () {},
         child: MouseRegion(
           cursor: SystemMouseCursors.text,
           child: _Editor(
@@ -556,26 +557,37 @@ class RawEditorState extends EditorState
           physics: widget.scrollPhysics,
           viewportBuilder: (_, offset) => CompositedTransformTarget(
             link: _toolbarLayerLink,
-            child: MouseRegion(
-              cursor: SystemMouseCursors.text,
-              child: _Editor(
-                key: _editorKey,
-                offset: offset,
-                document: _doc,
-                selection: controller.selection,
-                hasFocus: _hasFocus,
-                scrollable: widget.scrollable,
-                textDirection: _textDirection,
-                startHandleLayerLink: _startHandleLayerLink,
-                endHandleLayerLink: _endHandleLayerLink,
-                onSelectionChanged: _handleSelectionChanged,
-                onSelectionCompleted: _handleSelectionCompleted,
-                scrollBottomInset: widget.scrollBottomInset,
-                padding: widget.padding,
-                maxContentWidth: widget.maxContentWidth,
-                cursorController: _cursorCont,
-                floatingCursorDisabled: widget.floatingCursorDisabled,
-                children: _buildChildren(_doc, context),
+            child: Semantics(
+              inputType: ui.SemanticsInputType.text,
+              textField: true,
+              multiline: true,
+              enabled: true,
+              value: currentTextEditingValue?.text,
+              textDirection: _textDirection,
+              onCopy: () {},
+              onPaste: () {},
+              onCut: () {},
+              child: MouseRegion(
+                cursor: SystemMouseCursors.text,
+                child: _Editor(
+                  key: _editorKey,
+                  offset: offset,
+                  document: _doc,
+                  selection: controller.selection,
+                  hasFocus: _hasFocus,
+                  scrollable: widget.scrollable,
+                  textDirection: _textDirection,
+                  startHandleLayerLink: _startHandleLayerLink,
+                  endHandleLayerLink: _endHandleLayerLink,
+                  onSelectionChanged: _handleSelectionChanged,
+                  onSelectionCompleted: _handleSelectionCompleted,
+                  scrollBottomInset: widget.scrollBottomInset,
+                  padding: widget.padding,
+                  maxContentWidth: widget.maxContentWidth,
+                  cursorController: _cursorCont,
+                  floatingCursorDisabled: widget.floatingCursorDisabled,
+                  children: _buildChildren(_doc, context),
+                ),
               ),
             ),
           ),
@@ -738,6 +750,7 @@ class RawEditorState extends EditorState
             }),
             child: Focus(
               focusNode: widget.focusNode,
+              includeSemantics: false,
               onKey: _onKey,
               child: QuillKeyboardListener(
                 child: Container(
