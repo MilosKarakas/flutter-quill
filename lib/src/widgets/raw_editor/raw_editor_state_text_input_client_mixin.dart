@@ -36,7 +36,7 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   /// Opens or closes input connection based on the current state of
   /// [focusNode] and [value].
   void openOrCloseConnection() {
-    if (widget.focusNode.hasFocus && widget.focusNode.consumeKeyboardToken()) {
+    if (widget.focusNode.hasFocus) {
       Future.delayed(const Duration(milliseconds: 125), openConnectionIfNeeded);
     } else if (!widget.focusNode.hasFocus) {
       closeConnectionIfNeeded();
