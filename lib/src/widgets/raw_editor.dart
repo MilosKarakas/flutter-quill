@@ -782,6 +782,10 @@ class RawEditorState extends EditorState
       return _handleTabKey(event);
     }
 
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      return _handleEscapeKey(event);
+    }
+
     // Don't handle key if there is an active selection.
     if (controller.selection.baseOffset != controller.selection.extentOffset) {
       return KeyEventResult.ignored;
@@ -882,6 +886,14 @@ class RawEditorState extends EditorState
     }
 
     return insertTabCharacter();
+  }
+
+  KeyEventResult _handleEscapeKey(RawKeyEvent event) {
+    if (kIsWeb && widget.focusNode.hasFocus) {
+      widget.focusNode.nextFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   void _moveCursor(int chars) {
