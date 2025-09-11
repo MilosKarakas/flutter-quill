@@ -754,7 +754,6 @@ class RawEditorState extends EditorState
             }),
             child: Focus(
               focusNode: widget.focusNode,
-              includeSemantics: false,
               onKey: _onKey,
               child: QuillKeyboardListener(
                 child: Container(
