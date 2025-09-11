@@ -517,7 +517,8 @@ class RawEditorState extends EditorState
         onCopy: () {},
         onPaste: () {},
         onCut: () {},
-        onSetText: (_) {},
+        onDidGainAccessibilityFocus: openConnectionIfNeeded,
+        onDidLoseAccessibilityFocus: closeConnectionIfNeeded,
         child: MouseRegion(
           cursor: SystemMouseCursors.text,
           child: _Editor(
@@ -568,7 +569,8 @@ class RawEditorState extends EditorState
               onCopy: () {},
               onPaste: () {},
               onCut: () {},
-              onSetText: (_) {},
+              onDidGainAccessibilityFocus: openConnectionIfNeeded,
+              onDidLoseAccessibilityFocus: closeConnectionIfNeeded,
               child: MouseRegion(
                 cursor: SystemMouseCursors.text,
                 child: _Editor(
