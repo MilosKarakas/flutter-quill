@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 
 import '../../models/documents/document.dart';
 import '../../utils/delta.dart';
-import '../../utils/platform.dart';
 import '../editor.dart';
 
 mixin RawEditorStateTextInputClientMixin on EditorState
@@ -37,33 +36,20 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   /// Opens or closes input connection based on the current state of
   /// [focusNode] and [value].
   void openOrCloseConnection() {
-    if (kIsWeb && isMobileWeb()) {
-      debugPrint(
-          '[QuillEditor-Mixin] openOrCloseConnection() - hasFocus: ${widget.focusNode.hasFocus}');
-    }
-
+    // Simplified to match Flutter's EditableText pattern - no delays
     if (widget.focusNode.hasFocus && widget.focusNode.consumeKeyboardToken()) {
-      Future.delayed(const Duration(milliseconds: 125), openConnectionIfNeeded);
+      openConnectionIfNeeded();
     } else if (!widget.focusNode.hasFocus) {
       closeConnectionIfNeeded();
     }
   }
 
   void openConnectionIfNeeded() {
-    if (kIsWeb && isMobileWeb()) {
-      debugPrint(
-          '[QuillEditor-Mixin] openConnectionIfNeeded() called - hasConnection: $hasConnection, shouldCreate: $shouldCreateInputConnection');
-    }
-
     if (!shouldCreateInputConnection) {
       return;
     }
 
     if (!hasConnection) {
-      if (kIsWeb && isMobileWeb()) {
-        debugPrint(
-            '[QuillEditor-Mixin] openConnectionIfNeeded() - creating new connection');
-      }
       _lastKnownRemoteTextEditingValue = textEditingValue;
       _textInputConnection = TextInput.attach(
         this,
@@ -86,19 +72,9 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       //update IME position for Macos
       _updateCaretRectIfNeeded();
       _textInputConnection!.setEditingState(_lastKnownRemoteTextEditingValue!);
-
-      // Only call show() when creating a new connection
-      if (kIsWeb && isMobileWeb()) {
-        debugPrint(
-            '[QuillEditor-Mixin] openConnectionIfNeeded() - calling show() for new connection');
-      }
       _textInputConnection!.show();
     } else {
-      // Connection already exists, call show() to make keyboard visible
-      if (kIsWeb && isMobileWeb()) {
-        debugPrint(
-            '[QuillEditor-Mixin] openConnectionIfNeeded() - calling show() on existing connection');
-      }
+      // Always call show() when connection exists - matches Flutter's pattern
       _textInputConnection!.show();
     }
   }
@@ -135,18 +111,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
   /// Closes input connection if it's currently open. Otherwise does nothing.
   void closeConnectionIfNeeded() {
-    if (kIsWeb && isMobileWeb()) {
-      debugPrint(
-          '[QuillEditor-Mixin] closeConnectionIfNeeded() called - hasConnection: $hasConnection');
-    }
-
     if (!hasConnection) {
       return;
-    }
-
-    if (kIsWeb && isMobileWeb()) {
-      debugPrint(
-          '[QuillEditor-Mixin] closeConnectionIfNeeded() - closing connection');
     }
 
     _textInputConnection!.close();
@@ -154,7 +120,7 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     _lastKnownRemoteTextEditingValue = null;
   }
 
-  /// Force closes the connection even on mobile web (used during dispose)
+  /// Force closes the connection (used during dispose)
   void forceCloseConnection() {
     if (!hasConnection) {
       return;

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui hide TextStyle;
 
@@ -10,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
 import 'package:pasteboard/pasteboard.dart';
 
 import '../../flutter_quill.dart';
@@ -294,10 +292,6 @@ class RawEditorState extends EditorState
         RawEditorStateTextInputClientMixin,
         RawEditorStateSelectionDelegateMixin {
   final GlobalKey _editorKey = GlobalKey();
-
-  KeyboardVisibilityController? _keyboardVisibilityController;
-  StreamSubscription<bool>? _keyboardVisibilitySubscription;
-  bool _keyboardVisible = false;
 
   // Selection overlay
   @override
@@ -947,25 +941,21 @@ class RawEditorState extends EditorState
 
     _selectionOverlay?.handlesVisible = _shouldShowSelectionHandles();
 
-    // On mobile web, don't request keyboard on long press as it interferes with paste menu
-    final shouldSkipKeyboardRequest =
-        kIsWeb && isMobileWeb() && cause == SelectionChangedCause.longPress;
-
-    if (kIsWeb && isMobileWeb()) {
-      debugPrint(
-          '[QuillEditor] _handleSelectionChanged - cause: $cause, keyboardVisible: $_keyboardVisible, hasFocus: $_hasFocus, shouldSkip: $shouldSkipKeyboardRequest');
-    }
-
-    // Only request keyboard if editor has focus
-    // This prevents stealing focus when user is interacting with other widgets
-    if (!_keyboardVisible && !shouldSkipKeyboardRequest && _hasFocus) {
-      // This will show the keyboard for all selection changes on the
-      // editor, not just changes triggered by user gestures.
-      if (kIsWeb && isMobileWeb()) {
-        debugPrint(
-            '[QuillEditor] _handleSelectionChanged - calling requestKeyboard()');
-      }
-      requestKeyboard();
+    // Request keyboard for all selection changes except those triggered by keyboard
+    // This matches Flutter's EditableText behavior
+    switch (cause) {
+      case SelectionChangedCause.tap:
+      case SelectionChangedCause.doubleTap:
+      case SelectionChangedCause.longPress:
+      case SelectionChangedCause.drag:
+      case SelectionChangedCause.forcePress:
+      case SelectionChangedCause.toolbar:
+      case SelectionChangedCause.stylusHandwriting:
+        requestKeyboard();
+        break;
+      case SelectionChangedCause.keyboard:
+        // Don't request keyboard when selection change came from keyboard input
+        break;
     }
 
     if (cause == SelectionChangedCause.drag) {
@@ -1175,58 +1165,25 @@ class RawEditorState extends EditorState
     _floatingCursorResetController = AnimationController(vsync: this);
     _floatingCursorResetController.addListener(onFloatingCursorResetTick);
 
-    if (isKeyboardOS()) {
-      _keyboardVisible = true;
-    } else if (isMobileWeb()) {
-      // On mobile web, assume keyboard is visible when focused
-      // We'll manage this state through focus changes
-      _keyboardVisible = false;
-    } else if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
-      // treat tests like a keyboard OS
-      _keyboardVisible = true;
-    } else {
-      // treat iOS Simulator like a keyboard OS
-      isIOSSimulator().then((isIosSimulator) {
-        if (isIosSimulator) {
-          _keyboardVisible = true;
-        } else {
-          _keyboardVisibilityController = KeyboardVisibilityController();
-          _keyboardVisible = _keyboardVisibilityController!.isVisible;
-          _keyboardVisibilitySubscription =
-              _keyboardVisibilityController?.onChange.listen((visible) {
-            _keyboardVisible = visible;
-            if (visible) {
-              _onChangeTextEditingValue(!_hasFocus);
-            }
-          });
-
-          HardwareKeyboard.instance.addHandler(_hardwareKeyboardEvent);
-        }
-      });
+    // Handle hardware keyboard events on non-web mobile platforms
+    if (!kIsWeb) {
+      HardwareKeyboard.instance.addHandler(_hardwareKeyboardEvent);
     }
 
     // Focus
     widget.focusNode.addListener(_handleFocusChanged);
   }
 
-  // KeyboardVisibilityController only checks for keyboards that
-  // adjust the screen size. Also watch for hardware keyboards
-  // that don't alter the screen (i.e. Chromebook, Android tablet
-  // and any hardware keyboards from an OS not listed in isKeyboardOS())
+  // Watch for hardware keyboards that don't alter the screen size
+  // (i.e. Chromebook, Android tablet with hardware keyboard)
   bool _hardwareKeyboardEvent(KeyEvent _) {
-    if (!_keyboardVisible) {
-      // hardware keyboard key pressed. Set visibility to true
-      _keyboardVisible = true;
-      // update the editor
-      _onChangeTextEditingValue(!_hasFocus);
-    }
+    // Hardware keyboard event detected - update the editor
+    _onChangeTextEditingValue(!_hasFocus);
 
-    // remove the key handler - it's no longer needed. If
-    // KeyboardVisibilityController clears visibility, it wil
-    // also enable it when appropriate.
+    // Remove the handler after first use - it's no longer needed
     HardwareKeyboard.instance.removeHandler(_hardwareKeyboardEvent);
 
-    // we didn't handle the event, just needed to know a key was pressed
+    // We didn't handle the event, just needed to know a key was pressed
     return false;
   }
 
@@ -1305,10 +1262,11 @@ class RawEditorState extends EditorState
 
   @override
   void dispose() {
-    // Force close the connection on dispose, even on mobile web
+    // Force close the connection on dispose
     forceCloseConnection();
-    _keyboardVisibilitySubscription?.cancel();
-    HardwareKeyboard.instance.removeHandler(_hardwareKeyboardEvent);
+    if (!kIsWeb) {
+      HardwareKeyboard.instance.removeHandler(_hardwareKeyboardEvent);
+    }
     assert(!hasConnection);
     _selectionOverlay?.dispose();
     _selectionOverlay = null;
@@ -1337,35 +1295,9 @@ class RawEditorState extends EditorState
   }
 
   void _didChangeTextEditingValue([bool ignoreFocus = false]) {
-    if (kIsWeb && !isMobileWeb()) {
-      _onChangeTextEditingValue(ignoreFocus);
-      if (!ignoreFocus) {
-        requestKeyboard();
-      }
-      return;
-    }
-
-    // On mobile web, only update the value, don't request keyboard
-    // The keyboard state is managed through focus changes
-    if (isMobileWeb()) {
-      debugPrint(
-          '[QuillEditor] _didChangeTextEditingValue - ignoreFocus: $ignoreFocus');
-      _onChangeTextEditingValue(ignoreFocus);
-      _adjacentLineAction.stopCurrentVerticalRunIfSelectionChanges();
-      return;
-    }
-
-    if (ignoreFocus || _keyboardVisible) {
-      _onChangeTextEditingValue(ignoreFocus);
-    } else {
-      requestKeyboard();
-      if (mounted) {
-        // Use controller.value in build()
-        // Mark widget as dirty and trigger build and updateChildren
-        _markNeedsBuild();
-      }
-    }
-
+    // Flutter's EditableText does NOT call requestKeyboard() here
+    // Keyboard requests are handled through selection changes and focus changes
+    _onChangeTextEditingValue(ignoreFocus);
     _adjacentLineAction.stopCurrentVerticalRunIfSelectionChanges();
   }
 
@@ -1439,15 +1371,6 @@ class RawEditorState extends EditorState
   }
 
   void _handleFocusChanged() {
-    if (kIsWeb && isMobileWeb()) {
-      debugPrint(
-          '[QuillEditor] _handleFocusChanged - hasFocus: $_hasFocus, dirty: $dirty');
-      if (_hasFocus) {
-        debugPrint(
-            '[QuillEditor] Focus gained - Stack trace: ${StackTrace.current}');
-      }
-    }
-
     if (dirty) {
       SchedulerBinding.instance
           .addPostFrameCallback((_) => _handleFocusChanged());
@@ -1460,20 +1383,8 @@ class RawEditorState extends EditorState
     if (_hasFocus) {
       WidgetsBinding.instance.addObserver(this);
       _showCaretOnScreen();
-      // On mobile web, track keyboard visibility through focus
-      if (isMobileWeb()) {
-        _keyboardVisible = true;
-        debugPrint(
-            '[QuillEditor] _handleFocusChanged - set keyboardVisible = true');
-      }
     } else {
       WidgetsBinding.instance.removeObserver(this);
-      // On mobile web, reset keyboard state on focus loss
-      if (isMobileWeb()) {
-        _keyboardVisible = false;
-        debugPrint(
-            '[QuillEditor] _handleFocusChanged - set keyboardVisible = false on focus loss');
-      }
     }
     updateKeepAlive();
   }
@@ -1555,57 +1466,11 @@ class RawEditorState extends EditorState
   /// keyboard become visible.
   @override
   void requestKeyboard() {
-    if (kIsWeb && isMobileWeb()) {
-      debugPrint(
-          '[QuillEditor] requestKeyboard() called - skipRequestKeyboard: ${controller.skipRequestKeyboard}, keyboardVisible: $_keyboardVisible, hasFocus: $_hasFocus');
-    }
-
-    if (controller.skipRequestKeyboard) {
-      controller.skipRequestKeyboard = false;
-      if (kIsWeb && isMobileWeb()) {
-        debugPrint(
-            '[QuillEditor] requestKeyboard() - skipped via controller flag');
-      }
-      return;
-    }
-
-    // On mobile web, only skip keyboard request if:
-    // 1. Keyboard is already visible AND
-    // 2. Editor has focus
-    // If we don't have focus, we need to request it regardless
-    if (isMobileWeb() && _keyboardVisible && _hasFocus) {
-      debugPrint(
-          '[QuillEditor] requestKeyboard() - skipped, keyboard already visible and has focus');
-      return;
-    }
-
+    // Simplified to match Flutter's EditableText pattern
     if (_hasFocus) {
-      final keyboardAlreadyShown = _keyboardVisible;
-      if (kIsWeb && isMobileWeb()) {
-        debugPrint(
-            '[QuillEditor] requestKeyboard() - scheduling openConnectionIfNeeded, keyboardAlreadyShown: $keyboardAlreadyShown');
-      }
-      Future.delayed(const Duration(milliseconds: 125), openConnectionIfNeeded);
-      if (!keyboardAlreadyShown) {
-        /// delay 500 milliseconds for waiting keyboard show up
-        Future.delayed(const Duration(milliseconds: 500), _showCaretOnScreen);
-      } else {
-        _showCaretOnScreen();
-      }
+      openConnectionIfNeeded();
+      _showCaretOnScreen();
     } else {
-      // On mobile web, skip requesting focus to prevent spurious keyboard reopening
-      // when tapping outside the editor
-      if (isMobileWeb()) {
-        debugPrint(
-            '[QuillEditor] requestKeyboard() - skipped, editor does not have focus (mobile web)');
-        return;
-      }
-
-      if (kIsWeb && isMobileWeb()) {
-        debugPrint('[QuillEditor] requestKeyboard() - requesting focus');
-        debugPrint(
-            '[QuillEditor] requestFocus() - Stack trace: ${StackTrace.current}');
-      }
       widget.focusNode.requestFocus();
     }
   }
@@ -1616,11 +1481,6 @@ class RawEditorState extends EditorState
   /// is already shown, or when no text selection currently exists.
   @override
   bool showToolbar() {
-    if (kIsWeb && isMobileWeb()) {
-      debugPrint(
-          '[QuillEditor] showToolbar() called - hasOverlay: ${_selectionOverlay != null}, hasToolbar: ${_selectionOverlay?.toolbar != null}, hasSelection: ${!textEditingValue.selection.isCollapsed}');
-    }
-
     // Web is using native dom elements to enable clipboard functionality of the
     // toolbar: copy, paste, select, cut. It might also provide additional
     // functionality depending on the browser (such as translate). Due to this
@@ -1633,32 +1493,19 @@ class RawEditorState extends EditorState
     // to remove unnecessary handles. Since a toolbar is requested here,
     // attempt to create the selectionOverlay if it's not already created.
     if (_selectionOverlay == null) {
-      if (kIsWeb && isMobileWeb()) {
-        debugPrint('[QuillEditor] showToolbar() - creating selection overlay');
-      }
       _updateOrDisposeSelectionOverlayIfNeeded();
     }
 
     if (_selectionOverlay == null) {
-      if (kIsWeb && isMobileWeb()) {
-        debugPrint(
-            '[QuillEditor] showToolbar() - overlay is still null after update');
-      }
       return false;
     }
 
     if (_selectionOverlay!.toolbar != null) {
-      if (kIsWeb && isMobileWeb()) {
-        debugPrint('[QuillEditor] showToolbar() - toolbar already exists');
-      }
       return false;
     }
 
     _selectionOverlay!.update(textEditingValue);
     _selectionOverlay!.showToolbar();
-    if (kIsWeb && isMobileWeb()) {
-      debugPrint('[QuillEditor] showToolbar() - toolbar shown successfully');
-    }
     return true;
   }
 
