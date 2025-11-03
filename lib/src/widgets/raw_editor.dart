@@ -1403,10 +1403,10 @@ class RawEditorState extends EditorState
 
   void _updateOrDisposeSelectionOverlayIfNeeded() {
     if (_selectionOverlay != null) {
-      // On mobile web, keep the selection overlay alive even without focus
-      // to support long press toolbar
-      final shouldDispose = !isMobileWeb() &&
-          (!_hasFocus || textEditingValue.selection.isCollapsed);
+      // On mobile web, dispose overlay when selection is collapsed
+      // but keep it alive without focus for multi-word selections
+      final shouldDispose = textEditingValue.selection.isCollapsed ||
+          (!isMobileWeb() && !_hasFocus);
 
       if (shouldDispose) {
         _selectionOverlay!.dispose();
@@ -1462,18 +1462,14 @@ class RawEditorState extends EditorState
       }
     } else {
       WidgetsBinding.instance.removeObserver(this);
-      // On mobile web, don't immediately mark keyboard as invisible on focus loss
-      // because focus may be regained quickly (e.g., during tap interactions)
-      // or the keyboard may remain open (e.g., when selecting text outside editor)
+      // On mobile web, don't mark keyboard as invisible on focus loss
+      // The connection stays open and keyboard state should persist
+      // until the editor regains focus or is disposed
       if (isMobileWeb()) {
-        // Delay marking keyboard as invisible to avoid rapid state changes
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted && !_hasFocus) {
-            _keyboardVisible = false;
-            debugPrint(
-                '[QuillEditor] _handleFocusChanged - delayed set keyboardVisible = false');
-          }
-        });
+        // Keep keyboard visible state - don't set to false
+        // This prevents keyboard from reopening when tapping back into editor
+        debugPrint(
+            '[QuillEditor] _handleFocusChanged - keeping keyboardVisible = true on mobile web');
       }
     }
     updateKeepAlive();
