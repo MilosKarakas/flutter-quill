@@ -947,7 +947,7 @@ class RawEditorState extends EditorState
 
     _selectionOverlay?.handlesVisible = _shouldShowSelectionHandles();
 
-    if (!_keyboardVisible) {
+    if (!_keyboardVisible && (isMobileWeb() && cause == SelectionChangedCause.longPress)) {
       // This will show the keyboard for all selection changes on the
       // editor, not just changes triggered by user gestures.
       requestKeyboard();
@@ -1317,7 +1317,7 @@ class RawEditorState extends EditorState
   }
 
   void _didChangeTextEditingValue([bool ignoreFocus = false]) {
-    if (kIsWeb) {
+    if (kIsWeb && !isMobileWeb()) {
       _onChangeTextEditingValue(ignoreFocus);
       if (!ignoreFocus) {
         requestKeyboard();
