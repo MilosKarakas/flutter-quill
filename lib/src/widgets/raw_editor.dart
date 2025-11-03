@@ -947,7 +947,11 @@ class RawEditorState extends EditorState
 
     _selectionOverlay?.handlesVisible = _shouldShowSelectionHandles();
 
-    if (!_keyboardVisible && (isMobileWeb() && cause == SelectionChangedCause.longPress)) {
+    // On mobile web, don't request keyboard on long press as it interferes with paste menu
+    final shouldSkipKeyboardRequest =
+        kIsWeb && isMobileWeb() && cause == SelectionChangedCause.longPress;
+
+    if (!_keyboardVisible && !shouldSkipKeyboardRequest) {
       // This will show the keyboard for all selection changes on the
       // editor, not just changes triggered by user gestures.
       requestKeyboard();
@@ -1162,6 +1166,10 @@ class RawEditorState extends EditorState
 
     if (isKeyboardOS()) {
       _keyboardVisible = true;
+    } else if (isMobileWeb()) {
+      // On mobile web, assume keyboard is visible when focused
+      // We'll manage this state through focus changes
+      _keyboardVisible = false;
     } else if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
       // treat tests like a keyboard OS
       _keyboardVisible = true;
@@ -1413,8 +1421,21 @@ class RawEditorState extends EditorState
     if (_hasFocus) {
       WidgetsBinding.instance.addObserver(this);
       _showCaretOnScreen();
+      // On mobile web, track keyboard visibility through focus
+      if (isMobileWeb()) {
+        // Set keyboard as visible after a short delay to ensure connection is established
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (mounted && _hasFocus) {
+            _keyboardVisible = true;
+          }
+        });
+      }
     } else {
       WidgetsBinding.instance.removeObserver(this);
+      // On mobile web, keyboard closes when focus is lost
+      if (isMobileWeb()) {
+        _keyboardVisible = false;
+      }
     }
     updateKeepAlive();
   }

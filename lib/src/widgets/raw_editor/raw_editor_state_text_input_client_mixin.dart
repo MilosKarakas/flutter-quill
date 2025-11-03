@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/documents/document.dart';
 import '../../utils/delta.dart';
+import '../../utils/platform.dart';
 import '../editor.dart';
 
 mixin RawEditorStateTextInputClientMixin on EditorState
@@ -48,6 +49,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
 
+    final connectionJustCreated = !hasConnection;
+
     if (!hasConnection) {
       _lastKnownRemoteTextEditingValue = textEditingValue;
       _textInputConnection = TextInput.attach(
@@ -72,7 +75,13 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       _updateCaretRectIfNeeded();
       _textInputConnection!.setEditingState(_lastKnownRemoteTextEditingValue!);
     }
-    _textInputConnection!.show();
+
+    // Only call show() if:
+    // 1. We just created the connection, OR
+    // 2. We're not on mobile web (to avoid keyboard flickering)
+    if (connectionJustCreated || !isMobileWeb()) {
+      _textInputConnection!.show();
+    }
   }
 
   void _updateComposingRectIfNeeded() {
