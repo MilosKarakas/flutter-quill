@@ -939,24 +939,51 @@ class RawEditorState extends EditorState
     final oldSelection = controller.selection;
     controller.updateSelection(selection, ChangeSource.LOCAL);
 
-    _selectionOverlay?.handlesVisible = _shouldShowSelectionHandles();
-
     // Request keyboard for all selection changes except those triggered by keyboard
     // This matches Flutter's EditableText behavior
     switch (cause) {
       case SelectionChangedCause.tap:
       case SelectionChangedCause.doubleTap:
-      case SelectionChangedCause.longPress:
       case SelectionChangedCause.drag:
       case SelectionChangedCause.forcePress:
       case SelectionChangedCause.toolbar:
       case SelectionChangedCause.stylusHandwriting:
         requestKeyboard();
         break;
+      case SelectionChangedCause.longPress:
+        // On mobile web, skip keyboard request to avoid interfering with context menu
+        // The toolbar needs to be shown without the keyboard
+        if (!isMobileWeb()) {
+          requestKeyboard();
+        }
+        break;
       case SelectionChangedCause.keyboard:
         // Don't request keyboard when selection change came from keyboard input
         break;
     }
+
+    // Manage selection overlay - matches Flutter's EditableText pattern
+    // This ensures handles and toolbar appear immediately on selection changes
+    if (_selectionOverlay == null) {
+      _selectionOverlay = EditorTextSelectionOverlay(
+        value: textEditingValue,
+        context: context,
+        debugRequiredFor: widget,
+        startHandleLayerLink: _startHandleLayerLink,
+        endHandleLayerLink: _endHandleLayerLink,
+        renderObject: renderEditor,
+        selectionCtrls: widget.selectionCtrls,
+        selectionDelegate: this,
+        clipboardStatus: _clipboardStatus,
+        contextMenuBuilder: widget.contextMenuBuilder == null
+            ? null
+            : (context) => widget.contextMenuBuilder!(context, this),
+      );
+    } else {
+      _selectionOverlay!.update(textEditingValue);
+    }
+    _selectionOverlay!.handlesVisible = _shouldShowSelectionHandles();
+    _selectionOverlay!.showHandles();
 
     if (cause == SelectionChangedCause.drag) {
       // When user updates the selection while dragging make sure to
@@ -1336,37 +1363,17 @@ class RawEditorState extends EditorState
   }
 
   void _updateOrDisposeSelectionOverlayIfNeeded() {
+    // Simplified: overlay is now managed in _handleSelectionChanged()
+    // This method only handles focus-related updates
     if (_selectionOverlay != null) {
-      // On mobile web, dispose overlay when selection is collapsed
-      // but keep it alive without focus for multi-word selections
-      final shouldDispose = textEditingValue.selection.isCollapsed ||
-          (!isMobileWeb() && !_hasFocus);
-
-      if (shouldDispose) {
+      if (!_hasFocus) {
+        // Dispose overlay when focus is lost
         _selectionOverlay!.dispose();
         _selectionOverlay = null;
       } else {
+        // Update overlay if focus is maintained
         _selectionOverlay!.update(textEditingValue);
       }
-    } else if (_hasFocus ||
-        (isMobileWeb() && !textEditingValue.selection.isCollapsed)) {
-      // On mobile web, create overlay even without focus if there's a selection
-      _selectionOverlay = EditorTextSelectionOverlay(
-        value: textEditingValue,
-        context: context,
-        debugRequiredFor: widget,
-        startHandleLayerLink: _startHandleLayerLink,
-        endHandleLayerLink: _endHandleLayerLink,
-        renderObject: renderEditor,
-        selectionCtrls: widget.selectionCtrls,
-        selectionDelegate: this,
-        clipboardStatus: _clipboardStatus,
-        contextMenuBuilder: widget.contextMenuBuilder == null
-            ? null
-            : (context) => widget.contextMenuBuilder!(context, this),
-      );
-      _selectionOverlay!.handlesVisible = _shouldShowSelectionHandles();
-      _selectionOverlay!.showHandles();
     }
   }
 
