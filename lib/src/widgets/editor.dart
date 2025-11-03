@@ -705,6 +705,9 @@ class _QuillEditorSelectionGestureDetectorBuilder
         SelectionChangedCause.longPress,
       );
     }
+
+    // Update magnifier position during long press drag
+    showMagnifierIfSupportedByPlatform(details.globalPosition);
   }
 
   bool _isPositionSelected(TapUpDetails details) {
@@ -830,11 +833,17 @@ class _QuillEditorSelectionGestureDetectorBuilder
         renderEditor!.selectWord(SelectionChangedCause.longPress);
         Feedback.forLongPress(_state.context);
       }
+
+      // Show magnifier on mobile platforms during long press
+      showMagnifierIfSupportedByPlatform(details.globalPosition);
     }
   }
 
   @override
   void onSingleLongTapEnd(LongPressEndDetails details) {
+    // Hide magnifier first, before any other UI changes
+    hideMagnifierIfSupportedByPlatform();
+
     if (_state.widget.onSingleLongTapEnd != null) {
       if (renderEditor != null) {
         if (_state.widget.onSingleLongTapEnd!(

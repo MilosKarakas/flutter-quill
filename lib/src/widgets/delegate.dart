@@ -99,7 +99,8 @@ class EditorTextSelectionGestureDetectorBuilder {
   RenderEditor? get renderEditor => editor?.renderEditor;
 
   /// Shows the magnifier on supported platforms (iOS and Android).
-  void _showMagnifierIfSupportedByPlatform(Offset positionToShow) {
+  @protected
+  void showMagnifierIfSupportedByPlatform(Offset positionToShow) {
     switch (defaultTargetPlatform) {
       case TargetPlatform.iOS:
       case TargetPlatform.android:
@@ -115,7 +116,8 @@ class EditorTextSelectionGestureDetectorBuilder {
   }
 
   /// Hides the magnifier on supported platforms (iOS and Android).
-  void _hideMagnifierIfSupportedByPlatform() {
+  @protected
+  void hideMagnifierIfSupportedByPlatform() {
     switch (defaultTargetPlatform) {
       case TargetPlatform.iOS:
       case TargetPlatform.android:
@@ -259,7 +261,7 @@ class EditorTextSelectionGestureDetectorBuilder {
       );
 
       // Show magnifier on mobile platforms during long press
-      _showMagnifierIfSupportedByPlatform(details.globalPosition);
+      showMagnifierIfSupportedByPlatform(details.globalPosition);
     }
   }
 
@@ -281,7 +283,7 @@ class EditorTextSelectionGestureDetectorBuilder {
       );
 
       // Update magnifier position during long press drag
-      _showMagnifierIfSupportedByPlatform(details.globalPosition);
+      showMagnifierIfSupportedByPlatform(details.globalPosition);
     }
   }
 
@@ -296,7 +298,7 @@ class EditorTextSelectionGestureDetectorBuilder {
   @protected
   void onSingleLongTapEnd(LongPressEndDetails details) {
     // Hide magnifier on mobile platforms when long press ends
-    _hideMagnifierIfSupportedByPlatform();
+    hideMagnifierIfSupportedByPlatform();
 
     if (shouldShowSelectionToolbar) {
       editor!.showToolbar();
