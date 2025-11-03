@@ -967,9 +967,10 @@ class RawEditorState extends EditorState
         requestKeyboard();
         break;
       case SelectionChangedCause.longPress:
-        // On mobile web, skip keyboard request to avoid interfering with context menu
-        // The toolbar needs to be shown without the keyboard
-        if (!isMobileWeb()) {
+        // On mobile platforms, skip keyboard request during long press gesture to avoid
+        // interfering with context menu display. The keyboard will be reopened
+        // in onSingleLongTapEnd if the selection is collapsed (caret placement).
+        if (!(isMobileWeb() || isMobile())) {
           requestKeyboard();
         }
         break;
