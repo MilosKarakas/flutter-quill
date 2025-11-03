@@ -256,10 +256,8 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///  which triggers this callback.
   @protected
   void onSingleLongTapEnd(LongPressEndDetails details) {
-    debugPrint('[QuillEditor-Delegate] onSingleLongTapEnd - shouldShowSelectionToolbar: $shouldShowSelectionToolbar');
     if (shouldShowSelectionToolbar) {
-      final result = editor!.showToolbar();
-      debugPrint('[QuillEditor-Delegate] onSingleLongTapEnd - showToolbar() returned: $result');
+      editor!.showToolbar();
     }
   }
 

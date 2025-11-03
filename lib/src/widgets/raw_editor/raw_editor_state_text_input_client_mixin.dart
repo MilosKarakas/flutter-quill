@@ -282,13 +282,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
             .localToGlobal(_lastBoundedOffset! + floatingCursorOffset));
         renderEditor.setFloatingCursor(
             point.state, _lastBoundedOffset!, _lastTextPosition!);
-        final newSelection = TextSelection.collapsed(
-            offset: _lastTextPosition!.offset,
-            affinity: _lastTextPosition!.affinity);
-        // Setting selection as floating cursor moves will have scroll view
-        // bring background cursor into view
-        renderEditor.onSelectionChanged(
-            newSelection, SelectionChangedCause.forcePress);
+        // NOTE: Selection is NOT updated during drag, matching Flutter's EditableText.
+        // Selection will be updated once when the animation completes in onFloatingCursorResetTick.
         break;
       case FloatingCursorDragState.End:
         // We skip animation if no update has happened.
@@ -315,6 +310,29 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     if (floatingCursorResetController.isCompleted) {
       renderEditor.setFloatingCursor(
           FloatingCursorDragState.End, finalPosition, _lastTextPosition!);
+
+      // During a floating cursor's move gesture (1 finger), the cursor is
+      // animated only visually, without actually updating the selection.
+      // Only after the move gesture is complete, we update the selection
+      // to the new cursor location with zero selection length.
+      //
+      // However, during a floating cursor's selection gesture (2 fingers),
+      // the selection is constantly updated by the engine throughout the gesture.
+      // Thus when the gesture is complete, we should not update the selection
+      // to the cursor location with zero selection length, because that would
+      // overwrite the selection made by floating cursor selection.
+      //
+      // Here we use `isCollapsed` to distinguish between floating cursor's
+      // move gesture (1 finger) vs selection gesture (2 fingers).
+      if (renderEditor.selection.isCollapsed) {
+        // Update selection to final cursor position
+        // This matches Flutter's EditableText behavior
+        renderEditor.onSelectionChanged(
+          TextSelection.fromPosition(_lastTextPosition!),
+          SelectionChangedCause.forcePress,
+        );
+      }
+
       _startCaretRect = null;
       _lastTextPosition = null;
       _pointOffsetOrigin = null;
