@@ -298,6 +298,7 @@ class RawEditorState extends EditorState
   KeyboardVisibilityController? _keyboardVisibilityController;
   StreamSubscription<bool>? _keyboardVisibilitySubscription;
   bool _keyboardVisible = false;
+  Timer? _pendingConnectionTimer;
 
   // Selection overlay
   @override
@@ -1307,6 +1308,7 @@ class RawEditorState extends EditorState
   void dispose() {
     // Force close the connection on dispose, even on mobile web
     forceCloseConnection();
+    _pendingConnectionTimer?.cancel();
     _keyboardVisibilitySubscription?.cancel();
     HardwareKeyboard.instance.removeHandler(_hardwareKeyboardEvent);
     assert(!hasConnection);
@@ -1466,8 +1468,11 @@ class RawEditorState extends EditorState
       debugPrint(
           '[QuillEditor] _handleFocusChanged - set keyboardVisible = true, scheduling delayed connection');
 
+      // Cancel any pending connection timer
+      _pendingConnectionTimer?.cancel();
+
       // Delay connection to ensure focus is stable
-      Future.delayed(const Duration(milliseconds: 50), () {
+      _pendingConnectionTimer = Timer(const Duration(milliseconds: 50), () {
         if (_hasFocus && mounted) {
           debugPrint(
               '[QuillEditor] _handleFocusChanged - opening connection after delay, still has focus');
@@ -1477,6 +1482,20 @@ class RawEditorState extends EditorState
               '[QuillEditor] _handleFocusChanged - skipping connection, focus was lost');
         }
       });
+    } else if (isMobileWeb() && !_hasFocus) {
+      // Cancel pending connection when focus is lost
+      _pendingConnectionTimer?.cancel();
+      debugPrint(
+          '[QuillEditor] _handleFocusChanged - cancelled pending connection due to focus loss');
+
+      openOrCloseConnection();
+      _cursorCont.startOrStopCursorTimerIfNeeded(
+          _hasFocus, controller.selection);
+      _updateOrDisposeSelectionOverlayIfNeeded();
+      WidgetsBinding.instance.removeObserver(this);
+      _keyboardVisible = false;
+      debugPrint(
+          '[QuillEditor] _handleFocusChanged - set keyboardVisible = false on focus loss');
     } else {
       openOrCloseConnection();
       _cursorCont.startOrStopCursorTimerIfNeeded(
