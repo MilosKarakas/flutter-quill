@@ -789,16 +789,7 @@ class _QuillEditorSelectionGestureDetectorBuilder
         }
       }
     } finally {
-      // On mobile web, only request keyboard if editor will have focus
-      // This prevents stealing focus when user is interacting with other widgets
-      if (kIsWeb && isMobileWeb()) {
-        // Only request keyboard if the focus node has or will receive focus
-        if (_state.widget.focusNode.hasFocus || _state.widget.focusNode.hasPrimaryFocus) {
-          _state._requestKeyboard();
-        }
-      } else {
-        _state._requestKeyboard();
-      }
+      _state._requestKeyboard();
     }
   }
 

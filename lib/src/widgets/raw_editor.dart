@@ -1592,6 +1592,8 @@ class RawEditorState extends EditorState
     } else {
       if (kIsWeb && isMobileWeb()) {
         debugPrint('[QuillEditor] requestKeyboard() - requesting focus');
+        debugPrint(
+            '[QuillEditor] requestFocus() - Stack trace: ${StackTrace.current}');
       }
       widget.focusNode.requestFocus();
     }
