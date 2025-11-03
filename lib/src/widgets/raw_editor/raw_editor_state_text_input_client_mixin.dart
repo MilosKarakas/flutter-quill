@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/documents/document.dart';
 import '../../utils/delta.dart';
+import '../../utils/platform.dart';
 import '../editor.dart';
 
 mixin RawEditorStateTextInputClientMixin on EditorState
@@ -74,6 +75,15 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       _textInputConnection!.setEditingState(_lastKnownRemoteTextEditingValue!);
       _textInputConnection!.show();
     } else {
+      // On mobile web (especially Safari), ensure selection is synced before showing keyboard
+      // This prevents the cursor from jumping to the end when keyboard opens
+      if (isMobileWeb()) {
+        final currentValue = textEditingValue;
+        if (_lastKnownRemoteTextEditingValue != currentValue) {
+          _lastKnownRemoteTextEditingValue = currentValue;
+          _textInputConnection!.setEditingState(currentValue);
+        }
+      }
       // Always call show() when connection exists - matches Flutter's pattern
       _textInputConnection!.show();
     }
