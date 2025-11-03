@@ -1453,27 +1453,54 @@ class RawEditorState extends EditorState
           .addPostFrameCallback((_) => _handleFocusChanged());
       return;
     }
-    openOrCloseConnection();
-    _cursorCont.startOrStopCursorTimerIfNeeded(_hasFocus, controller.selection);
-    _updateOrDisposeSelectionOverlayIfNeeded();
-    if (_hasFocus) {
+
+    // On mobile web, delay opening connection to avoid spurious focus gains
+    // that occur when user interacts with other widgets (like SelectionArea)
+    if (isMobileWeb() && _hasFocus) {
+      _cursorCont.startOrStopCursorTimerIfNeeded(
+          _hasFocus, controller.selection);
+      _updateOrDisposeSelectionOverlayIfNeeded();
       WidgetsBinding.instance.addObserver(this);
       _showCaretOnScreen();
-      // On mobile web, track keyboard visibility through focus
-      // Set immediately to prevent keyboard requests during early interactions
-      if (isMobileWeb()) {
-        _keyboardVisible = true;
-        debugPrint(
-            '[QuillEditor] _handleFocusChanged - set keyboardVisible = true');
-      }
+      _keyboardVisible = true;
+      debugPrint(
+          '[QuillEditor] _handleFocusChanged - set keyboardVisible = true, scheduling delayed connection');
+
+      // Delay connection to ensure focus is stable
+      Future.delayed(const Duration(milliseconds: 50), () {
+        if (_hasFocus && mounted) {
+          debugPrint(
+              '[QuillEditor] _handleFocusChanged - opening connection after delay, still has focus');
+          openOrCloseConnection();
+        } else {
+          debugPrint(
+              '[QuillEditor] _handleFocusChanged - skipping connection, focus was lost');
+        }
+      });
     } else {
-      WidgetsBinding.instance.removeObserver(this);
-      // On mobile web, reset keyboard state on focus loss
-      // This ensures proper re-focus behavior when tapping back into editor
-      if (isMobileWeb()) {
-        _keyboardVisible = false;
-        debugPrint(
-            '[QuillEditor] _handleFocusChanged - set keyboardVisible = false on focus loss');
+      openOrCloseConnection();
+      _cursorCont.startOrStopCursorTimerIfNeeded(
+          _hasFocus, controller.selection);
+      _updateOrDisposeSelectionOverlayIfNeeded();
+      if (_hasFocus) {
+        WidgetsBinding.instance.addObserver(this);
+        _showCaretOnScreen();
+        // On mobile web, track keyboard visibility through focus
+        // Set immediately to prevent keyboard requests during early interactions
+        if (isMobileWeb()) {
+          _keyboardVisible = true;
+          debugPrint(
+              '[QuillEditor] _handleFocusChanged - set keyboardVisible = true');
+        }
+      } else {
+        WidgetsBinding.instance.removeObserver(this);
+        // On mobile web, reset keyboard state on focus loss
+        // This ensures proper re-focus behavior when tapping back into editor
+        if (isMobileWeb()) {
+          _keyboardVisible = false;
+          debugPrint(
+              '[QuillEditor] _handleFocusChanged - set keyboardVisible = false on focus loss');
+        }
       }
     }
     updateKeepAlive();
