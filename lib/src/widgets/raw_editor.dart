@@ -1593,6 +1593,14 @@ class RawEditorState extends EditorState
         _showCaretOnScreen();
       }
     } else {
+      // On mobile web, skip requesting focus to prevent spurious keyboard reopening
+      // when tapping outside the editor
+      if (isMobileWeb()) {
+        debugPrint(
+            '[QuillEditor] requestKeyboard() - skipped, editor does not have focus (mobile web)');
+        return;
+      }
+
       if (kIsWeb && isMobileWeb()) {
         debugPrint('[QuillEditor] requestKeyboard() - requesting focus');
         debugPrint(
