@@ -1403,13 +1403,20 @@ class RawEditorState extends EditorState
 
   void _updateOrDisposeSelectionOverlayIfNeeded() {
     if (_selectionOverlay != null) {
-      if (!_hasFocus || textEditingValue.selection.isCollapsed) {
+      // On mobile web, keep the selection overlay alive even without focus
+      // to support long press toolbar
+      final shouldDispose = !isMobileWeb() &&
+          (!_hasFocus || textEditingValue.selection.isCollapsed);
+
+      if (shouldDispose) {
         _selectionOverlay!.dispose();
         _selectionOverlay = null;
       } else {
         _selectionOverlay!.update(textEditingValue);
       }
-    } else if (_hasFocus) {
+    } else if (_hasFocus ||
+        (isMobileWeb() && !textEditingValue.selection.isCollapsed)) {
+      // On mobile web, create overlay even without focus if there's a selection
       _selectionOverlay = EditorTextSelectionOverlay(
         value: textEditingValue,
         context: context,
@@ -1599,7 +1606,8 @@ class RawEditorState extends EditorState
   @override
   bool showToolbar() {
     if (kIsWeb && isMobileWeb()) {
-      debugPrint('[QuillEditor] showToolbar() called');
+      debugPrint(
+          '[QuillEditor] showToolbar() called - hasOverlay: ${_selectionOverlay != null}, hasToolbar: ${_selectionOverlay?.toolbar != null}, hasSelection: ${!textEditingValue.selection.isCollapsed}');
     }
 
     // Web is using native dom elements to enable clipboard functionality of the
@@ -1614,13 +1622,23 @@ class RawEditorState extends EditorState
     // to remove unnecessary handles. Since a toolbar is requested here,
     // attempt to create the selectionOverlay if it's not already created.
     if (_selectionOverlay == null) {
+      if (kIsWeb && isMobileWeb()) {
+        debugPrint('[QuillEditor] showToolbar() - creating selection overlay');
+      }
       _updateOrDisposeSelectionOverlayIfNeeded();
     }
 
-    if (_selectionOverlay == null || _selectionOverlay!.toolbar != null) {
+    if (_selectionOverlay == null) {
       if (kIsWeb && isMobileWeb()) {
         debugPrint(
-            '[QuillEditor] showToolbar() - cannot show, overlay null or toolbar exists');
+            '[QuillEditor] showToolbar() - overlay is still null after update');
+      }
+      return false;
+    }
+
+    if (_selectionOverlay!.toolbar != null) {
+      if (kIsWeb && isMobileWeb()) {
+        debugPrint('[QuillEditor] showToolbar() - toolbar already exists');
       }
       return false;
     }
