@@ -1442,6 +1442,10 @@ class RawEditorState extends EditorState
     if (kIsWeb && isMobileWeb()) {
       debugPrint(
           '[QuillEditor] _handleFocusChanged - hasFocus: $_hasFocus, dirty: $dirty');
+      if (_hasFocus) {
+        debugPrint(
+            '[QuillEditor] Focus gained - Stack trace: ${StackTrace.current}');
+      }
     }
 
     if (dirty) {
