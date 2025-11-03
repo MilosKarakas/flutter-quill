@@ -140,9 +140,23 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
   /// Closes input connection if it's currently open. Otherwise does nothing.
   void closeConnectionIfNeeded() {
+    if (kIsWeb && isMobileWeb()) {
+      debugPrint(
+          '[QuillEditor-Mixin] closeConnectionIfNeeded() called - hasConnection: $hasConnection');
+    }
+
     if (!hasConnection) {
       return;
     }
+
+    // On mobile web, don't close the connection on focus loss
+    // This prevents keyboard flickering during rapid focus changes
+    if (isMobileWeb()) {
+      debugPrint(
+          '[QuillEditor-Mixin] closeConnectionIfNeeded() - skipping close on mobile web');
+      return;
+    }
+
     _textInputConnection!.close();
     _textInputConnection = null;
     _lastKnownRemoteTextEditingValue = null;
