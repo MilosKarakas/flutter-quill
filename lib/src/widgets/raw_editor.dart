@@ -1333,6 +1333,14 @@ class RawEditorState extends EditorState
       return;
     }
 
+    // On mobile web, only update the value, don't request keyboard
+    // The keyboard state is managed through focus changes
+    if (isMobileWeb()) {
+      _onChangeTextEditingValue(ignoreFocus);
+      _adjacentLineAction.stopCurrentVerticalRunIfSelectionChanges();
+      return;
+    }
+
     if (ignoreFocus || _keyboardVisible) {
       _onChangeTextEditingValue(ignoreFocus);
     } else {
