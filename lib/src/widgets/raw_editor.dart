@@ -1443,6 +1443,10 @@ class RawEditorState extends EditorState
     if (_hasFocus) {
       WidgetsBinding.instance.addObserver(this);
       _showCaretOnScreen();
+      // Ensure cursor is visible immediately, especially on mobile platforms
+      if (isMobileWeb() || isMobile()) {
+        _cursorCont.startCursorTimer();
+      }
     } else {
       WidgetsBinding.instance.removeObserver(this);
     }

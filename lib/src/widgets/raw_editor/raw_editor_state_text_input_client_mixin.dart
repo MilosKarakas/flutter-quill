@@ -77,15 +77,22 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     } else {
       // On mobile web (especially Safari), ensure selection is synced before showing keyboard
       // This prevents the cursor from jumping to the end when keyboard opens
+      // Use a post-frame callback to ensure selection has propagated from controller
       if (isMobileWeb()) {
-        final currentValue = textEditingValue;
-        if (_lastKnownRemoteTextEditingValue != currentValue) {
-          _lastKnownRemoteTextEditingValue = currentValue;
-          _textInputConnection!.setEditingState(currentValue);
-        }
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !hasConnection) return;
+
+          final currentValue = textEditingValue;
+          if (_lastKnownRemoteTextEditingValue != currentValue) {
+            _lastKnownRemoteTextEditingValue = currentValue;
+            _textInputConnection!.setEditingState(currentValue);
+          }
+          _textInputConnection!.show();
+        });
+      } else {
+        // Non-mobile-web: show immediately
+        _textInputConnection!.show();
       }
-      // Always call show() when connection exists - matches Flutter's pattern
-      _textInputConnection!.show();
     }
   }
 
