@@ -1430,13 +1430,9 @@ class RawEditorState extends EditorState
       WidgetsBinding.instance.addObserver(this);
       _showCaretOnScreen();
       // On mobile web, track keyboard visibility through focus
+      // Set immediately to prevent keyboard requests during early interactions
       if (isMobileWeb()) {
-        // Set keyboard as visible after a short delay to ensure connection is established
-        Future.delayed(const Duration(milliseconds: 200), () {
-          if (mounted && _hasFocus) {
-            _keyboardVisible = true;
-          }
-        });
+        _keyboardVisible = true;
       }
     } else {
       WidgetsBinding.instance.removeObserver(this);
@@ -1529,6 +1525,13 @@ class RawEditorState extends EditorState
       controller.skipRequestKeyboard = false;
       return;
     }
+
+    // On mobile web, don't request keyboard if already visible
+    // to avoid flickering during interactions
+    if (isMobileWeb() && _keyboardVisible) {
+      return;
+    }
+
     if (_hasFocus) {
       final keyboardAlreadyShown = _keyboardVisible;
       Future.delayed(const Duration(milliseconds: 125), openConnectionIfNeeded);

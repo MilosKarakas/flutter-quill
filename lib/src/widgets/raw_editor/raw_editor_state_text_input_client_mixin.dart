@@ -49,7 +49,11 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
 
-    final connectionJustCreated = !hasConnection;
+    // On mobile web, if connection already exists, do nothing
+    // to avoid any potential keyboard interference
+    if (isMobileWeb() && hasConnection) {
+      return;
+    }
 
     if (!hasConnection) {
       _lastKnownRemoteTextEditingValue = textEditingValue;
@@ -74,12 +78,10 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       //update IME position for Macos
       _updateCaretRectIfNeeded();
       _textInputConnection!.setEditingState(_lastKnownRemoteTextEditingValue!);
-    }
-
-    // Only call show() if:
-    // 1. We just created the connection, OR
-    // 2. We're not on mobile web (to avoid keyboard flickering)
-    if (connectionJustCreated || !isMobileWeb()) {
+      // Only call show() when creating new connection
+      _textInputConnection!.show();
+    } else if (!isMobileWeb()) {
+      // On desktop web and native platforms, always call show()
       _textInputConnection!.show();
     }
   }
