@@ -59,17 +59,11 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
 
-    // On mobile web, if connection already exists, do nothing
-    // to avoid any potential keyboard interference
-    if (isMobileWeb() && hasConnection) {
-      debugPrint(
-          '[QuillEditor-Mixin] openConnectionIfNeeded() - early return, connection exists on mobile web');
-      return;
-    }
-
     if (!hasConnection) {
-      debugPrint(
-          '[QuillEditor-Mixin] openConnectionIfNeeded() - creating new connection');
+      if (kIsWeb && isMobileWeb()) {
+        debugPrint(
+            '[QuillEditor-Mixin] openConnectionIfNeeded() - creating new connection');
+      }
       _lastKnownRemoteTextEditingValue = textEditingValue;
       _textInputConnection = TextInput.attach(
         this,
@@ -92,20 +86,13 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       //update IME position for Macos
       _updateCaretRectIfNeeded();
       _textInputConnection!.setEditingState(_lastKnownRemoteTextEditingValue!);
-      // Only call show() when creating new connection
-      if (kIsWeb && isMobileWeb()) {
-        debugPrint(
-            '[QuillEditor-Mixin] openConnectionIfNeeded() - calling show() for new connection');
-      }
-      _textInputConnection!.show();
-    } else if (!isMobileWeb()) {
-      // On desktop web and native platforms, always call show()
-      if (kIsWeb) {
-        debugPrint(
-            '[QuillEditor-Mixin] openConnectionIfNeeded() - calling show() for desktop web');
-      }
-      _textInputConnection!.show();
     }
+
+    if (kIsWeb && isMobileWeb()) {
+      debugPrint(
+          '[QuillEditor-Mixin] openConnectionIfNeeded() - calling show()');
+    }
+    _textInputConnection!.show();
   }
 
   void _updateComposingRectIfNeeded() {
@@ -149,17 +136,14 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
 
-    // On mobile web, don't close the connection on focus loss
-    // This prevents keyboard flickering during rapid focus changes
-    if (isMobileWeb()) {
-      debugPrint(
-          '[QuillEditor-Mixin] closeConnectionIfNeeded() - skipping close on mobile web');
-      return;
-    }
-
     _textInputConnection!.close();
     _textInputConnection = null;
     _lastKnownRemoteTextEditingValue = null;
+
+    if (kIsWeb && isMobileWeb()) {
+      debugPrint(
+          '[QuillEditor-Mixin] closeConnectionIfNeeded() - connection closed');
+    }
   }
 
   /// Force closes the connection even on mobile web (used during dispose)
