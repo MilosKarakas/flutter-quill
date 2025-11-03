@@ -93,13 +93,13 @@ mixin RawEditorStateTextInputClientMixin on EditorState
             '[QuillEditor-Mixin] openConnectionIfNeeded() - calling show() for new connection');
       }
       _textInputConnection!.show();
-    } else if (!isMobileWeb()) {
-      // On non-mobile-web platforms, always call show()
+    } else {
+      // Connection already exists, call show() to make keyboard visible
+      if (kIsWeb && isMobileWeb()) {
+        debugPrint(
+            '[QuillEditor-Mixin] openConnectionIfNeeded() - calling show() on existing connection');
+      }
       _textInputConnection!.show();
-    } else if (kIsWeb && isMobileWeb()) {
-      // On mobile web with existing connection, skip show() to avoid keyboard flicker
-      debugPrint(
-          '[QuillEditor-Mixin] openConnectionIfNeeded() - connection exists, skipping show() on mobile web');
     }
   }
 
@@ -144,12 +144,9 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
 
-    // On mobile web, keep connection open to handle rapid focus changes
-    // The browser manages keyboard visibility based on the input element
-    if (isMobileWeb()) {
+    if (kIsWeb && isMobileWeb()) {
       debugPrint(
-          '[QuillEditor-Mixin] closeConnectionIfNeeded() - skipping close on mobile web');
-      return;
+          '[QuillEditor-Mixin] closeConnectionIfNeeded() - closing connection');
     }
 
     _textInputConnection!.close();
