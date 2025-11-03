@@ -953,10 +953,12 @@ class RawEditorState extends EditorState
 
     if (kIsWeb && isMobileWeb()) {
       debugPrint(
-          '[QuillEditor] _handleSelectionChanged - cause: $cause, keyboardVisible: $_keyboardVisible, shouldSkip: $shouldSkipKeyboardRequest');
+          '[QuillEditor] _handleSelectionChanged - cause: $cause, keyboardVisible: $_keyboardVisible, hasFocus: $_hasFocus, shouldSkip: $shouldSkipKeyboardRequest');
     }
 
-    if (!_keyboardVisible && !shouldSkipKeyboardRequest) {
+    // Only request keyboard if editor has focus
+    // This prevents stealing focus when user is interacting with other widgets
+    if (!_keyboardVisible && !shouldSkipKeyboardRequest && _hasFocus) {
       // This will show the keyboard for all selection changes on the
       // editor, not just changes triggered by user gestures.
       if (kIsWeb && isMobileWeb()) {
