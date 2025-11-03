@@ -86,13 +86,21 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       //update IME position for Macos
       _updateCaretRectIfNeeded();
       _textInputConnection!.setEditingState(_lastKnownRemoteTextEditingValue!);
-    }
 
-    if (kIsWeb && isMobileWeb()) {
+      // Only call show() when creating a new connection
+      if (kIsWeb && isMobileWeb()) {
+        debugPrint(
+            '[QuillEditor-Mixin] openConnectionIfNeeded() - calling show() for new connection');
+      }
+      _textInputConnection!.show();
+    } else if (!isMobileWeb()) {
+      // On non-mobile-web platforms, always call show()
+      _textInputConnection!.show();
+    } else if (kIsWeb && isMobileWeb()) {
+      // On mobile web with existing connection, skip show() to avoid keyboard flicker
       debugPrint(
-          '[QuillEditor-Mixin] openConnectionIfNeeded() - calling show()');
+          '[QuillEditor-Mixin] openConnectionIfNeeded() - connection exists, skipping show() on mobile web');
     }
-    _textInputConnection!.show();
   }
 
   void _updateComposingRectIfNeeded() {
@@ -136,14 +144,17 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
 
+    // On mobile web, keep connection open to handle rapid focus changes
+    // The browser manages keyboard visibility based on the input element
+    if (isMobileWeb()) {
+      debugPrint(
+          '[QuillEditor-Mixin] closeConnectionIfNeeded() - skipping close on mobile web');
+      return;
+    }
+
     _textInputConnection!.close();
     _textInputConnection = null;
     _lastKnownRemoteTextEditingValue = null;
-
-    if (kIsWeb && isMobileWeb()) {
-      debugPrint(
-          '[QuillEditor-Mixin] closeConnectionIfNeeded() - connection closed');
-    }
   }
 
   /// Force closes the connection even on mobile web (used during dispose)

@@ -789,15 +789,7 @@ class _QuillEditorSelectionGestureDetectorBuilder
         }
       }
     } finally {
-      // On mobile web, only request keyboard if editor has focus
-      // This prevents keyboard opening when taps occur outside editor bounds
-      if (kIsWeb && isMobileWeb()) {
-        if (_state.widget.focusNode.hasFocus) {
-          _state._requestKeyboard();
-        }
-      } else {
-        _state._requestKeyboard();
-      }
+      _state._requestKeyboard();
     }
   }
 
