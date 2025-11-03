@@ -37,6 +37,11 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   /// Opens or closes input connection based on the current state of
   /// [focusNode] and [value].
   void openOrCloseConnection() {
+    if (kIsWeb && isMobileWeb()) {
+      debugPrint(
+          '[QuillEditor-Mixin] openOrCloseConnection() - hasFocus: ${widget.focusNode.hasFocus}');
+    }
+
     if (widget.focusNode.hasFocus && widget.focusNode.consumeKeyboardToken()) {
       Future.delayed(const Duration(milliseconds: 125), openConnectionIfNeeded);
     } else if (!widget.focusNode.hasFocus) {
@@ -45,6 +50,11 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   }
 
   void openConnectionIfNeeded() {
+    if (kIsWeb && isMobileWeb()) {
+      debugPrint(
+          '[QuillEditor-Mixin] openConnectionIfNeeded() called - hasConnection: $hasConnection, shouldCreate: $shouldCreateInputConnection');
+    }
+
     if (!shouldCreateInputConnection) {
       return;
     }
@@ -52,10 +62,14 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     // On mobile web, if connection already exists, do nothing
     // to avoid any potential keyboard interference
     if (isMobileWeb() && hasConnection) {
+      debugPrint(
+          '[QuillEditor-Mixin] openConnectionIfNeeded() - early return, connection exists on mobile web');
       return;
     }
 
     if (!hasConnection) {
+      debugPrint(
+          '[QuillEditor-Mixin] openConnectionIfNeeded() - creating new connection');
       _lastKnownRemoteTextEditingValue = textEditingValue;
       _textInputConnection = TextInput.attach(
         this,
@@ -79,9 +93,17 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       _updateCaretRectIfNeeded();
       _textInputConnection!.setEditingState(_lastKnownRemoteTextEditingValue!);
       // Only call show() when creating new connection
+      if (kIsWeb && isMobileWeb()) {
+        debugPrint(
+            '[QuillEditor-Mixin] openConnectionIfNeeded() - calling show() for new connection');
+      }
       _textInputConnection!.show();
     } else if (!isMobileWeb()) {
       // On desktop web and native platforms, always call show()
+      if (kIsWeb) {
+        debugPrint(
+            '[QuillEditor-Mixin] openConnectionIfNeeded() - calling show() for desktop web');
+      }
       _textInputConnection!.show();
     }
   }

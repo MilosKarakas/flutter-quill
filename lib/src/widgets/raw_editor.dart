@@ -951,9 +951,18 @@ class RawEditorState extends EditorState
     final shouldSkipKeyboardRequest =
         kIsWeb && isMobileWeb() && cause == SelectionChangedCause.longPress;
 
+    if (kIsWeb && isMobileWeb()) {
+      debugPrint(
+          '[QuillEditor] _handleSelectionChanged - cause: $cause, keyboardVisible: $_keyboardVisible, shouldSkip: $shouldSkipKeyboardRequest');
+    }
+
     if (!_keyboardVisible && !shouldSkipKeyboardRequest) {
       // This will show the keyboard for all selection changes on the
       // editor, not just changes triggered by user gestures.
+      if (kIsWeb && isMobileWeb()) {
+        debugPrint(
+            '[QuillEditor] _handleSelectionChanged - calling requestKeyboard()');
+      }
       requestKeyboard();
     }
 
@@ -1336,6 +1345,8 @@ class RawEditorState extends EditorState
     // On mobile web, only update the value, don't request keyboard
     // The keyboard state is managed through focus changes
     if (isMobileWeb()) {
+      debugPrint(
+          '[QuillEditor] _didChangeTextEditingValue - ignoreFocus: $ignoreFocus');
       _onChangeTextEditingValue(ignoreFocus);
       _adjacentLineAction.stopCurrentVerticalRunIfSelectionChanges();
       return;
@@ -1418,6 +1429,11 @@ class RawEditorState extends EditorState
   }
 
   void _handleFocusChanged() {
+    if (kIsWeb && isMobileWeb()) {
+      debugPrint(
+          '[QuillEditor] _handleFocusChanged - hasFocus: $_hasFocus, dirty: $dirty');
+    }
+
     if (dirty) {
       SchedulerBinding.instance
           .addPostFrameCallback((_) => _handleFocusChanged());
@@ -1433,12 +1449,16 @@ class RawEditorState extends EditorState
       // Set immediately to prevent keyboard requests during early interactions
       if (isMobileWeb()) {
         _keyboardVisible = true;
+        debugPrint(
+            '[QuillEditor] _handleFocusChanged - set keyboardVisible = true');
       }
     } else {
       WidgetsBinding.instance.removeObserver(this);
       // On mobile web, keyboard closes when focus is lost
       if (isMobileWeb()) {
         _keyboardVisible = false;
+        debugPrint(
+            '[QuillEditor] _handleFocusChanged - set keyboardVisible = false');
       }
     }
     updateKeepAlive();
@@ -1521,19 +1541,34 @@ class RawEditorState extends EditorState
   /// keyboard become visible.
   @override
   void requestKeyboard() {
+    if (kIsWeb && isMobileWeb()) {
+      debugPrint(
+          '[QuillEditor] requestKeyboard() called - skipRequestKeyboard: ${controller.skipRequestKeyboard}, keyboardVisible: $_keyboardVisible, hasFocus: $_hasFocus');
+    }
+
     if (controller.skipRequestKeyboard) {
       controller.skipRequestKeyboard = false;
+      if (kIsWeb && isMobileWeb()) {
+        debugPrint(
+            '[QuillEditor] requestKeyboard() - skipped via controller flag');
+      }
       return;
     }
 
     // On mobile web, don't request keyboard if already visible
     // to avoid flickering during interactions
     if (isMobileWeb() && _keyboardVisible) {
+      debugPrint(
+          '[QuillEditor] requestKeyboard() - skipped, keyboard already visible');
       return;
     }
 
     if (_hasFocus) {
       final keyboardAlreadyShown = _keyboardVisible;
+      if (kIsWeb && isMobileWeb()) {
+        debugPrint(
+            '[QuillEditor] requestKeyboard() - scheduling openConnectionIfNeeded, keyboardAlreadyShown: $keyboardAlreadyShown');
+      }
       Future.delayed(const Duration(milliseconds: 125), openConnectionIfNeeded);
       if (!keyboardAlreadyShown) {
         /// delay 500 milliseconds for waiting keyboard show up
@@ -1542,6 +1577,9 @@ class RawEditorState extends EditorState
         _showCaretOnScreen();
       }
     } else {
+      if (kIsWeb && isMobileWeb()) {
+        debugPrint('[QuillEditor] requestKeyboard() - requesting focus');
+      }
       widget.focusNode.requestFocus();
     }
   }
@@ -1552,6 +1590,10 @@ class RawEditorState extends EditorState
   /// is already shown, or when no text selection currently exists.
   @override
   bool showToolbar() {
+    if (kIsWeb && isMobileWeb()) {
+      debugPrint('[QuillEditor] showToolbar() called');
+    }
+
     // Web is using native dom elements to enable clipboard functionality of the
     // toolbar: copy, paste, select, cut. It might also provide additional
     // functionality depending on the browser (such as translate). Due to this
@@ -1568,11 +1610,18 @@ class RawEditorState extends EditorState
     }
 
     if (_selectionOverlay == null || _selectionOverlay!.toolbar != null) {
+      if (kIsWeb && isMobileWeb()) {
+        debugPrint(
+            '[QuillEditor] showToolbar() - cannot show, overlay null or toolbar exists');
+      }
       return false;
     }
 
     _selectionOverlay!.update(textEditingValue);
     _selectionOverlay!.showToolbar();
+    if (kIsWeb && isMobileWeb()) {
+      debugPrint('[QuillEditor] showToolbar() - toolbar shown successfully');
+    }
     return true;
   }
 
