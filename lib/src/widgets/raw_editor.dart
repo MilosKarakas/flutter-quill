@@ -80,6 +80,7 @@ class RawEditor extends StatefulWidget {
     this.customStyleBuilder,
     this.customRecognizerBuilder,
     this.floatingCursorDisabled = false,
+    this.magnifierConfiguration = TextMagnifierConfiguration.disabled,
     this.onImagePaste,
     this.customLinkPrefixes = const <String>[],
     this.dialogTheme,
@@ -266,6 +267,10 @@ class RawEditor extends StatefulWidget {
   final CustomStyleBuilder? customStyleBuilder;
   final CustomRecognizerBuilder? customRecognizerBuilder;
   final bool floatingCursorDisabled;
+
+  /// Configuration for the magnifier that appears during text selection.
+  final TextMagnifierConfiguration magnifierConfiguration;
+
   final List<String> customLinkPrefixes;
 
   /// Configures the dialog theme.
@@ -1391,10 +1396,19 @@ class RawEditorState extends EditorState
           (isMobileWeb() && !textEditingValue.selection.isCollapsed);
 
       if (!shouldKeepOverlay) {
+        // Safety: Ensure magnifier is hidden before disposing overlay
+        // This prevents orphaned magnifier widgets
+        if (_selectionOverlay!.magnifierIsVisible) {
+          _selectionOverlay!.hideMagnifier();
+        }
         // Dispose overlay when focus is lost and selection is collapsed
         _selectionOverlay!.dispose();
         _selectionOverlay = null;
       } else {
+        // Safety: Hide magnifier before updating if it's visible
+        if (_selectionOverlay!.magnifierIsVisible) {
+          _selectionOverlay!.hideMagnifier();
+        }
         // Update overlay if it should remain visible
         _selectionOverlay!.update(textEditingValue);
       }
@@ -1424,8 +1438,14 @@ class RawEditorState extends EditorState
         contextMenuBuilder: widget.contextMenuBuilder == null
             ? null
             : (context) => widget.contextMenuBuilder!(context, this),
+        magnifierConfiguration: widget.magnifierConfiguration,
       );
     } else {
+      // Safety: If magnifier is visible during overlay update, hide it first
+      // This prevents orphaned magnifier widgets in the overlay tree
+      if (_selectionOverlay!.magnifierIsVisible) {
+        _selectionOverlay!.hideMagnifier();
+      }
       _selectionOverlay!.update(textEditingValue);
     }
   }
@@ -1438,18 +1458,24 @@ class RawEditorState extends EditorState
     }
 
     openOrCloseConnection();
-    _cursorCont.startOrStopCursorTimerIfNeeded(_hasFocus, controller.selection);
-    _updateOrDisposeSelectionOverlayIfNeeded();
+
     if (_hasFocus) {
       WidgetsBinding.instance.addObserver(this);
       _showCaretOnScreen();
-      // Ensure cursor is visible immediately, especially on mobile platforms
-      if (isMobileWeb() || isMobile()) {
-        _cursorCont.startCursorTimer();
+
+      // On mobile platforms, ensure cursor is visible immediately by setting opacity to 1
+      // before starting the blink timer. This prevents the "invisible cursor" issue.
+      if ((isMobileWeb() || isMobile()) && controller.selection.isCollapsed) {
+        _cursorCont.color.value = _cursorCont.style.color;
+        _cursorCont.blink.value = true;
       }
     } else {
       WidgetsBinding.instance.removeObserver(this);
     }
+
+    // Start or stop cursor timer after setting initial visibility
+    _cursorCont.startOrStopCursorTimerIfNeeded(_hasFocus, controller.selection);
+    _updateOrDisposeSelectionOverlayIfNeeded();
     updateKeepAlive();
   }
 
@@ -1536,6 +1562,34 @@ class RawEditorState extends EditorState
       _showCaretOnScreen();
     } else {
       widget.focusNode.requestFocus();
+    }
+  }
+
+  /// Shows the magnifier at the given position, or updates the magnifier to the
+  /// given position if it's already visible.
+  ///
+  /// This is called during long press gestures to provide visual feedback
+  /// for precise cursor positioning.
+  void showMagnifier(Offset positionToShow) {
+    if (_selectionOverlay == null) {
+      return;
+    }
+
+    if (_selectionOverlay!.magnifierIsVisible) {
+      _selectionOverlay!.updateMagnifier(positionToShow);
+    } else {
+      _selectionOverlay!.showMagnifier(positionToShow);
+    }
+  }
+
+  /// Hides the magnifier if it's currently visible.
+  void hideMagnifier() {
+    if (_selectionOverlay == null) {
+      return;
+    }
+
+    if (_selectionOverlay!.magnifierIsVisible) {
+      _selectionOverlay!.hideMagnifier();
     }
   }
 

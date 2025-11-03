@@ -77,10 +77,11 @@ class EditorTextSelectionOverlay {
     required this.selectionDelegate,
     required this.clipboardStatus,
     required this.contextMenuBuilder,
+    required TextMagnifierConfiguration magnifierConfiguration,
     this.onSelectionHandleTapped,
     this.dragStartBehavior = DragStartBehavior.start,
     this.handlesVisible = false,
-  }) {
+  }) : _magnifierConfiguration = magnifierConfiguration {
     // Clipboard status is only checked on first instance of
     // ClipboardStatusNotifier
     // if state has changed after creation, but prior to
@@ -145,6 +146,9 @@ class EditorTextSelectionOverlay {
   /// If not provided, no context menu will be built.
   final WidgetBuilder? contextMenuBuilder;
 
+  /// Configuration for the magnifier.
+  final TextMagnifierConfiguration _magnifierConfiguration;
+
   /// Determines the way that drag start behavior is handled.
   ///
   /// If set to [DragStartBehavior.start], handle drag behavior will
@@ -185,6 +189,18 @@ class EditorTextSelectionOverlay {
 
   /// A copy/paste toolbar.
   OverlayEntry? toolbar;
+
+  /// The Flutter's SelectionOverlay instance used for magnifier management.
+  ///
+  /// This is created lazily when magnifier is first shown, and disposed when
+  /// EditorTextSelectionOverlay is disposed.
+  SelectionOverlay? _magnifierOverlay;
+
+  /// Whether the magnifier is currently visible.
+  bool _magnifierVisible = false;
+
+  /// Layer link for the toolbar, used by SelectionOverlay.
+  final LayerLink _toolbarLayerLink = LayerLink();
 
   TextSelection get _selection => value.selection;
 
@@ -339,8 +355,110 @@ class EditorTextSelectionOverlay {
   }
 
   /// Final cleanup.
+  /// Whether the magnifier is currently visible.
+  bool get magnifierIsVisible => _magnifierVisible;
+
+  /// Shows the magnifier at the given position.
+  void showMagnifier(Offset positionToShow) {
+    if (_magnifierConfiguration == TextMagnifierConfiguration.disabled) {
+      return;
+    }
+
+    // Create the magnifier overlay if it doesn't exist
+    _magnifierOverlay ??= SelectionOverlay(
+      context: context,
+      debugRequiredFor: debugRequiredFor,
+      startHandleType: TextSelectionHandleType.left,
+      endHandleType: TextSelectionHandleType.right,
+      lineHeightAtStart: renderObject.preferredLineHeight(value.selection.base),
+      lineHeightAtEnd: renderObject.preferredLineHeight(value.selection.extent),
+      selectionEndpoints:
+          renderObject.getEndpointsForSelection(value.selection),
+      selectionControls: null,
+      selectionDelegate: selectionDelegate,
+      clipboardStatus: clipboardStatus,
+      startHandleLayerLink: startHandleLayerLink,
+      endHandleLayerLink: endHandleLayerLink,
+      toolbarLayerLink: _toolbarLayerLink,
+      magnifierConfiguration: _magnifierConfiguration,
+    );
+
+    final position = renderObject.getPositionForOffset(positionToShow);
+    _magnifierOverlay!.showMagnifier(_buildMagnifier(
+      currentTextPosition: position,
+      globalGesturePosition: positionToShow,
+    ));
+    _magnifierVisible = true;
+  }
+
+  /// Updates the magnifier to the given position.
+  void updateMagnifier(Offset positionToShow) {
+    if (_magnifierConfiguration == TextMagnifierConfiguration.disabled ||
+        _magnifierOverlay == null) {
+      return;
+    }
+
+    final TextPosition position =
+        renderObject.getPositionForOffset(positionToShow);
+    _magnifierOverlay!.updateMagnifier(_buildMagnifier(
+      currentTextPosition: position,
+      globalGesturePosition: positionToShow,
+    ));
+  }
+
+  /// Hides the magnifier.
+  void hideMagnifier() {
+    if (_magnifierOverlay != null && _magnifierVisible) {
+      _magnifierOverlay!.hideMagnifier();
+      _magnifierVisible = false;
+    }
+  }
+
+  /// Builds the magnifier info for the given position.
+  MagnifierInfo _buildMagnifier({
+    required Offset globalGesturePosition,
+    required TextPosition currentTextPosition,
+  }) {
+    final TextSelection lineAtOffset =
+        renderObject.getLineAtOffset(currentTextPosition);
+    final TextPosition positionAtEndOfLine = TextPosition(
+      offset: lineAtOffset.extentOffset,
+      affinity: TextAffinity.upstream,
+    );
+    final TextPosition positionAtBeginningOfLine =
+        TextPosition(offset: lineAtOffset.baseOffset);
+
+    final Rect localLineBoundaries = Rect.fromPoints(
+      renderObject.getLocalRectForCaret(positionAtBeginningOfLine).topCenter,
+      renderObject.getLocalRectForCaret(positionAtEndOfLine).bottomCenter,
+    );
+
+    final RenderBox? overlay = Overlay.of(context, rootOverlay: true)
+        .context
+        .findRenderObject() as RenderBox?;
+    final Matrix4 transformToOverlay = renderObject.getTransformTo(overlay);
+    final Rect overlayLineBoundaries = MatrixUtils.transformRect(
+      transformToOverlay,
+      localLineBoundaries,
+    );
+
+    return MagnifierInfo(
+      fieldBounds: overlayLineBoundaries,
+      globalGesturePosition: globalGesturePosition,
+      caretRect: renderObject.getLocalRectForCaret(currentTextPosition),
+      currentLineBoundaries: overlayLineBoundaries,
+    );
+  }
+
   void dispose() {
+    // Critical: Hide magnifier BEFORE disposing to ensure cleanup
+    // This prevents the "magnifier won't hide" bug if overlay is recreated
+    if (_magnifierVisible) {
+      hideMagnifier();
+    }
     hide();
+    _magnifierOverlay?.dispose();
+    _magnifierOverlay = null;
   }
 
   /// Builds the handles by inserting them into the [context]'s overlay.
@@ -350,7 +468,7 @@ class EditorTextSelectionOverlay {
     if (_handles != null) {
       return;
     }
-    
+
     _handles = <OverlayEntry>[
       OverlayEntry(
           builder: (context) =>

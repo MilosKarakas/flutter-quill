@@ -43,6 +43,12 @@ abstract class EditorState extends State<RawEditor>
 
   String get pastePlainText;
 
+  /// Shows the magnifier at the given position.
+  void showMagnifier(Offset positionToShow);
+
+  /// Hides the magnifier if it's currently visible.
+  void hideMagnifier();
+
   /// Controls the floating cursor animation when it is released.
   /// The floating cursor is animated to merge with the regular cursor.
   AnimationController get floatingCursorResetController;
@@ -185,6 +191,7 @@ class QuillEditor extends StatefulWidget {
     this.locale,
     this.floatingCursorDisabled = false,
     this.textSelectionControls,
+    this.magnifierConfiguration = TextMagnifierConfiguration.disabled,
     this.onImagePaste,
     this.customShortcuts,
     this.customActions,
@@ -421,6 +428,14 @@ class QuillEditor extends StatefulWidget {
   /// will be used
   final TextSelectionControls? textSelectionControls;
 
+  /// Configuration for the magnifier that appears during text selection.
+  ///
+  /// By default, the magnifier is disabled. To enable it on mobile platforms:
+  /// ```dart
+  /// magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
+  /// ```
+  final TextMagnifierConfiguration magnifierConfiguration;
+
   /// Callback when the user pastes the given image.
   ///
   /// Returns the url of the image if the image should be inserted.
@@ -568,6 +583,7 @@ class QuillEditorState extends State<QuillEditor>
       customStyleBuilder: widget.customStyleBuilder,
       customRecognizerBuilder: widget.customRecognizerBuilder,
       floatingCursorDisabled: widget.floatingCursorDisabled,
+      magnifierConfiguration: widget.magnifierConfiguration,
       onImagePaste: widget.onImagePaste,
       customShortcuts: widget.customShortcuts,
       customActions: widget.customActions,
