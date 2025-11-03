@@ -540,7 +540,7 @@ class QuillEditorState extends State<QuillEditor>
       contextMenuBuilder: showSelectionToolbar
           ? (widget.contextMenuBuilder ?? RawEditor.defaultContextMenuBuilder)
           : null,
-      showSelectionHandles: isMobile(theme.platform),
+      showSelectionHandles: isMobile(theme.platform) || isMobileWeb(),
       showCursor: widget.showCursor,
       cursorStyle: CursorStyle(
         color: cursorColor,

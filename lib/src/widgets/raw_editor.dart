@@ -1303,7 +1303,8 @@ class RawEditorState extends EditorState
 
   @override
   void dispose() {
-    closeConnectionIfNeeded();
+    // Force close the connection on dispose, even on mobile web
+    forceCloseConnection();
     _keyboardVisibilitySubscription?.cancel();
     HardwareKeyboard.instance.removeHandler(_hardwareKeyboardEvent);
     assert(!hasConnection);
@@ -1454,11 +1455,18 @@ class RawEditorState extends EditorState
       }
     } else {
       WidgetsBinding.instance.removeObserver(this);
-      // On mobile web, keyboard closes when focus is lost
+      // On mobile web, don't immediately mark keyboard as invisible on focus loss
+      // because focus may be regained quickly (e.g., during tap interactions)
+      // or the keyboard may remain open (e.g., when selecting text outside editor)
       if (isMobileWeb()) {
-        _keyboardVisible = false;
-        debugPrint(
-            '[QuillEditor] _handleFocusChanged - set keyboardVisible = false');
+        // Delay marking keyboard as invisible to avoid rapid state changes
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted && !_hasFocus) {
+            _keyboardVisible = false;
+            debugPrint(
+                '[QuillEditor] _handleFocusChanged - delayed set keyboardVisible = false');
+          }
+        });
       }
     }
     updateKeepAlive();

@@ -162,6 +162,16 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     _lastKnownRemoteTextEditingValue = null;
   }
 
+  /// Force closes the connection even on mobile web (used during dispose)
+  void forceCloseConnection() {
+    if (!hasConnection) {
+      return;
+    }
+    _textInputConnection!.close();
+    _textInputConnection = null;
+    _lastKnownRemoteTextEditingValue = null;
+  }
+
   /// Updates remote value based on current state of [document] and
   /// [selection].
   ///
