@@ -344,8 +344,13 @@ class EditorTextSelectionOverlay {
   }
 
   /// Builds the handles by inserting them into the [context]'s overlay.
+  /// This is idempotent - calling it multiple times is safe.
   void showHandles() {
-    assert(_handles == null);
+    // Return early if handles already exist (matches Flutter's pattern)
+    if (_handles != null) {
+      return;
+    }
+    
     _handles = <OverlayEntry>[
       OverlayEntry(
           builder: (context) =>

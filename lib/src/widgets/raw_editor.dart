@@ -982,6 +982,8 @@ class RawEditorState extends EditorState
     } else {
       _selectionOverlay!.update(textEditingValue);
     }
+
+    // Update handles visibility - matches Flutter's pattern
     _selectionOverlay!.handlesVisible = _shouldShowSelectionHandles();
     _selectionOverlay!.showHandles();
 
@@ -1363,15 +1365,20 @@ class RawEditorState extends EditorState
   }
 
   void _updateOrDisposeSelectionOverlayIfNeeded() {
-    // Simplified: overlay is now managed in _handleSelectionChanged()
-    // This method only handles focus-related updates
+    // Overlay is primarily managed in _handleSelectionChanged()
+    // This method handles focus-related updates
     if (_selectionOverlay != null) {
-      if (!_hasFocus) {
-        // Dispose overlay when focus is lost
+      // On mobile web, keep overlay alive during selection even without focus
+      // This is needed for long-press toolbar to work
+      final shouldKeepOverlay = _hasFocus ||
+          (isMobileWeb() && !textEditingValue.selection.isCollapsed);
+
+      if (!shouldKeepOverlay) {
+        // Dispose overlay when focus is lost and selection is collapsed
         _selectionOverlay!.dispose();
         _selectionOverlay = null;
       } else {
-        // Update overlay if focus is maintained
+        // Update overlay if it should remain visible
         _selectionOverlay!.update(textEditingValue);
       }
     }
