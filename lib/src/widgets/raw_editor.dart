@@ -1462,14 +1462,12 @@ class RawEditorState extends EditorState
       }
     } else {
       WidgetsBinding.instance.removeObserver(this);
-      // On mobile web, don't mark keyboard as invisible on focus loss
-      // The connection stays open and keyboard state should persist
-      // until the editor regains focus or is disposed
+      // On mobile web, reset keyboard state on focus loss
+      // This ensures proper re-focus behavior when tapping back into editor
       if (isMobileWeb()) {
-        // Keep keyboard visible state - don't set to false
-        // This prevents keyboard from reopening when tapping back into editor
+        _keyboardVisible = false;
         debugPrint(
-            '[QuillEditor] _handleFocusChanged - keeping keyboardVisible = true on mobile web');
+            '[QuillEditor] _handleFocusChanged - set keyboardVisible = false on focus loss');
       }
     }
     updateKeepAlive();
@@ -1566,11 +1564,13 @@ class RawEditorState extends EditorState
       return;
     }
 
-    // On mobile web, don't request keyboard if already visible
-    // to avoid flickering during interactions
-    if (isMobileWeb() && _keyboardVisible) {
+    // On mobile web, only skip keyboard request if:
+    // 1. Keyboard is already visible AND
+    // 2. Editor has focus
+    // If we don't have focus, we need to request it regardless
+    if (isMobileWeb() && _keyboardVisible && _hasFocus) {
       debugPrint(
-          '[QuillEditor] requestKeyboard() - skipped, keyboard already visible');
+          '[QuillEditor] requestKeyboard() - skipped, keyboard already visible and has focus');
       return;
     }
 
