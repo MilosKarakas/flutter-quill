@@ -1503,15 +1503,23 @@ class RawEditorState extends EditorState
       return false;
     }
 
-    // selectionOverlay is aggressively released when selection is collapsed
-    // to remove unnecessary handles. Since a toolbar is requested here,
-    // attempt to create the selectionOverlay if it's not already created.
+    // If overlay doesn't exist, create it on demand
+    // This is needed for context menu on long press with collapsed selection
     if (_selectionOverlay == null) {
-      _updateOrDisposeSelectionOverlayIfNeeded();
-    }
-
-    if (_selectionOverlay == null) {
-      return false;
+      _selectionOverlay = EditorTextSelectionOverlay(
+        value: textEditingValue,
+        context: context,
+        debugRequiredFor: widget,
+        startHandleLayerLink: _startHandleLayerLink,
+        endHandleLayerLink: _endHandleLayerLink,
+        renderObject: renderEditor,
+        selectionCtrls: widget.selectionCtrls,
+        selectionDelegate: this,
+        clipboardStatus: _clipboardStatus,
+        contextMenuBuilder: widget.contextMenuBuilder == null
+            ? null
+            : (context) => widget.contextMenuBuilder!(context, this),
+      );
     }
 
     if (_selectionOverlay!.toolbar != null) {
