@@ -1500,14 +1500,47 @@ class RenderEditor extends RenderEditableContainerBox
   // in the rendering position and the raw offset value.
   Offset _relativeOrigin = Offset.zero;
   Offset? _previousOffset;
+  bool _shouldResetOrigin = true;
   bool _resetOriginOnLeft = false;
   bool _resetOriginOnRight = false;
   bool _resetOriginOnTop = false;
   bool _resetOriginOnBottom = false;
 
   /// Returns the position within the editor closest to the raw cursor offset.
-  Offset calculateBoundedFloatingCursorOffset(
-      Offset rawCursorOffset, double preferredLineHeight) {
+  ///
+  /// The [shouldResetOrigin] parameter controls whether the relative origin
+  /// should be reset. This is typically true for keyboard-initiated floating
+  /// cursor and false for long-press initiated floating cursor.
+  Offset calculateBoundedFloatingCursorOffset(Offset rawCursorOffset,
+      {bool? shouldResetOrigin}) {
+    if (shouldResetOrigin != null) {
+      _shouldResetOrigin = shouldResetOrigin;
+    }
+
+    // If shouldResetOrigin is false, use a simpler calculation
+    // This happens during long-press where origin is already set correctly
+    if (!_shouldResetOrigin) {
+      final preferredLineHeight = this.preferredLineHeight(
+        TextPosition(offset: selection.baseOffset),
+      );
+      final topBound = _kFloatingCursorAddedMargin.top;
+      final bottomBound = size.height -
+          preferredLineHeight +
+          _kFloatingCursorAddedMargin.bottom;
+      final leftBound = _kFloatingCursorAddedMargin.left;
+      final rightBound = size.width - _kFloatingCursorAddedMargin.right;
+
+      final currentX = rawCursorOffset.dx - _relativeOrigin.dx;
+      final currentY = rawCursorOffset.dy - _relativeOrigin.dy;
+      final adjustedX = math.min(math.max(currentX, leftBound), rightBound);
+      final adjustedY = math.min(math.max(currentY, topBound), bottomBound);
+      return Offset(adjustedX, adjustedY);
+    }
+
+    // Original logic for keyboard-initiated floating cursor
+    final preferredLineHeight = this.preferredLineHeight(
+      TextPosition(offset: selection.baseOffset),
+    );
     var deltaPosition = Offset.zero;
     final topBound = _kFloatingCursorAddedMargin.top;
     final bottomBound =
@@ -1574,9 +1607,10 @@ class RenderEditor extends RenderEditableContainerBox
     if (dragState == FloatingCursorDragState.Start) {
       _relativeOrigin = Offset.zero;
       _previousOffset = null;
-      _resetOriginOnBottom = false;
-      _resetOriginOnTop = false;
+      _shouldResetOrigin = true;
+      _resetOriginOnLeft = false;
       _resetOriginOnRight = false;
+      _resetOriginOnTop = false;
       _resetOriginOnBottom = false;
     }
     _floatingCursorOn = dragState != FloatingCursorDragState.End;

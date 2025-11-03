@@ -254,13 +254,37 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         // we cache the position.
         _pointOffsetOrigin = point.offset;
 
-        final currentTextPosition =
-            TextPosition(offset: renderEditor.selection.baseOffset);
-        _startCaretRect =
-            renderEditor.getLocalRectForCaret(currentTextPosition);
+        // Determine the starting position and whether to reset origin
+        late final Offset startCaretCenter;
+        late final TextPosition currentTextPosition;
+        final bool shouldResetOrigin;
 
-        _lastBoundedOffset = _startCaretRect!.center -
-            _floatingCursorOffset(currentTextPosition);
+        // Only non-null when starting a floating cursor via long press
+        if (point.startLocation != null) {
+          shouldResetOrigin = false;
+          final location = point.startLocation!;
+          startCaretCenter = location.$1;
+          currentTextPosition = location.$2;
+        } else {
+          shouldResetOrigin = true;
+          currentTextPosition = TextPosition(
+            offset: renderEditor.selection.baseOffset,
+            affinity: renderEditor.selection.affinity,
+          );
+          startCaretCenter =
+              renderEditor.getLocalRectForCaret(currentTextPosition).center;
+        }
+
+        _startCaretRect = Rect.fromCenter(
+          center: startCaretCenter,
+          width: 0,
+          height: renderEditor.preferredLineHeight(currentTextPosition),
+        );
+
+        _lastBoundedOffset = renderEditor.calculateBoundedFloatingCursorOffset(
+          startCaretCenter - _floatingCursorOffset(currentTextPosition),
+          shouldResetOrigin: shouldResetOrigin,
+        );
         _lastTextPosition = currentTextPosition;
         renderEditor.setFloatingCursor(
             point.state, _lastBoundedOffset!, _lastTextPosition!);
@@ -272,11 +296,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         final rawCursorOffset =
             _startCaretRect!.center + centeredPoint - floatingCursorOffset;
 
-        final preferredLineHeight =
-            renderEditor.preferredLineHeight(_lastTextPosition!);
         _lastBoundedOffset = renderEditor.calculateBoundedFloatingCursorOffset(
           rawCursorOffset,
-          preferredLineHeight,
         );
         _lastTextPosition = renderEditor.getPositionForOffset(renderEditor
             .localToGlobal(_lastBoundedOffset! + floatingCursorOffset));
