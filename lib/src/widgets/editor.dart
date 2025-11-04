@@ -669,6 +669,10 @@ class _QuillEditorSelectionGestureDetectorBuilder
   final QuillEditorState _state;
   final bool _detectWordBoundary;
 
+  // Store tap down position for reliable cursor positioning on mobile web
+  // TapUpDetails.globalPosition can be incorrect on Safari, so we use the tap down position
+  Offset? _lastTapDownPosition;
+
   @override
   void onForcePressStart(ForcePressDetails details) {
     super.onForcePressStart(details);
@@ -733,6 +737,10 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   @override
   void onTapDown(TapDownDetails details) {
+    // Store tap down position for reliable cursor positioning on mobile web
+    // This matches Flutter's pattern where handleTapDown sets _lastTapDownPosition
+    _lastTapDownPosition = details.globalPosition;
+
     if (_state.widget.onTapDown != null) {
       if (renderEditor != null &&
           _state.widget.onTapDown!(
@@ -778,14 +786,24 @@ class _QuillEditorSelectionGestureDetectorBuilder
                       cause: SelectionChangedCause.tap)
                   ..onSelectionCompleted();
               } else {
-                // Ensure handleTapDown was called with correct position
-                // Use selectPositionAt with actual tap position for reliability
-                renderEditor!
-                  ..selectPositionAt(
-                    from: details.globalPosition,
-                    cause: SelectionChangedCause.tap,
-                  )
-                  ..onSelectionCompleted();
+                // Match Flutter's pattern: use _lastTapDownPosition for consistency
+                // Flutter's selectPosition() uses _lastTapDownPosition
+                if (_lastTapDownPosition != null) {
+                  renderEditor!
+                    ..selectPositionAt(
+                      from: _lastTapDownPosition!,
+                      cause: SelectionChangedCause.tap,
+                    )
+                    ..onSelectionCompleted();
+                } else {
+                  // Fallback to TapUpDetails if _lastTapDownPosition wasn't set
+                  renderEditor!
+                    ..selectPositionAt(
+                      from: details.globalPosition,
+                      cause: SelectionChangedCause.tap,
+                    )
+                    ..onSelectionCompleted();
+                }
               }
 
               break;
@@ -793,26 +811,32 @@ class _QuillEditorSelectionGestureDetectorBuilder
             case PointerDeviceKind.unknown:
               // On macOS/iOS/iPadOS a touch tap places the cursor at the edge
               // of the word.
-              // Use details.globalPosition directly instead of relying on _lastTapDownPosition
-              // to ensure correct positioning on mobile web (especially Safari)
+              // Match Flutter's pattern: use _lastTapDownPosition (set in onTapDown)
+              // instead of details.globalPosition from TapUpDetails
+              // Flutter's selectWordEdge() and selectPosition() both use _lastTapDownPosition
               if (_detectWordBoundary) {
-                // For word edge, we need to use selectWordEdge which uses _lastTapDownPosition
-                // but ensure handleTapDown was called first
-                renderEditor!.handleTapDown(TapDownDetails(
-                  globalPosition: details.globalPosition,
-                  kind: details.kind,
-                ));
+                // selectWordEdge uses _lastTapDownPosition internally
                 renderEditor!
                   ..selectWordEdge(SelectionChangedCause.tap)
                   ..onSelectionCompleted();
               } else {
-                // Use selectPositionAt with the actual tap position
-                renderEditor!
-                  ..selectPositionAt(
-                    from: details.globalPosition,
-                    cause: SelectionChangedCause.tap,
-                  )
-                  ..onSelectionCompleted();
+                // Use stored tap down position (matches Flutter's selectPosition pattern)
+                if (_lastTapDownPosition != null) {
+                  renderEditor!
+                    ..selectPositionAt(
+                      from: _lastTapDownPosition!,
+                      cause: SelectionChangedCause.tap,
+                    )
+                    ..onSelectionCompleted();
+                } else {
+                  // Fallback if _lastTapDownPosition wasn't set (shouldn't happen)
+                  renderEditor!
+                    ..selectPositionAt(
+                      from: details.globalPosition,
+                      cause: SelectionChangedCause.tap,
+                    )
+                    ..onSelectionCompleted();
+                }
               }
               break;
             case PointerDeviceKind.trackpad:
@@ -820,13 +844,23 @@ class _QuillEditorSelectionGestureDetectorBuilder
               break;
           }
         } else {
-          // Use selectPositionAt with actual tap position for reliability
-          renderEditor!
-            ..selectPositionAt(
-              from: details.globalPosition,
-              cause: SelectionChangedCause.tap,
-            )
-            ..onSelectionCompleted();
+          // Match Flutter's pattern: use _lastTapDownPosition for consistency
+          if (_lastTapDownPosition != null) {
+            renderEditor!
+              ..selectPositionAt(
+                from: _lastTapDownPosition!,
+                cause: SelectionChangedCause.tap,
+              )
+              ..onSelectionCompleted();
+          } else {
+            // Fallback to TapUpDetails if _lastTapDownPosition wasn't set
+            renderEditor!
+              ..selectPositionAt(
+                from: details.globalPosition,
+                cause: SelectionChangedCause.tap,
+              )
+              ..onSelectionCompleted();
+          }
         }
       }
     } finally {
