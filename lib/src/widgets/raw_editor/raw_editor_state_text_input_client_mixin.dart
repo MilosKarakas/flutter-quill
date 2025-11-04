@@ -78,7 +78,15 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !hasConnection) return;
 
-          final currentValue = textEditingValue;
+          // Explicitly construct TextEditingValue with current controller state
+          // to ensure we have the latest selection, not stale textEditingValue
+          final currentSelection = widget.controller.selection;
+          final currentText = widget.controller.document.toPlainText();
+          final currentValue = TextEditingValue(
+            text: currentText,
+            selection: currentSelection,
+          );
+
           _lastKnownRemoteTextEditingValue = currentValue;
           _textInputConnection!.setEditingState(currentValue);
           _textInputConnection!.show();
@@ -97,7 +105,15 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !hasConnection) return;
 
-          final currentValue = textEditingValue;
+          // Explicitly construct TextEditingValue with current controller state
+          // to ensure we have the latest selection, not stale textEditingValue
+          final currentSelection = widget.controller.selection;
+          final currentText = widget.controller.document.toPlainText();
+          final currentValue = TextEditingValue(
+            text: currentText,
+            selection: currentSelection,
+          );
+
           if (_lastKnownRemoteTextEditingValue != currentValue) {
             _lastKnownRemoteTextEditingValue = currentValue;
             _textInputConnection!.setEditingState(currentValue);
