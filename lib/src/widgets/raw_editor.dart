@@ -989,8 +989,16 @@ class RawEditorState extends EditorState
     _ensureSelectionOverlay();
 
     // Update handles visibility - matches Flutter's pattern
-    _selectionOverlay!.handlesVisible = _shouldShowSelectionHandles();
-    _selectionOverlay!.showHandles();
+    // NOTE: During long press on mobile, hide handles to avoid collision with magnifier
+    final shouldShowHandles = _shouldShowSelectionHandles() &&
+        !(cause == SelectionChangedCause.longPress &&
+            (isMobileWeb() || isMobile()));
+    _selectionOverlay!.handlesVisible = shouldShowHandles;
+    if (shouldShowHandles) {
+      _selectionOverlay!.showHandles();
+    } else {
+      _selectionOverlay!.hideHandles();
+    }
 
     if (cause == SelectionChangedCause.drag) {
       // When user updates the selection while dragging make sure to
