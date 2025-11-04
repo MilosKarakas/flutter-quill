@@ -809,17 +809,9 @@ class _QuillEditorSelectionGestureDetectorBuilder
         }
       }
     } finally {
-      // On mobile web (especially Safari), ensure selection has propagated before
-      // requesting keyboard to prevent cursor from jumping to the end.
-      // This matches Flutter's behavior where selection is set before keyboard opens.
-      if (isMobileWeb()) {
-        // Wait one frame to ensure selection has propagated from renderEditor to controller
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          if (_state.mounted) {
-            _state._requestKeyboard();
-          }
-        });
-      } else {
+      // Request keyboard if selection wasn't changed (e.g., tap on already selected position)
+      // If selection was changed, _handleSelectionChanged already called requestKeyboard()
+      if (_isPositionSelected(details) || !delegate.selectionEnabled) {
         _state._requestKeyboard();
       }
     }

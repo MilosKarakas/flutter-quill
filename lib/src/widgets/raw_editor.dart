@@ -962,6 +962,8 @@ class RawEditorState extends EditorState
 
     // Request keyboard for all selection changes except those triggered by keyboard
     // This matches Flutter's EditableText behavior
+    // On mobile web (especially Safari), ensure selection has propagated to controller
+    // before requesting keyboard to prevent cursor from jumping to end
     switch (cause) {
       case SelectionChangedCause.tap:
       case SelectionChangedCause.doubleTap:
@@ -969,7 +971,16 @@ class RawEditorState extends EditorState
       case SelectionChangedCause.forcePress:
       case SelectionChangedCause.toolbar:
       case SelectionChangedCause.stylusHandwriting:
-        requestKeyboard();
+        if (isMobileWeb()) {
+          // Wait for selection to propagate from controller.updateSelection() to textEditingValue
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              requestKeyboard();
+            }
+          });
+        } else {
+          requestKeyboard();
+        }
         break;
       case SelectionChangedCause.longPress:
         // On mobile platforms, skip keyboard request during long press gesture to avoid
