@@ -778,8 +778,13 @@ class _QuillEditorSelectionGestureDetectorBuilder
                       cause: SelectionChangedCause.tap)
                   ..onSelectionCompleted();
               } else {
+                // Ensure handleTapDown was called with correct position
+                // Use selectPositionAt with actual tap position for reliability
                 renderEditor!
-                  ..selectPosition(cause: SelectionChangedCause.tap)
+                  ..selectPositionAt(
+                    from: details.globalPosition,
+                    cause: SelectionChangedCause.tap,
+                  )
                   ..onSelectionCompleted();
               }
 
@@ -788,13 +793,25 @@ class _QuillEditorSelectionGestureDetectorBuilder
             case PointerDeviceKind.unknown:
               // On macOS/iOS/iPadOS a touch tap places the cursor at the edge
               // of the word.
+              // Use details.globalPosition directly instead of relying on _lastTapDownPosition
+              // to ensure correct positioning on mobile web (especially Safari)
               if (_detectWordBoundary) {
+                // For word edge, we need to use selectWordEdge which uses _lastTapDownPosition
+                // but ensure handleTapDown was called first
+                renderEditor!.handleTapDown(TapDownDetails(
+                  globalPosition: details.globalPosition,
+                  kind: details.kind,
+                ));
                 renderEditor!
                   ..selectWordEdge(SelectionChangedCause.tap)
                   ..onSelectionCompleted();
               } else {
+                // Use selectPositionAt with the actual tap position
                 renderEditor!
-                  ..selectPosition(cause: SelectionChangedCause.tap)
+                  ..selectPositionAt(
+                    from: details.globalPosition,
+                    cause: SelectionChangedCause.tap,
+                  )
                   ..onSelectionCompleted();
               }
               break;
@@ -803,8 +820,12 @@ class _QuillEditorSelectionGestureDetectorBuilder
               break;
           }
         } else {
+          // Use selectPositionAt with actual tap position for reliability
           renderEditor!
-            ..selectPosition(cause: SelectionChangedCause.tap)
+            ..selectPositionAt(
+              from: details.globalPosition,
+              cause: SelectionChangedCause.tap,
+            )
             ..onSelectionCompleted();
         }
       }
