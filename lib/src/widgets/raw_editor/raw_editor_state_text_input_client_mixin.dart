@@ -16,6 +16,35 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   TextInputConnection? _textInputConnection;
   TextEditingValue? _lastKnownRemoteTextEditingValue;
 
+  // Track the last programmatically set selection to use when syncing with Safari
+  // This prevents Safari's stale selection updates from overwriting our correct selection
+  TextSelection? _lastProgrammaticSelection;
+  DateTime? _lastProgrammaticSelectionTime;
+
+  /// Stores the programmatic selection that was just set (from tap/gesture)
+  /// This is used to override Safari's potentially stale selection when syncing
+  /// Note: Not private because it's called from RawEditorState which uses this mixin
+  void setProgrammaticSelection(TextSelection selection) {
+    _lastProgrammaticSelection = selection;
+    _lastProgrammaticSelectionTime = DateTime.now();
+  }
+
+  /// Gets the selection to use when syncing with Safari
+  /// Prefers programmatic selection if it was set recently (within 100ms)
+  TextSelection getSelectionForSync() {
+    if (_lastProgrammaticSelection != null &&
+        _lastProgrammaticSelectionTime != null) {
+      final timeSinceProgrammatic =
+          DateTime.now().difference(_lastProgrammaticSelectionTime!);
+      // Use programmatic selection if it was set within the last 100ms
+      if (timeSinceProgrammatic.inMilliseconds < 100) {
+        return _lastProgrammaticSelection!;
+      }
+    }
+    // Fallback to controller selection
+    return widget.controller.selection;
+  }
+
   /// Whether to create an input connection with the platform for text editing
   /// or not.
   ///
@@ -86,9 +115,9 @@ mixin RawEditorStateTextInputClientMixin on EditorState
           Future.delayed(const Duration(milliseconds: 16), () {
             if (!mounted || !hasConnection) return;
 
-            // Explicitly construct TextEditingValue with current controller state
-            // to ensure we have the latest selection, not stale textEditingValue
-            final currentSelection = widget.controller.selection;
+            // Use programmatic selection if available (set via tap/gesture)
+            // This prevents Safari's stale selection from overwriting our correct selection
+            final currentSelection = getSelectionForSync();
             final currentText = widget.controller.document.toPlainText();
             final currentValue = TextEditingValue(
               text: currentText,
@@ -118,9 +147,9 @@ mixin RawEditorStateTextInputClientMixin on EditorState
           Future.delayed(const Duration(milliseconds: 16), () {
             if (!mounted || !hasConnection) return;
 
-            // Explicitly construct TextEditingValue with current controller state
-            // to ensure we have the latest selection, not stale textEditingValue
-            final currentSelection = widget.controller.selection;
+            // Use programmatic selection if available (set via tap/gesture)
+            // This prevents Safari's stale selection from overwriting our correct selection
+            final currentSelection = getSelectionForSync();
             final currentText = widget.controller.document.toPlainText();
             final currentValue = TextEditingValue(
               text: currentText,
@@ -202,7 +231,16 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
 
-    final value = textEditingValue;
+    // On mobile web, use programmatic selection if available to prevent Safari
+    // stale selection from being synced. On other platforms, use textEditingValue.
+    final selection =
+        isMobileWeb() ? getSelectionForSync() : textEditingValue.selection;
+    final text = widget.controller.document.toPlainText();
+    final value = TextEditingValue(
+      text: text,
+      selection: selection,
+      composing: textEditingValue.composing,
+    );
 
     // Since we don't keep track of the composing range in value provided
     // by the Controller we need to add it here manually before comparing
@@ -263,11 +301,33 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     final text = value.text;
     final cursorPosition = value.selection.extentOffset;
     final diff = getDiff(oldText, text, cursorPosition);
+
+    // On mobile web Safari, ignore stale selection updates from platform if we just set
+    // a programmatic selection (e.g., from tap). Safari may send back an old selection
+    // before processing our new one, causing cursor to jump.
+    TextSelection selectionToUse = value.selection;
+    if (isMobileWeb() &&
+        _lastProgrammaticSelection != null &&
+        _lastProgrammaticSelectionTime != null) {
+      final timeSinceProgrammatic =
+          DateTime.now().difference(_lastProgrammaticSelectionTime!);
+      // If programmatic selection was set within last 200ms and incoming selection is very different
+      // (more than 5 characters off), use our programmatic selection instead
+      if (timeSinceProgrammatic.inMilliseconds < 200) {
+        final programmaticOffset = _lastProgrammaticSelection!.extentOffset;
+        final incomingOffset = value.selection.extentOffset;
+        if ((programmaticOffset - incomingOffset).abs() > 5) {
+          // Safari sent stale selection, use our programmatic one
+          selectionToUse = _lastProgrammaticSelection!;
+        }
+      }
+    }
+
     if (diff.deleted.isEmpty && diff.inserted.isEmpty) {
-      widget.controller.updateSelection(value.selection, ChangeSource.LOCAL);
+      widget.controller.updateSelection(selectionToUse, ChangeSource.LOCAL);
     } else {
       widget.controller.replaceText(
-          diff.start, diff.deleted.length, diff.inserted, value.selection);
+          diff.start, diff.deleted.length, diff.inserted, selectionToUse);
     }
   }
 

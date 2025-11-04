@@ -972,6 +972,11 @@ class RawEditorState extends EditorState
       case SelectionChangedCause.toolbar:
       case SelectionChangedCause.stylusHandwriting:
         if (isMobileWeb()) {
+          // Store the programmatic selection to use when syncing with Safari
+          // This prevents Safari's stale selection updates from overwriting our correct selection
+          // RawEditorState includes RawEditorStateTextInputClientMixin, so we can call this directly
+          setProgrammaticSelection(selection);
+
           // Wait for selection to propagate from controller.updateSelection() to textEditingValue
           // Safari needs a small delay to process selection changes internally
           SchedulerBinding.instance.addPostFrameCallback((_) {
