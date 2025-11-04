@@ -1411,11 +1411,8 @@ class RawEditorState extends EditorState
         _selectionOverlay!.dispose();
         _selectionOverlay = null;
       } else {
-        // Safety: Hide magnifier before updating if it's visible
-        if (_selectionOverlay!.magnifierIsVisible) {
-          _selectionOverlay!.hideMagnifier();
-        }
-        // Update overlay if it should remain visible
+        // Update overlay without hiding magnifier
+        // The magnifier should persist during gestures
         _selectionOverlay!.update(textEditingValue);
       }
     }
@@ -1447,11 +1444,9 @@ class RawEditorState extends EditorState
         magnifierConfiguration: widget.magnifierConfiguration,
       );
     } else {
-      // Safety: If magnifier is visible during overlay update, hide it first
-      // This prevents orphaned magnifier widgets in the overlay tree
-      if (_selectionOverlay!.magnifierIsVisible) {
-        _selectionOverlay!.hideMagnifier();
-      }
+      // Update the overlay without hiding the magnifier
+      // The magnifier should persist during long press gestures and only hide
+      // when explicitly requested (e.g., on long press end)
       _selectionOverlay!.update(textEditingValue);
     }
   }

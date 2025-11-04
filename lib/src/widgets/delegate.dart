@@ -98,7 +98,7 @@ class EditorTextSelectionGestureDetectorBuilder {
   @protected
   RenderEditor? get renderEditor => editor?.renderEditor;
 
-  /// Shows the magnifier on supported platforms (iOS and Android).
+  /// Shows the magnifier on supported platforms (iOS and Android, including mobile web).
   @protected
   void showMagnifierIfSupportedByPlatform(Offset positionToShow) {
     switch (defaultTargetPlatform) {
@@ -115,7 +115,7 @@ class EditorTextSelectionGestureDetectorBuilder {
     }
   }
 
-  /// Hides the magnifier on supported platforms (iOS and Android).
+  /// Hides the magnifier on supported platforms (iOS and Android, including mobile web).
   @protected
   void hideMagnifierIfSupportedByPlatform() {
     switch (defaultTargetPlatform) {
