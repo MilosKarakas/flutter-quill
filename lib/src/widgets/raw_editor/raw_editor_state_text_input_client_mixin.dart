@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/animation.dart';
@@ -74,22 +75,30 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
       // On mobile web (especially Safari), ensure selection has propagated before
       // setting initial editing state. This prevents cursor from jumping to end.
+      // Safari needs a small delay after frame to properly sync selection state.
       if (isMobileWeb()) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !hasConnection) return;
 
-          // Explicitly construct TextEditingValue with current controller state
-          // to ensure we have the latest selection, not stale textEditingValue
-          final currentSelection = widget.controller.selection;
-          final currentText = widget.controller.document.toPlainText();
-          final currentValue = TextEditingValue(
-            text: currentText,
-            selection: currentSelection,
-          );
+          // Add a small delay for Safari to process selection changes internally
+          // This is necessary because Safari's text input system is asynchronous
+          // and needs time to sync with Flutter's selection state
+          Future.delayed(const Duration(milliseconds: 16), () {
+            if (!mounted || !hasConnection) return;
 
-          _lastKnownRemoteTextEditingValue = currentValue;
-          _textInputConnection!.setEditingState(currentValue);
-          _textInputConnection!.show();
+            // Explicitly construct TextEditingValue with current controller state
+            // to ensure we have the latest selection, not stale textEditingValue
+            final currentSelection = widget.controller.selection;
+            final currentText = widget.controller.document.toPlainText();
+            final currentValue = TextEditingValue(
+              text: currentText,
+              selection: currentSelection,
+            );
+
+            _lastKnownRemoteTextEditingValue = currentValue;
+            _textInputConnection!.setEditingState(currentValue);
+            _textInputConnection!.show();
+          });
         });
       } else {
         _lastKnownRemoteTextEditingValue = textEditingValue;
@@ -100,25 +109,30 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     } else {
       // On mobile web (especially Safari), ensure selection is synced before showing keyboard
       // This prevents the cursor from jumping to the end when keyboard opens
-      // Use a post-frame callback to ensure selection has propagated from controller
+      // Safari needs a small delay after frame to properly sync selection state
       if (isMobileWeb()) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !hasConnection) return;
 
-          // Explicitly construct TextEditingValue with current controller state
-          // to ensure we have the latest selection, not stale textEditingValue
-          final currentSelection = widget.controller.selection;
-          final currentText = widget.controller.document.toPlainText();
-          final currentValue = TextEditingValue(
-            text: currentText,
-            selection: currentSelection,
-          );
+          // Add a small delay for Safari to process selection changes internally
+          Future.delayed(const Duration(milliseconds: 16), () {
+            if (!mounted || !hasConnection) return;
 
-          if (_lastKnownRemoteTextEditingValue != currentValue) {
-            _lastKnownRemoteTextEditingValue = currentValue;
-            _textInputConnection!.setEditingState(currentValue);
-          }
-          _textInputConnection!.show();
+            // Explicitly construct TextEditingValue with current controller state
+            // to ensure we have the latest selection, not stale textEditingValue
+            final currentSelection = widget.controller.selection;
+            final currentText = widget.controller.document.toPlainText();
+            final currentValue = TextEditingValue(
+              text: currentText,
+              selection: currentSelection,
+            );
+
+            if (_lastKnownRemoteTextEditingValue != currentValue) {
+              _lastKnownRemoteTextEditingValue = currentValue;
+              _textInputConnection!.setEditingState(currentValue);
+            }
+            _textInputConnection!.show();
+          });
         });
       } else {
         // Non-mobile-web: show immediately

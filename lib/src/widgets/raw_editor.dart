@@ -973,10 +973,18 @@ class RawEditorState extends EditorState
       case SelectionChangedCause.stylusHandwriting:
         if (isMobileWeb()) {
           // Wait for selection to propagate from controller.updateSelection() to textEditingValue
+          // Safari needs a small delay to process selection changes internally
           SchedulerBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              requestKeyboard();
-            }
+            if (!mounted) return;
+
+            // Add a small delay for Safari to sync selection state
+            // This is necessary because Safari's text input system needs time
+            // to process selection changes before keyboard opens
+            Future.delayed(const Duration(milliseconds: 16), () {
+              if (mounted) {
+                requestKeyboard();
+              }
+            });
           });
         } else {
           requestKeyboard();
