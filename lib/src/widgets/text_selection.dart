@@ -202,6 +202,12 @@ class EditorTextSelectionOverlay {
   /// Layer link for the toolbar, used by SelectionOverlay.
   final LayerLink _toolbarLayerLink = LayerLink();
 
+  /// Saved handles state before showing magnifier (for restoration).
+  List<OverlayEntry>? _savedHandles;
+
+  /// Whether handles were visible before magnifier was shown.
+  bool _handlesVisibleBeforeMagnifier = false;
+
   TextSelection get _selection => value.selection;
 
   void setHandlesVisible(bool visible) {
@@ -359,9 +365,23 @@ class EditorTextSelectionOverlay {
   bool get magnifierIsVisible => _magnifierVisible;
 
   /// Shows the magnifier at the given position.
+  ///
+  /// To avoid collision, this hides the selection handles while the magnifier is visible.
+  /// Handles will be restored when the magnifier is hidden.
   void showMagnifier(Offset positionToShow) {
     if (_magnifierConfiguration == TextMagnifierConfiguration.disabled) {
       return;
+    }
+
+    // Hide selection handles to avoid collision with magnifier
+    // Save state so we can restore them later
+    if (_handles != null && !_magnifierVisible) {
+      _savedHandles = _handles;
+      _handlesVisibleBeforeMagnifier = handlesVisible;
+      // Temporarily hide handles (don't dispose, just hide)
+      _handles![0].remove();
+      _handles![1].remove();
+      _handles = null;
     }
 
     // Create the magnifier overlay if it doesn't exist
@@ -407,10 +427,24 @@ class EditorTextSelectionOverlay {
   }
 
   /// Hides the magnifier.
+  ///
+  /// This also restores selection handles if they were visible before the magnifier was shown.
   void hideMagnifier() {
     if (_magnifierOverlay != null && _magnifierVisible) {
       _magnifierOverlay!.hideMagnifier();
       _magnifierVisible = false;
+
+      // Restore selection handles if they were visible before magnifier
+      if (_savedHandles != null && _handlesVisibleBeforeMagnifier) {
+        _handles = _savedHandles;
+        _savedHandles = null;
+        // Re-insert the handles into the overlay
+        Overlay.of(context,
+                rootOverlay: true, debugRequiredFor: debugRequiredFor)
+            .insertAll(_handles!);
+      }
+      _savedHandles = null;
+      _handlesVisibleBeforeMagnifier = false;
     }
   }
 
@@ -456,6 +490,8 @@ class EditorTextSelectionOverlay {
     if (_magnifierVisible) {
       hideMagnifier();
     }
+    // Clean up any saved handles
+    _savedHandles = null;
     hide();
     _magnifierOverlay?.dispose();
     _magnifierOverlay = null;
