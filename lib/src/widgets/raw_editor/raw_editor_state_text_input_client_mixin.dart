@@ -51,7 +51,6 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     }
 
     if (!hasConnection) {
-      _lastKnownRemoteTextEditingValue = textEditingValue;
       _textInputConnection = TextInput.attach(
         this,
         TextInputConfiguration(
@@ -72,8 +71,24 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       _updateComposingRectIfNeeded();
       //update IME position for Macos
       _updateCaretRectIfNeeded();
-      _textInputConnection!.setEditingState(_lastKnownRemoteTextEditingValue!);
-      _textInputConnection!.show();
+
+      // On mobile web (especially Safari), ensure selection has propagated before
+      // setting initial editing state. This prevents cursor from jumping to end.
+      if (isMobileWeb()) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !hasConnection) return;
+
+          final currentValue = textEditingValue;
+          _lastKnownRemoteTextEditingValue = currentValue;
+          _textInputConnection!.setEditingState(currentValue);
+          _textInputConnection!.show();
+        });
+      } else {
+        _lastKnownRemoteTextEditingValue = textEditingValue;
+        _textInputConnection!
+            .setEditingState(_lastKnownRemoteTextEditingValue!);
+        _textInputConnection!.show();
+      }
     } else {
       // On mobile web (especially Safari), ensure selection is synced before showing keyboard
       // This prevents the cursor from jumping to the end when keyboard opens
