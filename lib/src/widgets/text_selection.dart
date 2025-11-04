@@ -373,15 +373,16 @@ class EditorTextSelectionOverlay {
       return;
     }
 
-    // Hide selection handles to avoid collision with magnifier
-    // Save state so we can restore them later
+    // Only hide handles if magnifier is about to become visible for the first time
+    // AND handles actually exist and are inserted in the overlay
     if (_handles != null && !_magnifierVisible) {
       _savedHandles = _handles;
       _handlesVisibleBeforeMagnifier = handlesVisible;
-      // Temporarily hide handles (don't dispose, just hide)
-      _handles![0].remove();
-      _handles![1].remove();
-      _handles = null;
+
+      // Temporarily hide handles by setting visibility to false
+      // Don't remove them from overlay - just hide them
+      handlesVisible = false;
+      markNeedsBuild();
     }
 
     // Create the magnifier overlay if it doesn't exist
@@ -428,23 +429,20 @@ class EditorTextSelectionOverlay {
 
   /// Hides the magnifier.
   ///
-  /// This also restores selection handles if they were visible before the magnifier was shown.
+  /// This also restores selection handles visibility if they were visible before the magnifier was shown.
   void hideMagnifier() {
     if (_magnifierOverlay != null && _magnifierVisible) {
       _magnifierOverlay!.hideMagnifier();
       _magnifierVisible = false;
 
-      // Restore selection handles if they were visible before magnifier
-      if (_savedHandles != null && _handlesVisibleBeforeMagnifier) {
-        _handles = _savedHandles;
+      // Restore handles visibility if they were visible before magnifier
+      if (_savedHandles != null) {
+        // Handles still exist in the overlay, just restore visibility
+        handlesVisible = _handlesVisibleBeforeMagnifier;
+        markNeedsBuild();
         _savedHandles = null;
-        // Re-insert the handles into the overlay
-        Overlay.of(context,
-                rootOverlay: true, debugRequiredFor: debugRequiredFor)
-            .insertAll(_handles!);
+        _handlesVisibleBeforeMagnifier = false;
       }
-      _savedHandles = null;
-      _handlesVisibleBeforeMagnifier = false;
     }
   }
 
