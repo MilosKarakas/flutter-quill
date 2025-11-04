@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:i18n_extension/i18n_extension.dart';
 
@@ -808,7 +809,19 @@ class _QuillEditorSelectionGestureDetectorBuilder
         }
       }
     } finally {
-      _state._requestKeyboard();
+      // On mobile web (especially Safari), ensure selection has propagated before
+      // requesting keyboard to prevent cursor from jumping to the end.
+      // This matches Flutter's behavior where selection is set before keyboard opens.
+      if (isMobileWeb()) {
+        // Wait one frame to ensure selection has propagated from renderEditor to controller
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (_state.mounted) {
+            _state._requestKeyboard();
+          }
+        });
+      } else {
+        _state._requestKeyboard();
+      }
     }
   }
 
