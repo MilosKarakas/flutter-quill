@@ -304,10 +304,10 @@ class EditorTextSelectionGestureDetectorBuilder {
       editor!.showToolbar();
     }
 
-    // On mobile platforms, reopen keyboard after long press if selection is collapsed (caret placement)
-    // This improves UX by allowing users to position caret via long press and immediately type
-    if ((isMobileWeb() || isMobile()) &&
-        editor!.textEditingValue.selection.isCollapsed) {
+    // On mobile platforms, always reopen keyboard after long press
+    // The system/browser closes the keyboard when showing selection toolbar/context menu
+    // We need to reopen it so users can immediately type or edit
+    if (isMobileWeb() || isMobile()) {
       editor!.requestKeyboard();
     }
   }
