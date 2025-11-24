@@ -143,15 +143,20 @@ void _handleCopy(web.Event event) {
   // Use the async Clipboard API to write directly to system clipboard.
   // Flutter's hidden input element doesn't contain the document text,
   // so native browser copy doesn't work. We must use the Clipboard API.
+  // IMPORTANT: Call _onCopy AFTER the write completes to avoid focus
+  // manipulation interfering with the clipboard write.
   debugPrint(
       '$_kLogTag Copy: Writing ${selectedText.length} chars to clipboard via API');
+  
+  final onCopyCallback = _onCopy!;
   web.window.navigator.clipboard.writeText(selectedText).toDart.then((_) {
-    debugPrint('$_kLogTag Copy: Successfully wrote to clipboard');
+    debugPrint('$_kLogTag Copy: Successfully wrote to clipboard, calling onCopy');
+    onCopyCallback();
   }).catchError((e) {
     debugPrint('$_kLogTag Copy: Failed to write to clipboard: $e');
+    // Still call onCopy for focus restoration even if clipboard failed
+    onCopyCallback();
   });
-
-  _onCopy!();
 }
 
 /// Handles browser cut event
@@ -176,16 +181,19 @@ void _handleCut(web.Event event) {
 
   // Use the async Clipboard API to write directly to system clipboard.
   // Flutter's hidden input element doesn't contain the document text.
+  // IMPORTANT: Call _onCut AFTER the write completes.
   debugPrint(
       '$_kLogTag Cut: Writing ${selectedText.length} chars to clipboard via API');
+  
+  final onCutCallback = _onCut!;
   web.window.navigator.clipboard.writeText(selectedText).toDart.then((_) {
-    debugPrint('$_kLogTag Cut: Successfully wrote to clipboard');
+    debugPrint('$_kLogTag Cut: Successfully wrote to clipboard, calling onCut');
+    onCutCallback();
   }).catchError((e) {
     debugPrint('$_kLogTag Cut: Failed to write to clipboard: $e');
+    // Still call onCut for deletion even if clipboard failed
+    onCutCallback();
   });
-
-  // The onCut callback will delete the selected text from Quill's document
-  _onCut!();
 }
 
 /// Handles browser paste event
