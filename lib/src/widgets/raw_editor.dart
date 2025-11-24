@@ -1904,11 +1904,8 @@ class RawEditorState extends EditorState
     debugPrint(
         '[QuillEditor] Stored style info, calling _restoreFocusAfterToolbarAction');
 
-    // Stop auto-restore loop - we've handled the action successfully
-    _shouldRestoreFocusOnWeb = false;
-    _webFocusRestorationTimer?.cancel();
-    debugPrint('[QuillEditor] Stopped auto-restore loop');
-
+    // Don't stop auto-restore yet - focus might be lost after our timer fires.
+    // The max attempts counter will prevent infinite loops.
     // Restore focus after context menu action
     _restoreFocusAfterToolbarAction();
   }
@@ -1942,11 +1939,8 @@ class RawEditorState extends EditorState
       );
     }
 
-    // Stop auto-restore loop - we've handled the action successfully
-    _shouldRestoreFocusOnWeb = false;
-    _webFocusRestorationTimer?.cancel();
-    debugPrint('[QuillEditor] Stopped auto-restore loop');
-
+    // Don't stop auto-restore yet - focus might be lost after our timer fires.
+    // The max attempts counter will prevent infinite loops.
     debugPrint('[QuillEditor] Calling _restoreFocusAfterToolbarAction');
     _restoreFocusAfterToolbarAction();
   }
@@ -1972,11 +1966,8 @@ class RawEditorState extends EditorState
       TextSelection.collapsed(offset: selection.start + text.length),
     );
 
-    // Stop auto-restore loop - we've handled the action successfully
-    _shouldRestoreFocusOnWeb = false;
-    _webFocusRestorationTimer?.cancel();
-    debugPrint('[QuillEditor] Stopped auto-restore loop');
-
+    // Don't stop auto-restore yet - focus might be lost after our timer fires.
+    // The max attempts counter will prevent infinite loops.
     debugPrint('[QuillEditor] Calling _restoreFocusAfterToolbarAction');
     _restoreFocusAfterToolbarAction();
   }

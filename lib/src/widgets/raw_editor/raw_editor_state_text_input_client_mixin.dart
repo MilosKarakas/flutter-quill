@@ -134,7 +134,7 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         _lastKnownRemoteTextEditingValue = textEditingValue;
         _textInputConnection!
             .setEditingState(_lastKnownRemoteTextEditingValue!);
-        _textInputConnection!.show();
+        _safeShowConnection();
         debugPrint('[TextInput] New connection created and shown');
       }
     } else {
@@ -143,7 +143,7 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       if (isMobileWeb()) {
         _syncEditingStateForMobileWeb(isNewConnection: false);
       } else {
-        _textInputConnection!.show();
+        _safeShowConnection();
       }
     }
     debugPrint(
@@ -193,7 +193,7 @@ mixin RawEditorStateTextInputClientMixin on EditorState
           _lastKnownRemoteTextEditingValue = currentValue;
           _textInputConnection!.setEditingState(currentValue);
         }
-        _textInputConnection!.show();
+        _safeShowConnection();
 
         // Clear programmatic selection after it's been applied
         _clearProgrammaticSelection();
@@ -228,6 +228,31 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       }
       SchedulerBinding.instance
           .addPostFrameCallback((_) => _updateCaretRectIfNeeded());
+    }
+  }
+
+  /// Safely shows the text input connection with error handling.
+  /// On Flutter Web, showing the connection can fail if the view is disposed
+  /// or not ready. This wraps the call in a try-catch to prevent crashes.
+  void _safeShowConnection() {
+    if (!hasConnection) {
+      debugPrint('[TextInput] _safeShowConnection: No connection to show');
+      return;
+    }
+    if (!mounted) {
+      debugPrint('[TextInput] _safeShowConnection: Widget not mounted, skipping');
+      return;
+    }
+    try {
+      _textInputConnection!.show();
+    } catch (e) {
+      // On Flutter Web, this can fail with "Could not find View with id 0"
+      // if the view is disposed or navigation happened during async operation
+      debugPrint('[TextInput] _safeShowConnection: Error showing connection: $e');
+      // Close the broken connection so it can be recreated
+      _textInputConnection?.close();
+      _textInputConnection = null;
+      _lastKnownRemoteTextEditingValue = null;
     }
   }
 
