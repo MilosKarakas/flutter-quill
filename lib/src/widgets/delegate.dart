@@ -304,15 +304,23 @@ class EditorTextSelectionGestureDetectorBuilder {
     // The keyboard changes the viewport size, so we need it open before calculating toolbar position
     if (isMobileWeb() || isMobile()) {
       editor!.requestKeyboard();
-    }
 
-    // Allow the selection to get updated and keyboard to open before showing toolbar
-    // This ensures toolbar is positioned correctly for the viewport with keyboard visible
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (shouldShowSelectionToolbar) {
-        editor!.showToolbar();
-      }
-    });
+      // Wait for keyboard to open before showing toolbar
+      // Keyboard animation takes ~200-300ms, so we wait for it to mostly complete
+      // This ensures toolbar calculates position with the correct viewport size
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (shouldShowSelectionToolbar) {
+          editor!.showToolbar();
+        }
+      });
+    } else {
+      // On desktop, show toolbar immediately after selection updates
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (shouldShowSelectionToolbar) {
+          editor!.showToolbar();
+        }
+      });
+    }
   }
 
   /// Handler for [EditorTextSelectionGestureDetector.onDoubleTapDown].
