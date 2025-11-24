@@ -595,15 +595,32 @@ class QuillEditorState extends State<QuillEditor>
       onPaste: widget.onPaste,
     );
 
+    final gestureChild = selectionEnabled
+        ? _selectionGestureDetectorBuilder.build(
+            behavior: HitTestBehavior.translucent,
+            detectWordBoundary: widget.detectWordBoundary,
+            child: child,
+          )
+        : child;
+
+    // On web, wrap with a Listener to ensure we receive raw pointer events
+    // even after browser context menu actions which can sometimes interfere
+    // with Flutter's gesture detection
     final editor = I18n(
       initialLocale: widget.locale,
-      child: selectionEnabled
-          ? _selectionGestureDetectorBuilder.build(
+      child: kIsWeb
+          ? Listener(
               behavior: HitTestBehavior.translucent,
-              detectWordBoundary: widget.detectWordBoundary,
-              child: child,
+              onPointerDown: (event) {
+                // Ensure editor has focus when user taps/clicks on it
+                // This is critical after browser context menu actions
+                if (!widget.focusNode.hasFocus) {
+                  widget.focusNode.requestFocus();
+                }
+              },
+              child: gestureChild,
             )
-          : child,
+          : gestureChild,
     );
 
     if (kIsWeb) {
