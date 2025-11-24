@@ -1639,9 +1639,10 @@ class RawEditorState extends EditorState
           if (mounted && !_hasFocus && _shouldRestoreFocusOnWeb) {
             // First, unfocus whatever currently has focus (e.g., SelectableRegion)
             final currentFocus = FocusManager.instance.primaryFocus;
-            debugPrint('[QuillEditor] Current focus before unfocus: $currentFocus');
+            debugPrint(
+                '[QuillEditor] Current focus before unfocus: $currentFocus');
             currentFocus?.unfocus();
-            
+
             debugPrint('[QuillEditor] Requesting focus from timer (forcing)');
             // Force close any stale connection first
             closeConnectionIfNeeded();
@@ -1835,9 +1836,10 @@ class RawEditorState extends EditorState
           // First, unfocus whatever currently has focus (e.g., SelectableRegion)
           // SelectableRegion creates its own FocusNode and competes for focus
           final currentFocus = FocusManager.instance.primaryFocus;
-          debugPrint('[QuillEditor] Current focus before unfocus: $currentFocus');
+          debugPrint(
+              '[QuillEditor] Current focus before unfocus: $currentFocus');
           currentFocus?.unfocus();
-          
+
           // Force close the connection first - this is critical!
           // Without this, the engine thinks we're still connected and won't
           // re-focus the hidden DOM element when we request focus.
