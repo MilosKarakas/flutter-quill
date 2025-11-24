@@ -497,6 +497,10 @@ class RawEditorState extends EditorState
   }
 
   void _defaultOnTapOutside(PointerDownEvent event) {
+    // Disable focus restoration since user is intentionally tapping outside
+    _shouldRestoreFocusOnWeb = false;
+    _webFocusRestorationTimer?.cancel();
+
     /// The focus dropping behavior is only present on desktop platforms
     /// and mobile browsers.
     switch (defaultTargetPlatform) {
@@ -1350,6 +1354,10 @@ class RawEditorState extends EditorState
       HardwareKeyboard.instance.removeHandler(_hardwareKeyboardEvent);
     }
 
+    // Cancel any pending focus restoration timer
+    _webFocusRestorationTimer?.cancel();
+    _webFocusRestorationTimer = null;
+
     assert(!hasConnection);
     _selectionOverlay?.dispose();
     _selectionOverlay = null;
@@ -1535,6 +1543,13 @@ class RawEditorState extends EditorState
     _manageSelectionOverlay(_OverlayAction.ensureExists);
   }
 
+  /// Tracks if we should attempt focus restoration after losing focus on web.
+  /// This helps recover from browser context menu stealing focus.
+  bool _shouldRestoreFocusOnWeb = false;
+
+  /// Timer for delayed focus restoration on web
+  Timer? _webFocusRestorationTimer;
+
   void _handleFocusChanged() {
     if (dirty) {
       SchedulerBinding.instance
@@ -1548,6 +1563,15 @@ class RawEditorState extends EditorState
       WidgetsBinding.instance.addObserver(this);
       _showCaretOnScreen();
 
+      // Cancel any pending focus restoration since we have focus now
+      _webFocusRestorationTimer?.cancel();
+      _webFocusRestorationTimer = null;
+
+      // Mark that we should restore focus if lost on web (e.g., to context menu)
+      if (kIsWeb) {
+        _shouldRestoreFocusOnWeb = true;
+      }
+
       // On mobile platforms, ensure cursor is visible immediately by setting opacity to 1
       // before starting the blink timer. This prevents the "invisible cursor" issue.
       if ((isMobileWeb() || isMobile()) && controller.selection.isCollapsed) {
@@ -1556,6 +1580,23 @@ class RawEditorState extends EditorState
       }
     } else {
       WidgetsBinding.instance.removeObserver(this);
+
+      // On desktop web, if we lose focus unexpectedly (e.g., to browser context menu),
+      // schedule focus restoration after a brief delay. This prevents the editor from
+      // becoming frozen after context menu interactions.
+      if (kIsWeb && !isMobileWeb() && _shouldRestoreFocusOnWeb && mounted) {
+        _webFocusRestorationTimer?.cancel();
+        _webFocusRestorationTimer = Timer(const Duration(milliseconds: 100), () {
+          if (mounted && !_hasFocus && _shouldRestoreFocusOnWeb) {
+            // Only restore if nothing else has taken focus intentionally
+            final currentFocus = FocusManager.instance.primaryFocus;
+            // Restore focus if no other widget has claimed it
+            if (currentFocus == null || currentFocus.context == null) {
+              widget.focusNode.requestFocus();
+            }
+          }
+        });
+      }
     }
 
     // Start or stop cursor timer after setting initial visibility
