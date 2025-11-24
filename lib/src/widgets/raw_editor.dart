@@ -1776,18 +1776,27 @@ class RawEditorState extends EditorState
     );
   }
 
-  /// Restores focus to the editor after toolbar actions on web.
+  /// Restores focus to the editor after toolbar/context menu actions on web.
   ///
-  /// On web platforms, clicking on the context menu toolbar can cause the editor
-  /// to lose focus. This method ensures focus is restored after the action completes,
-  /// preventing the editor from becoming frozen/unresponsive.
+  /// On web platforms, the browser context menu steals focus from Flutter's hidden
+  /// input element. Simply calling requestFocus() only restores Flutter's logical
+  /// focus, but doesn't re-focus the hidden DOM element. To fix this, we must:
+  /// 1. Close the TextInputConnection (detaches from hidden element)
+  /// 2. Request Flutter focus
+  /// 3. The focus handler will call openOrCloseConnection() which reattaches
+  ///    and causes the engine to re-focus the hidden DOM element
   void _restoreFocusAfterToolbarAction() {
     if (kIsWeb) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_hasFocus) {
+        if (mounted) {
+          // Force close the connection first - this is critical!
+          // Without this, the engine thinks we're still connected and won't
+          // re-focus the hidden DOM element when we request focus.
+          closeConnectionIfNeeded();
+          
+          // Now request focus - this triggers _handleFocusChanged which will
+          // call openOrCloseConnection() to create a fresh connection
           widget.focusNode.requestFocus();
-          // Reopen input connection after restoring focus
-          openConnectionIfNeeded();
         }
       });
     }
