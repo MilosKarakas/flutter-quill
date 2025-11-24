@@ -1617,27 +1617,29 @@ class RawEditorState extends EditorState
       // Notify clipboard listener that we lost focus (for grace window tracking)
       if (kIsWeb) {
         final hasSelection = !controller.selection.isCollapsed;
-        debugPrint('[QuillEditor] Notifying clipboard of focus loss, hasSelection=$hasSelection');
+        debugPrint(
+            '[QuillEditor] Notifying clipboard of focus loss, hasSelection=$hasSelection');
         web_clipboard.notifyEditorLostFocus(hasSelection: hasSelection);
       }
 
       // On desktop web, if we lose focus unexpectedly (e.g., to browser context menu),
       // schedule focus restoration after a brief delay. This prevents the editor from
       // becoming frozen after context menu interactions.
+      // NOTE: We removed the check for currentFocus because the SelectableRegion
+      // (Flutter's web selection overlay) often has focus, and that's exactly when
+      // we need to restore focus to our editor.
       if (kIsWeb && !isMobileWeb() && _shouldRestoreFocusOnWeb && mounted) {
-        debugPrint('[QuillEditor] Scheduling focus restoration timer (100ms)');
+        debugPrint('[QuillEditor] Scheduling focus restoration timer (150ms)');
         _webFocusRestorationTimer?.cancel();
         _webFocusRestorationTimer =
-            Timer(const Duration(milliseconds: 100), () {
+            Timer(const Duration(milliseconds: 150), () {
           debugPrint(
               '[QuillEditor] Timer fired: mounted=$mounted, hasFocus=$_hasFocus');
           if (mounted && !_hasFocus && _shouldRestoreFocusOnWeb) {
-            final currentFocus = FocusManager.instance.primaryFocus;
-            debugPrint('[QuillEditor] currentFocus=$currentFocus');
-            if (currentFocus == null || currentFocus.context == null) {
-              debugPrint('[QuillEditor] Requesting focus from timer');
-              widget.focusNode.requestFocus();
-            }
+            debugPrint('[QuillEditor] Requesting focus from timer (forcing)');
+            // Force close any stale connection first
+            closeConnectionIfNeeded();
+            widget.focusNode.requestFocus();
           }
         });
       }
@@ -1813,12 +1815,15 @@ class RawEditorState extends EditorState
       debugPrint(
           '[QuillEditor] Current state: hasFocus=$_hasFocus, hasConnection=$hasConnection');
 
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        debugPrint('[QuillEditor] PostFrameCallback executing');
+      // Use a timer instead of postFrameCallback to let the browser fully process
+      // the context menu close event before we try to restore focus.
+      // The browser's SelectableRegion often steals focus back if we're too quick.
+      Timer(const Duration(milliseconds: 200), () {
+        debugPrint('[QuillEditor] Timer (200ms) executing for focus restoration');
         debugPrint(
             '[QuillEditor] mounted=$mounted, hasFocus=$_hasFocus, hasConnection=$hasConnection');
 
-        if (mounted) {
+        if (mounted && !_hasFocus) {
           // Force close the connection first - this is critical!
           // Without this, the engine thinks we're still connected and won't
           // re-focus the hidden DOM element when we request focus.
@@ -1832,6 +1837,9 @@ class RawEditorState extends EditorState
           debugPrint('[QuillEditor] Requesting focus...');
           widget.focusNode.requestFocus();
           debugPrint('[QuillEditor] Focus requested, hasFocus=$_hasFocus');
+        } else {
+          debugPrint(
+              '[QuillEditor] Skipping focus restoration: mounted=$mounted, hasFocus=$_hasFocus');
         }
       });
     }
