@@ -144,6 +144,8 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///  which triggers this callback.
   @protected
   void onTapDown(TapDownDetails details) {
+    debugPrint(
+        '[Delegate] onTapDown: ${details.globalPosition}, kind: ${details.kind}');
     renderEditor!.handleTapDown(details);
     // The selection overlay should only be shown when the user is interacting
     // through a touch screen (via either a finger or a stylus).
@@ -160,6 +162,7 @@ class EditorTextSelectionGestureDetectorBuilder {
     // Ensure editor has focus on tap - this is critical on web after
     // browser context menu actions which can steal focus
     if (!delegate.editableTextKey.currentState!.widget.focusNode.hasFocus) {
+      debugPrint('[Delegate] onTapDown: requesting focus');
       delegate.editableTextKey.currentState!.widget.focusNode.requestFocus();
     }
   }
@@ -222,6 +225,7 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///    this callback.
   @protected
   void onSingleTapUp(TapUpDetails details) {
+    debugPrint('[Delegate] onSingleTapUp: ${details.globalPosition}');
     if (delegate.selectionEnabled) {
       renderEditor!.selectWordEdge(SelectionChangedCause.tap);
     }
@@ -234,6 +238,7 @@ class EditorTextSelectionGestureDetectorBuilder {
   /// the current selection.
   @protected
   void onSecondaryTapDown(TapDownDetails details) {
+    debugPrint('[Delegate] onSecondaryTapDown: ${details.globalPosition}');
     // Store tap down position for context menu, same as regular tap
     renderEditor!.handleTapDown(details);
 
