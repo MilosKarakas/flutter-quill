@@ -752,7 +752,7 @@ class _QuillEditorSelectionGestureDetectorBuilder
   }
 
   bool isShiftClick(PointerDeviceKind deviceKind) {
-    final pressed = RawKeyboard.instance.keysPressed;
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
     return deviceKind == PointerDeviceKind.mouse &&
         (pressed.contains(LogicalKeyboardKey.shiftLeft) ||
             pressed.contains(LogicalKeyboardKey.shiftRight));
@@ -1088,8 +1088,10 @@ class RenderEditor extends RenderEditableContainerBox
   }
 
   bool get _shiftPressed =>
-      RawKeyboard.instance.keysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
-      RawKeyboard.instance.keysPressed.contains(LogicalKeyboardKey.shiftRight);
+      HardwareKeyboard.instance.logicalKeysPressed
+          .contains(LogicalKeyboardKey.shiftLeft) ||
+      HardwareKeyboard.instance.logicalKeysPressed
+          .contains(LogicalKeyboardKey.shiftRight);
 
   void setStartHandleLayerLink(LayerLink value) {
     if (_startHandleLayerLink == value) {

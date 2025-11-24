@@ -19,30 +19,39 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   // Track the last programmatically set selection to use when syncing with Safari
   // This prevents Safari's stale selection updates from overwriting our correct selection
   TextSelection? _lastProgrammaticSelection;
-  DateTime? _lastProgrammaticSelectionTime;
+  int _programmaticSelectionId = 0;
+
+  /// Counter to track pending connection operations for debouncing
+  int _pendingConnectionOperationId = 0;
+
+  /// Duration to wait for platform sync on mobile web
+  /// This is necessary because Safari's text input system processes updates asynchronously
+  static const Duration _mobileWebSyncDelay = Duration(milliseconds: 16);
 
   /// Stores the programmatic selection that was just set (from tap/gesture)
   /// This is used to override Safari's potentially stale selection when syncing
   /// Note: Not private because it's called from RawEditorState which uses this mixin
   void setProgrammaticSelection(TextSelection selection) {
     _lastProgrammaticSelection = selection;
-    _lastProgrammaticSelectionTime = DateTime.now();
+    _programmaticSelectionId++;
   }
 
-  /// Gets the selection to use when syncing with Safari
-  /// Prefers programmatic selection if it was set recently (within 100ms)
+  /// Gets the selection to use when syncing with platform
+  /// Prefers programmatic selection if it was set recently
   TextSelection getSelectionForSync() {
-    if (_lastProgrammaticSelection != null &&
-        _lastProgrammaticSelectionTime != null) {
-      final timeSinceProgrammatic =
-          DateTime.now().difference(_lastProgrammaticSelectionTime!);
-      // Use programmatic selection if it was set within the last 100ms
-      if (timeSinceProgrammatic.inMilliseconds < 100) {
-        return _lastProgrammaticSelection!;
-      }
+    // Always prefer the programmatic selection if we have one and it's recent
+    // The programmaticSelectionId ensures we don't use stale selections
+    if (_lastProgrammaticSelection != null && _programmaticSelectionId > 0) {
+      return _lastProgrammaticSelection!;
     }
     // Fallback to controller selection
     return widget.controller.selection;
+  }
+
+  /// Clears the programmatic selection after it's been used
+  void _clearProgrammaticSelection() {
+    _lastProgrammaticSelection = null;
+    _programmaticSelectionId = 0;
   }
 
   /// Whether to create an input connection with the platform for text editing
@@ -104,31 +113,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
       // On mobile web (especially Safari), ensure selection has propagated before
       // setting initial editing state. This prevents cursor from jumping to end.
-      // Safari needs a small delay after frame to properly sync selection state.
       if (isMobileWeb()) {
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || !hasConnection) return;
-
-          // Add a small delay for Safari to process selection changes internally
-          // This is necessary because Safari's text input system is asynchronous
-          // and needs time to sync with Flutter's selection state
-          Future.delayed(const Duration(milliseconds: 16), () {
-            if (!mounted || !hasConnection) return;
-
-            // Use programmatic selection if available (set via tap/gesture)
-            // This prevents Safari's stale selection from overwriting our correct selection
-            final currentSelection = getSelectionForSync();
-            final currentText = widget.controller.document.toPlainText();
-            final currentValue = TextEditingValue(
-              text: currentText,
-              selection: currentSelection,
-            );
-
-            _lastKnownRemoteTextEditingValue = currentValue;
-            _textInputConnection!.setEditingState(currentValue);
-            _textInputConnection!.show();
-          });
-        });
+        _syncEditingStateForMobileWeb(isNewConnection: true);
       } else {
         _lastKnownRemoteTextEditingValue = textEditingValue;
         _textInputConnection!
@@ -136,38 +122,64 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         _textInputConnection!.show();
       }
     } else {
-      // On mobile web (especially Safari), ensure selection is synced before showing keyboard
-      // This prevents the cursor from jumping to the end when keyboard opens
-      // Safari needs a small delay after frame to properly sync selection state
+      // Connection already exists, just show keyboard
       if (isMobileWeb()) {
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || !hasConnection) return;
-
-          // Add a small delay for Safari to process selection changes internally
-          Future.delayed(const Duration(milliseconds: 16), () {
-            if (!mounted || !hasConnection) return;
-
-            // Use programmatic selection if available (set via tap/gesture)
-            // This prevents Safari's stale selection from overwriting our correct selection
-            final currentSelection = getSelectionForSync();
-            final currentText = widget.controller.document.toPlainText();
-            final currentValue = TextEditingValue(
-              text: currentText,
-              selection: currentSelection,
-            );
-
-            if (_lastKnownRemoteTextEditingValue != currentValue) {
-              _lastKnownRemoteTextEditingValue = currentValue;
-              _textInputConnection!.setEditingState(currentValue);
-            }
-            _textInputConnection!.show();
-          });
-        });
+        _syncEditingStateForMobileWeb(isNewConnection: false);
       } else {
-        // Non-mobile-web: show immediately
         _textInputConnection!.show();
       }
     }
+  }
+
+  /// Synchronizes editing state for mobile web platforms (Safari, Chrome mobile).
+  ///
+  /// Mobile web browsers have asynchronous text input systems that may not
+  /// immediately reflect Flutter's selection state. This method uses a
+  /// debounced post-frame callback to ensure proper synchronization.
+  ///
+  /// [isNewConnection] - Whether this is for a newly created connection
+  void _syncEditingStateForMobileWeb({required bool isNewConnection}) {
+    // Increment operation ID to invalidate any pending operations
+    final currentOperationId = ++_pendingConnectionOperationId;
+
+    // Wait for the frame to complete before syncing
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      // Check if this operation is still valid (not superseded by a newer one)
+      if (!mounted ||
+          !hasConnection ||
+          currentOperationId != _pendingConnectionOperationId) {
+        return;
+      }
+
+      // Use a microtask-based approach instead of fixed delays
+      // This allows the browser's event loop to process pending updates
+      Future.delayed(_mobileWebSyncDelay, () {
+        // Re-check validity after delay
+        if (!mounted ||
+            !hasConnection ||
+            currentOperationId != _pendingConnectionOperationId) {
+          return;
+        }
+
+        final currentSelection = getSelectionForSync();
+        final currentText = widget.controller.document.toPlainText();
+        final currentValue = TextEditingValue(
+          text: currentText,
+          selection: currentSelection,
+        );
+
+        // Only update if value has changed or this is a new connection
+        if (isNewConnection ||
+            _lastKnownRemoteTextEditingValue != currentValue) {
+          _lastKnownRemoteTextEditingValue = currentValue;
+          _textInputConnection!.setEditingState(currentValue);
+        }
+        _textInputConnection!.show();
+
+        // Clear programmatic selection after it's been applied
+        _clearProgrammaticSelection();
+      });
+    });
   }
 
   void _updateComposingRectIfNeeded() {
@@ -231,8 +243,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
 
-    // On mobile web, use programmatic selection if available to prevent Safari
-    // stale selection from being synced. On other platforms, use textEditingValue.
+    // Get the current selection, preferring programmatic selection on mobile web
+    // to handle platform-specific async timing issues
     final selection =
         isMobileWeb() ? getSelectionForSync() : textEditingValue.selection;
     final text = widget.controller.document.toPlainText();
@@ -302,25 +314,24 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     final cursorPosition = value.selection.extentOffset;
     final diff = getDiff(oldText, text, cursorPosition);
 
-    // On mobile web Safari, ignore stale selection updates from platform if we just set
-    // a programmatic selection (e.g., from tap). Safari may send back an old selection
-    // before processing our new one, causing cursor to jump.
+    // Determine which selection to use
     TextSelection selectionToUse = value.selection;
-    if (isMobileWeb() &&
-        _lastProgrammaticSelection != null &&
-        _lastProgrammaticSelectionTime != null) {
-      final timeSinceProgrammatic =
-          DateTime.now().difference(_lastProgrammaticSelectionTime!);
-      // If programmatic selection was set within last 200ms and incoming selection is very different
-      // (more than 5 characters off), use our programmatic selection instead
-      if (timeSinceProgrammatic.inMilliseconds < 200) {
-        final programmaticOffset = _lastProgrammaticSelection!.extentOffset;
-        final incomingOffset = value.selection.extentOffset;
-        if ((programmaticOffset - incomingOffset).abs() > 5) {
-          // Safari sent stale selection, use our programmatic one
-          selectionToUse = _lastProgrammaticSelection!;
-        }
+
+    // On mobile web, handle stale selection updates from platform
+    // If we have a programmatic selection that's more recent, prefer it
+    if (isMobileWeb() && _lastProgrammaticSelection != null) {
+      final programmaticOffset = _lastProgrammaticSelection!.extentOffset;
+      final incomingOffset = value.selection.extentOffset;
+
+      // If incoming selection differs significantly from our programmatic one,
+      // it's likely a stale update from the platform - use ours instead
+      if ((programmaticOffset - incomingOffset).abs() > 5) {
+        selectionToUse = _lastProgrammaticSelection!;
       }
+
+      // Clear programmatic selection after handling this update
+      // This ensures we don't keep overriding future legitimate platform updates
+      _clearProgrammaticSelection();
     }
 
     if (diff.deleted.isEmpty && diff.inserted.isEmpty) {

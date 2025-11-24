@@ -221,10 +221,39 @@ class EditorTextSelectionGestureDetectorBuilder {
     }
   }
 
+  /// Handler for secondary tap down (right-click down).
+  ///
+  /// By default, it stores the tap position for accurate context menu positioning
+  /// and updates the selection to the right-click position if the click is outside
+  /// the current selection.
+  @protected
+  void onSecondaryTapDown(TapDownDetails details) {
+    // Store tap down position for context menu, same as regular tap
+    renderEditor!.handleTapDown(details);
+
+    // On web, update selection to right-click position if clicking outside current selection
+    // This ensures context menu actions operate on the clicked position
+    if (delegate.selectionEnabled) {
+      final position =
+          renderEditor!.getPositionForOffset(details.globalPosition);
+      final selection = editor!.textEditingValue.selection;
+
+      // Only update selection if clicking outside current selection
+      if (selection.isCollapsed ||
+          position.offset < selection.start ||
+          position.offset > selection.end) {
+        renderEditor!.selectPositionAt(
+          from: details.globalPosition,
+          cause: SelectionChangedCause.tap,
+        );
+      }
+    }
+  }
+
   /// onSingleTapUp for mouse right click
   @protected
   void onSecondarySingleTapUp(TapUpDetails details) {
-    // added to show toolbar by right click
+    // Show toolbar at the selection position (which was set in onSecondaryTapDown)
     if (shouldShowSelectionToolbar) {
       editor!.showToolbar();
     }
@@ -420,6 +449,7 @@ class EditorTextSelectionGestureDetectorBuilder {
         onSingleLongTapMoveUpdate: onSingleLongTapMoveUpdate,
         onSingleLongTapEnd: onSingleLongTapEnd,
         onDoubleTapDown: onDoubleTapDown,
+        onSecondaryTapDown: onSecondaryTapDown,
         onSecondarySingleTapUp: onSecondarySingleTapUp,
         onDragSelectionStart: onDragSelectionStart,
         onDragSelectionUpdate: onDragSelectionUpdate,

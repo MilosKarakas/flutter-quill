@@ -44,6 +44,24 @@ import 'text_selection.dart';
 import 'toolbar/link_style_button2.dart';
 import 'toolbar/search_dialog.dart';
 
+/// Actions for managing selection overlay lifecycle.
+///
+/// Used by [RawEditorState._manageSelectionOverlay] to specify
+/// the desired overlay state change.
+enum _OverlayAction {
+  /// Create overlay if it doesn't exist
+  create,
+
+  /// Update existing overlay with current value
+  update,
+
+  /// Dispose overlay if it exists
+  dispose,
+
+  /// Create if doesn't exist, update if does (most common)
+  ensureExists,
+}
+
 class RawEditor extends StatefulWidget {
   const RawEditor({
     required this.controller,
@@ -1331,6 +1349,7 @@ class RawEditorState extends EditorState
     if (!kIsWeb) {
       HardwareKeyboard.instance.removeHandler(_hardwareKeyboardEvent);
     }
+
     assert(!hasConnection);
     _selectionOverlay?.dispose();
     _selectionOverlay = null;
@@ -1399,6 +1418,92 @@ class RawEditorState extends EditorState
     }
   }
 
+  // ===================== SELECTION OVERLAY LIFECYCLE MANAGEMENT =====================
+  //
+  // The selection overlay lifecycle is managed through three main methods:
+  //
+  // 1. _manageSelectionOverlay() - Central entry point for all overlay state changes
+  // 2. _createSelectionOverlay() - Creates a new overlay instance
+  // 3. _disposeSelectionOverlay() - Safely disposes the overlay
+  //
+  // Lifecycle Rules:
+  // - Overlay is created when editor gains focus or selection changes
+  // - Overlay is disposed when focus is lost (with exceptions for mobile web)
+  // - On mobile web, overlay persists during selection for context menu support
+  // - Magnifier must be hidden before overlay disposal to prevent orphan widgets
+  //
+  // Call sites that manage overlay:
+  // - _handleSelectionChanged() - Creates/updates overlay on selection changes
+  // - _handleFocusChanged() - Disposes overlay on focus loss
+  // - showToolbar() - Ensures overlay exists before showing toolbar
+  // - showMagnifier()/hideMagnifier() - Manages magnifier through overlay
+
+  /// Central method for managing selection overlay lifecycle.
+  ///
+  /// This is the single entry point for overlay state management, ensuring
+  /// consistent behavior across all code paths.
+  ///
+  /// [action] specifies what to do:
+  /// - [_OverlayAction.create] - Create overlay if it doesn't exist
+  /// - [_OverlayAction.update] - Update existing overlay with current value
+  /// - [_OverlayAction.dispose] - Dispose overlay if it exists
+  /// - [_OverlayAction.ensureExists] - Create if doesn't exist, update if does
+  void _manageSelectionOverlay(_OverlayAction action) {
+    switch (action) {
+      case _OverlayAction.create:
+        if (_selectionOverlay == null) {
+          _createSelectionOverlay();
+        }
+        break;
+      case _OverlayAction.update:
+        _selectionOverlay?.update(textEditingValue);
+        break;
+      case _OverlayAction.dispose:
+        _disposeSelectionOverlay();
+        break;
+      case _OverlayAction.ensureExists:
+        if (_selectionOverlay == null) {
+          _createSelectionOverlay();
+        } else {
+          _selectionOverlay!.update(textEditingValue);
+        }
+        break;
+    }
+  }
+
+  /// Creates a new selection overlay instance.
+  void _createSelectionOverlay() {
+    _selectionOverlay = EditorTextSelectionOverlay(
+      value: textEditingValue,
+      context: context,
+      debugRequiredFor: widget,
+      startHandleLayerLink: _startHandleLayerLink,
+      endHandleLayerLink: _endHandleLayerLink,
+      renderObject: renderEditor,
+      selectionCtrls: widget.selectionCtrls,
+      selectionDelegate: this,
+      clipboardStatus: _clipboardStatus,
+      contextMenuBuilder: widget.contextMenuBuilder == null
+          ? null
+          : (context) => widget.contextMenuBuilder!(context, this),
+      magnifierConfiguration: widget.magnifierConfiguration,
+    );
+  }
+
+  /// Safely disposes the selection overlay.
+  ///
+  /// Ensures magnifier is hidden before disposal to prevent orphan widgets.
+  void _disposeSelectionOverlay() {
+    if (_selectionOverlay != null) {
+      // Safety: Always hide magnifier before disposing
+      if (_selectionOverlay!.magnifierIsVisible) {
+        _selectionOverlay!.hideMagnifier();
+      }
+      _selectionOverlay!.dispose();
+      _selectionOverlay = null;
+    }
+  }
+
   /// Updates or disposes the selection overlay based on focus state.
   ///
   /// This method is called during focus changes and handles the overlay lifecycle
@@ -1408,71 +1513,26 @@ class RawEditorState extends EditorState
   /// - Desktop/Mobile native: Dispose overlay when focus is lost
   /// - Mobile web: Keep overlay alive during selection even without focus
   ///   (needed for long-press toolbar to work, as focus is temporarily lost)
-  ///
-  /// Note: This method only updates/disposes existing overlays. Overlay creation
-  /// is handled by [_ensureSelectionOverlay] which is called from
-  /// [_handleSelectionChanged] and [showToolbar].
-  ///
-  /// See also:
-  /// - [_handleFocusChanged] which calls this method
-  /// - [_ensureSelectionOverlay] for overlay creation logic
   void _updateOrDisposeSelectionOverlayIfNeeded() {
-    // Overlay is primarily managed in _handleSelectionChanged()
-    // This method handles focus-related updates
-    if (_selectionOverlay != null) {
-      // On mobile web, keep overlay alive during selection even without focus
-      // This is needed for long-press toolbar to work
-      final shouldKeepOverlay = _hasFocus ||
-          (isMobileWeb() && !textEditingValue.selection.isCollapsed);
+    if (_selectionOverlay == null) return;
 
-      if (!shouldKeepOverlay) {
-        // Safety: Ensure magnifier is hidden before disposing overlay
-        // This prevents orphaned magnifier widgets
-        if (_selectionOverlay!.magnifierIsVisible) {
-          _selectionOverlay!.hideMagnifier();
-        }
-        // Dispose overlay when focus is lost and selection is collapsed
-        _selectionOverlay!.dispose();
-        _selectionOverlay = null;
-      } else {
-        // Update overlay without hiding magnifier
-        // The magnifier should persist during gestures
-        _selectionOverlay!.update(textEditingValue);
-      }
+    // Determine if overlay should persist
+    final shouldKeepOverlay =
+        _hasFocus || (isMobileWeb() && !textEditingValue.selection.isCollapsed);
+
+    if (shouldKeepOverlay) {
+      _manageSelectionOverlay(_OverlayAction.update);
+    } else {
+      _manageSelectionOverlay(_OverlayAction.dispose);
     }
   }
 
   /// Creates or updates the selection overlay.
   ///
-  /// This is the single source of truth for overlay creation, ensuring
-  /// consistent initialization across different code paths (selection changes,
-  /// toolbar display, etc.).
-  ///
-  /// If the overlay already exists, it will be updated with the current
-  /// text editing value. If it doesn't exist, a new overlay will be created.
+  /// This is the convenience method for ensuring overlay exists,
+  /// used by selection change handlers and toolbar display.
   void _ensureSelectionOverlay() {
-    if (_selectionOverlay == null) {
-      _selectionOverlay = EditorTextSelectionOverlay(
-        value: textEditingValue,
-        context: context,
-        debugRequiredFor: widget,
-        startHandleLayerLink: _startHandleLayerLink,
-        endHandleLayerLink: _endHandleLayerLink,
-        renderObject: renderEditor,
-        selectionCtrls: widget.selectionCtrls,
-        selectionDelegate: this,
-        clipboardStatus: _clipboardStatus,
-        contextMenuBuilder: widget.contextMenuBuilder == null
-            ? null
-            : (context) => widget.contextMenuBuilder!(context, this),
-        magnifierConfiguration: widget.magnifierConfiguration,
-      );
-    } else {
-      // Update the overlay without hiding the magnifier
-      // The magnifier should persist during long press gestures and only hide
-      // when explicitly requested (e.g., on long press end)
-      _selectionOverlay!.update(textEditingValue);
-    }
+    _manageSelectionOverlay(_OverlayAction.ensureExists);
   }
 
   void _handleFocusChanged() {
@@ -1652,6 +1712,23 @@ class RawEditorState extends EditorState
     );
   }
 
+  /// Restores focus to the editor after toolbar actions on web.
+  ///
+  /// On web platforms, clicking on the context menu toolbar can cause the editor
+  /// to lose focus. This method ensures focus is restored after the action completes,
+  /// preventing the editor from becoming frozen/unresponsive.
+  void _restoreFocusAfterToolbarAction() {
+    if (kIsWeb) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_hasFocus) {
+          widget.focusNode.requestFocus();
+          // Reopen input connection after restoring focus
+          openConnectionIfNeeded();
+        }
+      });
+    }
+  }
+
   /// Copy current selection to [Clipboard].
   @override
   void copySelection(SelectionChangedCause cause) {
@@ -1678,6 +1755,9 @@ class RawEditorState extends EditorState
         ),
         SelectionChangedCause.toolbar,
       );
+
+      // Restore focus after toolbar action on web
+      _restoreFocusAfterToolbarAction();
     }
   }
 
@@ -1702,6 +1782,9 @@ class RawEditorState extends EditorState
     if (cause == SelectionChangedCause.toolbar) {
       bringIntoView(textEditingValue.selection.extent);
       hideToolbar();
+
+      // Restore focus after toolbar action on web
+      _restoreFocusAfterToolbarAction();
     }
   }
 
@@ -2068,6 +2151,10 @@ class RawEditorState extends EditorState
         cause,
       );
 
+      // Restore focus after toolbar action on web
+      if (cause == SelectionChangedCause.toolbar) {
+        _restoreFocusAfterToolbarAction();
+      }
       return;
     }
 
@@ -2090,6 +2177,11 @@ class RawEditorState extends EditorState
         BlockEmbed.image(imageUrl),
         null,
       );
+
+      // Restore focus after toolbar action on web
+      if (cause == SelectionChangedCause.toolbar) {
+        _restoreFocusAfterToolbarAction();
+      }
     }
   }
 
@@ -2106,6 +2198,9 @@ class RawEditorState extends EditorState
 
     if (cause == SelectionChangedCause.toolbar) {
       bringIntoView(textEditingValue.selection.extent);
+
+      // Restore focus after toolbar action on web
+      _restoreFocusAfterToolbarAction();
     }
   }
 
