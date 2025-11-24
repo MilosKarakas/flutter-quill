@@ -11,11 +11,6 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:pasteboard/pasteboard.dart';
 
-// Conditional import for web clipboard handling
-import 'raw_editor/web_clipboard_stub.dart'
-    if (dart.library.js_interop) 'raw_editor/web_clipboard_web.dart'
-    as web_clipboard;
-
 import '../../flutter_quill.dart';
 import '../models/documents/attribute.dart';
 import '../models/documents/document.dart';
@@ -502,10 +497,6 @@ class RawEditorState extends EditorState
   }
 
   void _defaultOnTapOutside(PointerDownEvent event) {
-    // Disable focus restoration since user is intentionally tapping outside
-    _shouldRestoreFocusOnWeb = false;
-    _webFocusRestorationTimer?.cancel();
-
     /// The focus dropping behavior is only present on desktop platforms
     /// and mobile browsers.
     switch (defaultTargetPlatform) {
@@ -1261,18 +1252,6 @@ class RawEditorState extends EditorState
       HardwareKeyboard.instance.addHandler(_hardwareKeyboardEvent);
     }
 
-    // Set up web clipboard event listeners to intercept browser copy/cut/paste
-    // This makes the browser's native context menu work with Flutter-quill
-    if (kIsWeb) {
-      web_clipboard.setupWebClipboardListeners(
-        getSelectedText: _getSelectedTextForClipboard,
-        onCopy: _handleWebCopy,
-        onCut: _handleWebCut,
-        onPaste: _handleWebPaste,
-        hasFocus: () => _hasFocus,
-      );
-    }
-
     // Focus
     widget.focusNode.addListener(_handleFocusChanged);
   }
@@ -1370,15 +1349,6 @@ class RawEditorState extends EditorState
     if (!kIsWeb) {
       HardwareKeyboard.instance.removeHandler(_hardwareKeyboardEvent);
     }
-
-    // Remove web clipboard event listeners
-    if (kIsWeb) {
-      web_clipboard.removeWebClipboardListeners();
-    }
-
-    // Cancel any pending focus restoration timer
-    _webFocusRestorationTimer?.cancel();
-    _webFocusRestorationTimer = null;
 
     assert(!hasConnection);
     _selectionOverlay?.dispose();
@@ -1565,113 +1535,31 @@ class RawEditorState extends EditorState
     _manageSelectionOverlay(_OverlayAction.ensureExists);
   }
 
-  /// Tracks if we should attempt focus restoration after losing focus on web.
-  /// This helps recover from browser context menu stealing focus.
-  bool _shouldRestoreFocusOnWeb = false;
-
-  /// Timer for delayed focus restoration on web
-  Timer? _webFocusRestorationTimer;
-
-  /// Counter to limit focus restoration attempts (prevent infinite loops)
-  int _focusRestorationAttempts = 0;
-  static const int _maxFocusRestorationAttempts = 3;
-
   void _handleFocusChanged() {
-    debugPrint(
-        '[QuillEditor] _handleFocusChanged: hasFocus=$_hasFocus, dirty=$dirty, hasConnection=$hasConnection');
-
     if (dirty) {
-      debugPrint('[QuillEditor] Dirty, scheduling post-frame callback');
       SchedulerBinding.instance
           .addPostFrameCallback((_) => _handleFocusChanged());
       return;
     }
 
-    debugPrint('[QuillEditor] Calling openOrCloseConnection...');
     openOrCloseConnection();
-    debugPrint(
-        '[QuillEditor] After openOrCloseConnection: hasConnection=$hasConnection');
 
     if (_hasFocus) {
-      debugPrint('[QuillEditor] Gained focus - setting up observers');
       WidgetsBinding.instance.addObserver(this);
       _showCaretOnScreen();
 
-      // Cancel any pending focus restoration since we have focus now
-      _webFocusRestorationTimer?.cancel();
-      _webFocusRestorationTimer = null;
-
-      // Mark that we should restore focus if lost on web (e.g., to context menu)
-      if (kIsWeb) {
-        _shouldRestoreFocusOnWeb = true;
-        _focusRestorationAttempts = 0; // Reset counter on successful focus
-        // Notify clipboard listener that we have focus (for grace window tracking)
-        web_clipboard.notifyEditorHasFocus();
-      }
-
-      // On mobile platforms, ensure cursor is visible immediately by setting opacity to 1
-      // before starting the blink timer. This prevents the "invisible cursor" issue.
+      // On mobile platforms, ensure cursor is visible immediately
       if ((isMobileWeb() || isMobile()) && controller.selection.isCollapsed) {
         _cursorCont.color.value = _cursorCont.style.color;
         _cursorCont.blink.value = true;
       }
     } else {
-      debugPrint('[QuillEditor] Lost focus - removing observers');
       WidgetsBinding.instance.removeObserver(this);
-
-      // Notify clipboard listener that we lost focus (for grace window tracking)
-      if (kIsWeb) {
-        final hasSelection = !controller.selection.isCollapsed;
-        debugPrint(
-            '[QuillEditor] Notifying clipboard of focus loss, hasSelection=$hasSelection');
-        web_clipboard.notifyEditorLostFocus(hasSelection: hasSelection);
-      }
-
-      // On desktop web, if we lose focus unexpectedly (e.g., to browser context menu),
-      // schedule focus restoration after a brief delay. This prevents the editor from
-      // becoming frozen after context menu interactions.
-      // NOTE: We removed the check for currentFocus because the SelectableRegion
-      // (Flutter's web selection overlay) often has focus, and that's exactly when
-      // we need to restore focus to our editor.
-      // See: https://github.com/flutter/flutter/blob/main/packages/flutter/lib/src/widgets/selectable_region.dart
-      if (kIsWeb &&
-          !isMobileWeb() &&
-          _shouldRestoreFocusOnWeb &&
-          mounted &&
-          _focusRestorationAttempts < _maxFocusRestorationAttempts) {
-        _focusRestorationAttempts++;
-        debugPrint(
-            '[QuillEditor] Scheduling focus restoration timer (150ms), attempt $_focusRestorationAttempts/$_maxFocusRestorationAttempts');
-        _webFocusRestorationTimer?.cancel();
-        _webFocusRestorationTimer =
-            Timer(const Duration(milliseconds: 150), () {
-          debugPrint(
-              '[QuillEditor] Timer fired: mounted=$mounted, hasFocus=$_hasFocus');
-          if (mounted && !_hasFocus && _shouldRestoreFocusOnWeb) {
-            // First, unfocus whatever currently has focus (e.g., SelectableRegion)
-            final currentFocus = FocusManager.instance.primaryFocus;
-            debugPrint(
-                '[QuillEditor] Current focus before unfocus: $currentFocus');
-            currentFocus?.unfocus();
-
-            debugPrint('[QuillEditor] Requesting focus from timer (forcing)');
-            // Force close any stale connection first
-            closeConnectionIfNeeded();
-            widget.focusNode.requestFocus();
-          }
-        });
-      } else if (_focusRestorationAttempts >= _maxFocusRestorationAttempts) {
-        debugPrint(
-            '[QuillEditor] Max focus restoration attempts reached, stopping');
-        _shouldRestoreFocusOnWeb = false;
-      }
     }
 
-    // Start or stop cursor timer after setting initial visibility
     _cursorCont.startOrStopCursorTimerIfNeeded(_hasFocus, controller.selection);
     _updateOrDisposeSelectionOverlayIfNeeded();
     updateKeepAlive();
-    debugPrint('[QuillEditor] _handleFocusChanged completed');
   }
 
   void _onChangedClipboardStatus() {
@@ -1828,148 +1716,12 @@ class RawEditorState extends EditorState
   /// input element. Simply calling requestFocus() only restores Flutter's logical
   /// focus, but doesn't re-focus the hidden DOM element. To fix this, we must:
   /// 1. Close the TextInputConnection (detaches from hidden element)
-  /// 2. Request Flutter focus
-  /// 3. The focus handler will call openOrCloseConnection() which reattaches
-  ///    and causes the engine to re-focus the hidden DOM element
+  /// Restores focus after a toolbar action on web.
+  /// On web, clicking toolbar buttons can cause the editor to lose focus.
   void _restoreFocusAfterToolbarAction() {
-    if (kIsWeb) {
-      debugPrint('[QuillEditor] _restoreFocusAfterToolbarAction called');
-      debugPrint(
-          '[QuillEditor] Current state: hasFocus=$_hasFocus, hasConnection=$hasConnection');
-
-      // Use a timer instead of postFrameCallback to let the browser fully process
-      // the context menu close event before we try to restore focus.
-      // The browser's SelectableRegion often steals focus back if we're too quick.
-      // See: https://github.com/flutter/flutter/blob/main/packages/flutter/lib/src/widgets/selectable_region.dart
-      Timer(const Duration(milliseconds: 200), () {
-        debugPrint(
-            '[QuillEditor] Timer (200ms) executing for focus restoration');
-        debugPrint(
-            '[QuillEditor] mounted=$mounted, hasFocus=$_hasFocus, hasConnection=$hasConnection');
-
-        if (mounted && !_hasFocus) {
-          // First, unfocus whatever currently has focus (e.g., SelectableRegion)
-          // SelectableRegion creates its own FocusNode and competes for focus
-          final currentFocus = FocusManager.instance.primaryFocus;
-          debugPrint(
-              '[QuillEditor] Current focus before unfocus: $currentFocus');
-          currentFocus?.unfocus();
-
-          // Force close the connection first - this is critical!
-          // Without this, the engine thinks we're still connected and won't
-          // re-focus the hidden DOM element when we request focus.
-          debugPrint('[QuillEditor] Closing connection...');
-          closeConnectionIfNeeded();
-          debugPrint(
-              '[QuillEditor] Connection closed, hasConnection=$hasConnection');
-
-          // Now request focus - this triggers _handleFocusChanged which will
-          // call openOrCloseConnection() to create a fresh connection
-          debugPrint('[QuillEditor] Requesting focus...');
-          widget.focusNode.requestFocus();
-          debugPrint('[QuillEditor] Focus requested, hasFocus=$_hasFocus');
-        } else {
-          debugPrint(
-              '[QuillEditor] Skipping focus restoration: mounted=$mounted, hasFocus=$_hasFocus');
-        }
-      });
+    if (kIsWeb && mounted && !_hasFocus) {
+      widget.focusNode.requestFocus();
     }
-  }
-
-  // ===================== WEB CLIPBOARD EVENT HANDLERS =====================
-  // These methods handle browser clipboard events (copy/cut/paste from context menu)
-  // on web platforms. They intercept browser events and perform the operations
-  // through Flutter-quill's APIs.
-
-  /// Gets the currently selected text for clipboard operations.
-  String _getSelectedTextForClipboard() {
-    final selection = textEditingValue.selection;
-    if (selection.isCollapsed) return '';
-    final text = selection.textInside(textEditingValue.text);
-    debugPrint(
-        '[QuillEditor] _getSelectedTextForClipboard: selection=$selection, textLength=${text.length}');
-    return text;
-  }
-
-  /// Handles browser copy event from context menu.
-  void _handleWebCopy() {
-    debugPrint('[QuillEditor] _handleWebCopy called');
-    debugPrint(
-        '[QuillEditor] hasFocus=$_hasFocus, hasConnection=$hasConnection');
-
-    // Store style information for internal paste
-    controller.copiedImageUrl = null;
-    _pastePlainText = controller.getPlainText();
-    _pasteStyleAndEmbed = controller.getAllIndividualSelectionStylesAndEmbed();
-    debugPrint(
-        '[QuillEditor] Stored style info, calling _restoreFocusAfterToolbarAction');
-
-    // Don't stop auto-restore yet - focus might be lost after our timer fires.
-    // The max attempts counter will prevent infinite loops.
-    // Restore focus after context menu action
-    _restoreFocusAfterToolbarAction();
-  }
-
-  /// Handles browser cut event from context menu.
-  void _handleWebCut() {
-    debugPrint('[QuillEditor] _handleWebCut called');
-    debugPrint(
-        '[QuillEditor] readOnly=${widget.readOnly}, hasFocus=$_hasFocus, hasConnection=$hasConnection');
-
-    if (widget.readOnly) {
-      debugPrint('[QuillEditor] Cut ignored - readOnly');
-      return;
-    }
-
-    // Store style information for internal paste
-    controller.copiedImageUrl = null;
-    _pastePlainText = controller.getPlainText();
-    _pasteStyleAndEmbed = controller.getAllIndividualSelectionStylesAndEmbed();
-
-    // Delete the selected text
-    final selection = textEditingValue.selection;
-    debugPrint('[QuillEditor] Selection: $selection');
-    if (!selection.isCollapsed) {
-      debugPrint('[QuillEditor] Deleting selected text');
-      controller.replaceText(
-        selection.start,
-        selection.end - selection.start,
-        '',
-        TextSelection.collapsed(offset: selection.start),
-      );
-    }
-
-    // Don't stop auto-restore yet - focus might be lost after our timer fires.
-    // The max attempts counter will prevent infinite loops.
-    debugPrint('[QuillEditor] Calling _restoreFocusAfterToolbarAction');
-    _restoreFocusAfterToolbarAction();
-  }
-
-  /// Handles browser paste event from context menu.
-  void _handleWebPaste(String text) {
-    debugPrint(
-        '[QuillEditor] _handleWebPaste called, textLength=${text.length}');
-    debugPrint(
-        '[QuillEditor] readOnly=${widget.readOnly}, hasFocus=$_hasFocus, hasConnection=$hasConnection');
-
-    if (widget.readOnly) {
-      debugPrint('[QuillEditor] Paste ignored - readOnly');
-      return;
-    }
-
-    final selection = textEditingValue.selection;
-    debugPrint('[QuillEditor] Inserting text at selection: $selection');
-    controller.replaceText(
-      selection.start,
-      selection.end - selection.start,
-      text,
-      TextSelection.collapsed(offset: selection.start + text.length),
-    );
-
-    // Don't stop auto-restore yet - focus might be lost after our timer fires.
-    // The max attempts counter will prevent infinite loops.
-    debugPrint('[QuillEditor] Calling _restoreFocusAfterToolbarAction');
-    _restoreFocusAfterToolbarAction();
   }
 
   /// Copy current selection to [Clipboard].
