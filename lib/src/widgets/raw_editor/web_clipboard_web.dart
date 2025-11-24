@@ -5,6 +5,7 @@ import 'package:web/web.dart' as web;
 const _kLogTag = '[WebClipboard]';
 
 /// Callbacks for clipboard operations
+String Function()? _getSelectedText;
 void Function()? _onCopy;
 void Function()? _onCut;
 void Function(String text)? _onPaste;
@@ -74,14 +75,13 @@ bool _shouldHandleClipboardEvent() {
 /// Sets up clipboard event listeners on the document.
 /// This intercepts browser copy/cut/paste events and handles them through Flutter.
 void setupWebClipboardListeners({
-  required String Function()
-      getSelectedText, // Kept for API compatibility, not used
+  required String Function() getSelectedText,
   required void Function() onCopy,
   required void Function() onCut,
   required void Function(String text) onPaste,
   required bool Function() hasFocus,
 }) {
-  // Note: getSelectedText is no longer used - we let browser handle copy/cut natively
+  _getSelectedText = getSelectedText;
   _onCopy = onCopy;
   _onCut = onCut;
   _onPaste = onPaste;
@@ -113,6 +113,7 @@ void removeWebClipboardListeners() {
   _copyListener = null;
   _cutListener = null;
   _pasteListener = null;
+  _getSelectedText = null;
   _onCopy = null;
   _onCut = null;
   _onPaste = null;
@@ -128,16 +129,28 @@ void _handleCopy(web.Event event) {
     debugPrint('$_kLogTag Ignoring copy - not our event');
     return;
   }
-  if (_onCopy == null) {
-    debugPrint('$_kLogTag Ignoring copy - callback not set');
+  if (_onCopy == null || _getSelectedText == null) {
+    debugPrint('$_kLogTag Ignoring copy - callbacks not set');
     return;
   }
 
-  // DON'T preventDefault() - let the browser handle the actual clipboard copy
-  // from Flutter's hidden input element. We just need to know it happened
-  // so we can restore focus afterwards.
+  final selectedText = _getSelectedText!();
+  if (selectedText.isEmpty) {
+    debugPrint('$_kLogTag Copy: No text selected, skipping');
+    return;
+  }
+
+  // Use the async Clipboard API to write directly to system clipboard.
+  // Flutter's hidden input element doesn't contain the document text,
+  // so native browser copy doesn't work. We must use the Clipboard API.
   debugPrint(
-      '$_kLogTag Copy: Letting browser handle copy, calling onCopy callback');
+      '$_kLogTag Copy: Writing ${selectedText.length} chars to clipboard via API');
+  web.window.navigator.clipboard.writeText(selectedText).toDart.then((_) {
+    debugPrint('$_kLogTag Copy: Successfully wrote to clipboard');
+  }).catchError((e) {
+    debugPrint('$_kLogTag Copy: Failed to write to clipboard: $e');
+  });
+
   _onCopy!();
 }
 
@@ -150,17 +163,28 @@ void _handleCut(web.Event event) {
     debugPrint('$_kLogTag Ignoring cut - not our event');
     return;
   }
-  if (_onCut == null) {
-    debugPrint('$_kLogTag Ignoring cut - callback not set');
+  if (_onCut == null || _getSelectedText == null) {
+    debugPrint('$_kLogTag Ignoring cut - callbacks not set');
     return;
   }
 
-  // DON'T preventDefault() - let the browser handle the actual clipboard cut
-  // from Flutter's hidden input element. The browser will also delete the
-  // selected text from the hidden element, but Flutter's document model
-  // needs to be updated too via the onCut callback.
+  final selectedText = _getSelectedText!();
+  if (selectedText.isEmpty) {
+    debugPrint('$_kLogTag Cut: No text selected, skipping');
+    return;
+  }
+
+  // Use the async Clipboard API to write directly to system clipboard.
+  // Flutter's hidden input element doesn't contain the document text.
   debugPrint(
-      '$_kLogTag Cut: Letting browser handle cut, calling onCut callback');
+      '$_kLogTag Cut: Writing ${selectedText.length} chars to clipboard via API');
+  web.window.navigator.clipboard.writeText(selectedText).toDart.then((_) {
+    debugPrint('$_kLogTag Cut: Successfully wrote to clipboard');
+  }).catchError((e) {
+    debugPrint('$_kLogTag Cut: Failed to write to clipboard: $e');
+  });
+
+  // The onCut callback will delete the selected text from Quill's document
   _onCut!();
 }
 
