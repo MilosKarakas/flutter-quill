@@ -300,16 +300,19 @@ class EditorTextSelectionGestureDetectorBuilder {
     // Hide magnifier on mobile platforms when long press ends
     hideMagnifierIfSupportedByPlatform();
 
-    if (shouldShowSelectionToolbar) {
-      editor!.showToolbar();
-    }
-
-    // On mobile platforms, always reopen keyboard after long press
-    // The system/browser closes the keyboard when showing selection toolbar/context menu
-    // We need to reopen it so users can immediately type or edit
+    // On mobile platforms, reopen keyboard first so toolbar is positioned correctly
+    // The keyboard changes the viewport size, so we need it open before calculating toolbar position
     if (isMobileWeb() || isMobile()) {
       editor!.requestKeyboard();
     }
+
+    // Allow the selection to get updated and keyboard to open before showing toolbar
+    // This ensures toolbar is positioned correctly for the viewport with keyboard visible
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (shouldShowSelectionToolbar) {
+        editor!.showToolbar();
+      }
+    });
   }
 
   /// Handler for [EditorTextSelectionGestureDetector.onDoubleTapDown].
