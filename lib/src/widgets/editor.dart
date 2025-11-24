@@ -780,6 +780,8 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   @override
   void onSingleTapUp(TapUpDetails details) {
+    debugPrint(
+        '[Builder] onSingleTapUp: ${details.globalPosition}, kind: ${details.kind}');
     if (_state.widget.onTapUp != null &&
         renderEditor != null &&
         _state.widget.onTapUp!(details, renderEditor!.getPositionForOffset)) {

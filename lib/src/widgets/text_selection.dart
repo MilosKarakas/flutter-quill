@@ -940,9 +940,14 @@ class _EditorTextSelectionGestureDetectorState
   }
 
   void _handleTapUp(TapUpDetails details) {
+    debugPrint(
+        '[GestureDetector] _handleTapUp: ${details.globalPosition}, isDoubleTap: $_isDoubleTap');
     if (!_isDoubleTap) {
       if (widget.onSingleTapUp != null) {
+        debugPrint('[GestureDetector] Calling onSingleTapUp callback');
         widget.onSingleTapUp!(details);
+      } else {
+        debugPrint('[GestureDetector] onSingleTapUp callback is null!');
       }
       _lastTapOffset = details.globalPosition;
       _doubleTapTimer = Timer(kDoubleTapTimeout, _doubleTapTimeout);
@@ -951,6 +956,7 @@ class _EditorTextSelectionGestureDetectorState
   }
 
   void _handleTapCancel() {
+    debugPrint('[GestureDetector] _handleTapCancel called');
     if (widget.onSingleTapCancel != null) {
       widget.onSingleTapCancel!();
     }
