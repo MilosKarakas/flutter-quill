@@ -1793,7 +1793,7 @@ class RawEditorState extends EditorState
           // Without this, the engine thinks we're still connected and won't
           // re-focus the hidden DOM element when we request focus.
           closeConnectionIfNeeded();
-          
+
           // Now request focus - this triggers _handleFocusChanged which will
           // call openOrCloseConnection() to create a fresh connection
           widget.focusNode.requestFocus();
