@@ -1572,6 +1572,10 @@ class RawEditorState extends EditorState
   /// Timer for delayed focus restoration on web
   Timer? _webFocusRestorationTimer;
 
+  /// Counter to limit focus restoration attempts (prevent infinite loops)
+  int _focusRestorationAttempts = 0;
+  static const int _maxFocusRestorationAttempts = 3;
+
   void _handleFocusChanged() {
     debugPrint(
         '[QuillEditor] _handleFocusChanged: hasFocus=$_hasFocus, dirty=$dirty, hasConnection=$hasConnection');
@@ -1600,6 +1604,7 @@ class RawEditorState extends EditorState
       // Mark that we should restore focus if lost on web (e.g., to context menu)
       if (kIsWeb) {
         _shouldRestoreFocusOnWeb = true;
+        _focusRestorationAttempts = 0; // Reset counter on successful focus
         // Notify clipboard listener that we have focus (for grace window tracking)
         web_clipboard.notifyEditorHasFocus();
       }
@@ -1629,8 +1634,14 @@ class RawEditorState extends EditorState
       // (Flutter's web selection overlay) often has focus, and that's exactly when
       // we need to restore focus to our editor.
       // See: https://github.com/flutter/flutter/blob/main/packages/flutter/lib/src/widgets/selectable_region.dart
-      if (kIsWeb && !isMobileWeb() && _shouldRestoreFocusOnWeb && mounted) {
-        debugPrint('[QuillEditor] Scheduling focus restoration timer (150ms)');
+      if (kIsWeb &&
+          !isMobileWeb() &&
+          _shouldRestoreFocusOnWeb &&
+          mounted &&
+          _focusRestorationAttempts < _maxFocusRestorationAttempts) {
+        _focusRestorationAttempts++;
+        debugPrint(
+            '[QuillEditor] Scheduling focus restoration timer (150ms), attempt $_focusRestorationAttempts/$_maxFocusRestorationAttempts');
         _webFocusRestorationTimer?.cancel();
         _webFocusRestorationTimer =
             Timer(const Duration(milliseconds: 150), () {
@@ -1649,6 +1660,10 @@ class RawEditorState extends EditorState
             widget.focusNode.requestFocus();
           }
         });
+      } else if (_focusRestorationAttempts >= _maxFocusRestorationAttempts) {
+        debugPrint(
+            '[QuillEditor] Max focus restoration attempts reached, stopping');
+        _shouldRestoreFocusOnWeb = false;
       }
     }
 
@@ -1889,6 +1904,11 @@ class RawEditorState extends EditorState
     debugPrint(
         '[QuillEditor] Stored style info, calling _restoreFocusAfterToolbarAction');
 
+    // Stop auto-restore loop - we've handled the action successfully
+    _shouldRestoreFocusOnWeb = false;
+    _webFocusRestorationTimer?.cancel();
+    debugPrint('[QuillEditor] Stopped auto-restore loop');
+
     // Restore focus after context menu action
     _restoreFocusAfterToolbarAction();
   }
@@ -1922,6 +1942,11 @@ class RawEditorState extends EditorState
       );
     }
 
+    // Stop auto-restore loop - we've handled the action successfully
+    _shouldRestoreFocusOnWeb = false;
+    _webFocusRestorationTimer?.cancel();
+    debugPrint('[QuillEditor] Stopped auto-restore loop');
+
     debugPrint('[QuillEditor] Calling _restoreFocusAfterToolbarAction');
     _restoreFocusAfterToolbarAction();
   }
@@ -1946,6 +1971,11 @@ class RawEditorState extends EditorState
       text,
       TextSelection.collapsed(offset: selection.start + text.length),
     );
+
+    // Stop auto-restore loop - we've handled the action successfully
+    _shouldRestoreFocusOnWeb = false;
+    _webFocusRestorationTimer?.cancel();
+    debugPrint('[QuillEditor] Stopped auto-restore loop');
 
     debugPrint('[QuillEditor] Calling _restoreFocusAfterToolbarAction');
     _restoreFocusAfterToolbarAction();
