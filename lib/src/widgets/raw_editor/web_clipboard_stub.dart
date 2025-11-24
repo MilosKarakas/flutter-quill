@@ -21,3 +21,8 @@ void removeWebClipboardListeners() {
 void notifyEditorHasFocus() {
   // No-op on non-web platforms
 }
+
+/// Notifies the clipboard listener that the editor lost focus (no-op on non-web platforms)
+void notifyEditorLostFocus({required bool hasSelection}) {
+  // No-op on non-web platforms
+}

@@ -16,21 +16,35 @@ web.EventListener? _copyListener;
 web.EventListener? _cutListener;
 web.EventListener? _pasteListener;
 
-/// Track when we last had focus to allow clipboard events shortly after losing focus.
+/// Track when we lost focus to allow clipboard events shortly after.
 /// The browser context menu steals focus, so we need a grace period.
-DateTime? _lastHadFocusTime;
+DateTime? _lastLostFocusTime;
+
+/// Whether we had a selection when we lost focus (indicates context menu scenario)
+bool _hadSelectionWhenLostFocus = false;
 
 /// Window of time (ms) after losing focus where we still handle clipboard events.
-const _focusGraceWindowMs = 1000;
+/// Set to 30 seconds to allow users time to read context menu options.
+const _focusGraceWindowMs = 30000;
 
-/// Call this whenever the editor gains focus to update the timestamp.
+/// Call this whenever the editor gains focus.
 void notifyEditorHasFocus() {
-  _lastHadFocusTime = DateTime.now();
-  debugPrint('$_kLogTag notifyEditorHasFocus: updated timestamp');
+  // Clear the lost focus tracking since we have focus again
+  _lastLostFocusTime = null;
+  _hadSelectionWhenLostFocus = false;
+  debugPrint('$_kLogTag notifyEditorHasFocus: cleared lost focus state');
+}
+
+/// Call this when the editor loses focus to start the grace window.
+void notifyEditorLostFocus({required bool hasSelection}) {
+  _lastLostFocusTime = DateTime.now();
+  _hadSelectionWhenLostFocus = hasSelection;
+  debugPrint(
+      '$_kLogTag notifyEditorLostFocus: hasSelection=$hasSelection, started grace window');
 }
 
 /// Checks if we should handle clipboard events.
-/// Returns true if we have focus OR if we recently had focus (context menu case).
+/// Returns true if we have focus OR if we recently lost focus with a selection (context menu case).
 bool _shouldHandleClipboardEvent() {
   final hasFocus = _hasFocus?.call() ?? false;
   if (hasFocus) {
@@ -38,19 +52,22 @@ bool _shouldHandleClipboardEvent() {
     return true;
   }
 
-  // Check if we recently had focus (context menu steals focus)
-  if (_lastHadFocusTime != null) {
+  // Check if we recently lost focus AND had a selection (context menu scenario)
+  if (_lastLostFocusTime != null && _hadSelectionWhenLostFocus) {
     final elapsed =
-        DateTime.now().difference(_lastHadFocusTime!).inMilliseconds;
+        DateTime.now().difference(_lastLostFocusTime!).inMilliseconds;
     if (elapsed < _focusGraceWindowMs) {
       debugPrint(
-          '$_kLogTag shouldHandle: true (lost focus ${elapsed}ms ago, within grace window)');
+          '$_kLogTag shouldHandle: true (lost focus ${elapsed}ms ago with selection, within grace window)');
       return true;
     }
     debugPrint(
         '$_kLogTag shouldHandle: false (lost focus ${elapsed}ms ago, outside grace window)');
+  } else if (_lastLostFocusTime != null && !_hadSelectionWhenLostFocus) {
+    debugPrint(
+        '$_kLogTag shouldHandle: false (lost focus but had no selection)');
   } else {
-    debugPrint('$_kLogTag shouldHandle: false (no focus, never had focus)');
+    debugPrint('$_kLogTag shouldHandle: false (no focus history)');
   }
   return false;
 }

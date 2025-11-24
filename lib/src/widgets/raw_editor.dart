@@ -1614,6 +1614,13 @@ class RawEditorState extends EditorState
       debugPrint('[QuillEditor] Lost focus - removing observers');
       WidgetsBinding.instance.removeObserver(this);
 
+      // Notify clipboard listener that we lost focus (for grace window tracking)
+      if (kIsWeb) {
+        final hasSelection = !controller.selection.isCollapsed;
+        debugPrint('[QuillEditor] Notifying clipboard of focus loss, hasSelection=$hasSelection');
+        web_clipboard.notifyEditorLostFocus(hasSelection: hasSelection);
+      }
+
       // On desktop web, if we lose focus unexpectedly (e.g., to browser context menu),
       // schedule focus restoration after a brief delay. This prevents the editor from
       // becoming frozen after context menu interactions.
