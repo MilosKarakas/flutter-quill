@@ -2332,8 +2332,12 @@ class RawEditorState extends EditorState
     // Copy Paste
     SelectAllTextIntent: _makeOverridable(_SelectAllAction(this)),
     CopySelectionTextIntent: _makeOverridable(_CopySelectionAction(this)),
-    PasteTextIntent: _makeOverridable(CallbackAction<PasteTextIntent>(
-        onInvoke: (intent) => pasteText(intent.cause))),
+    // On web, DON'T intercept PasteTextIntent - let the browser handle it natively.
+    // The browser pastes into the hidden <input>, and we receive it via updateEditingValue().
+    // This avoids the clipboard permission dialog that Clipboard.getData() triggers.
+    if (!kIsWeb)
+      PasteTextIntent: _makeOverridable(CallbackAction<PasteTextIntent>(
+          onInvoke: (intent) => pasteText(intent.cause))),
 
     HideSelectionToolbarIntent:
         _makeOverridable(_HideSelectionToolbarAction(this)),
