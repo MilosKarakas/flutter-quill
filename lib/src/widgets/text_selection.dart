@@ -1108,10 +1108,17 @@ class _EditorTextSelectionGestureDetectorState
         instance
           ..onTapDown = _handleTapDown
           ..onTapUp = _handleTapUp
-          ..onTapCancel = _handleTapCancel
-          ..onSecondaryTapDown = _handleSecondaryTapDown
-          ..onSecondaryTapUp = _handleSecondaryTapUp
-          ..onSecondaryTapCancel = _handleSecondaryTapCancel;
+          ..onTapCancel = _handleTapCancel;
+        // On web, DON'T register secondary tap handlers.
+        // The browser handles right-click context menu, and if we register
+        // these handlers, the gesture recognizer gets stuck waiting for
+        // onSecondaryTapUp that the browser consumes.
+        if (!kIsWeb) {
+          instance
+            ..onSecondaryTapDown = _handleSecondaryTapDown
+            ..onSecondaryTapUp = _handleSecondaryTapUp
+            ..onSecondaryTapCancel = _handleSecondaryTapCancel;
+        }
       },
     );
 
