@@ -16,6 +16,45 @@ web.EventListener? _copyListener;
 web.EventListener? _cutListener;
 web.EventListener? _pasteListener;
 
+/// Track when we last had focus to allow clipboard events shortly after losing focus.
+/// The browser context menu steals focus, so we need a grace period.
+DateTime? _lastHadFocusTime;
+
+/// Window of time (ms) after losing focus where we still handle clipboard events.
+const _focusGraceWindowMs = 1000;
+
+/// Call this whenever the editor gains focus to update the timestamp.
+void notifyEditorHasFocus() {
+  _lastHadFocusTime = DateTime.now();
+  debugPrint('$_kLogTag notifyEditorHasFocus: updated timestamp');
+}
+
+/// Checks if we should handle clipboard events.
+/// Returns true if we have focus OR if we recently had focus (context menu case).
+bool _shouldHandleClipboardEvent() {
+  final hasFocus = _hasFocus?.call() ?? false;
+  if (hasFocus) {
+    debugPrint('$_kLogTag shouldHandle: true (has focus)');
+    return true;
+  }
+
+  // Check if we recently had focus (context menu steals focus)
+  if (_lastHadFocusTime != null) {
+    final elapsed =
+        DateTime.now().difference(_lastHadFocusTime!).inMilliseconds;
+    if (elapsed < _focusGraceWindowMs) {
+      debugPrint(
+          '$_kLogTag shouldHandle: true (lost focus ${elapsed}ms ago, within grace window)');
+      return true;
+    }
+    debugPrint(
+        '$_kLogTag shouldHandle: false (lost focus ${elapsed}ms ago, outside grace window)');
+  } else {
+    debugPrint('$_kLogTag shouldHandle: false (no focus, never had focus)');
+  }
+  return false;
+}
+
 /// Sets up clipboard event listeners on the document.
 /// This intercepts browser copy/cut/paste events and handles them through Flutter.
 void setupWebClipboardListeners({
@@ -68,12 +107,9 @@ void removeWebClipboardListeners() {
 void _handleCopy(web.Event event) {
   debugPrint('$_kLogTag _handleCopy triggered');
 
-  // Only handle if our editor has focus
-  final hasFocus = _hasFocus?.call() ?? false;
-  debugPrint('$_kLogTag hasFocus=$hasFocus');
-
-  if (!hasFocus) {
-    debugPrint('$_kLogTag Ignoring copy - editor does not have focus');
+  // Check if we should handle this event (has focus or recently had focus)
+  if (!_shouldHandleClipboardEvent()) {
+    debugPrint('$_kLogTag Ignoring copy - not our event');
     return;
   }
   if (_getSelectedText == null || _onCopy == null) {
@@ -100,11 +136,9 @@ void _handleCopy(web.Event event) {
 void _handleCut(web.Event event) {
   debugPrint('$_kLogTag _handleCut triggered');
 
-  final hasFocus = _hasFocus?.call() ?? false;
-  debugPrint('$_kLogTag hasFocus=$hasFocus');
-
-  if (!hasFocus) {
-    debugPrint('$_kLogTag Ignoring cut - editor does not have focus');
+  // Check if we should handle this event (has focus or recently had focus)
+  if (!_shouldHandleClipboardEvent()) {
+    debugPrint('$_kLogTag Ignoring cut - not our event');
     return;
   }
   if (_getSelectedText == null || _onCut == null) {
@@ -130,11 +164,9 @@ void _handleCut(web.Event event) {
 void _handlePaste(web.Event event) {
   debugPrint('$_kLogTag _handlePaste triggered');
 
-  final hasFocus = _hasFocus?.call() ?? false;
-  debugPrint('$_kLogTag hasFocus=$hasFocus');
-
-  if (!hasFocus) {
-    debugPrint('$_kLogTag Ignoring paste - editor does not have focus');
+  // Check if we should handle this event (has focus or recently had focus)
+  if (!_shouldHandleClipboardEvent()) {
+    debugPrint('$_kLogTag Ignoring paste - not our event');
     return;
   }
   if (_onPaste == null) {

@@ -1573,8 +1573,9 @@ class RawEditorState extends EditorState
   Timer? _webFocusRestorationTimer;
 
   void _handleFocusChanged() {
-    debugPrint('[QuillEditor] _handleFocusChanged: hasFocus=$_hasFocus, dirty=$dirty, hasConnection=$hasConnection');
-    
+    debugPrint(
+        '[QuillEditor] _handleFocusChanged: hasFocus=$_hasFocus, dirty=$dirty, hasConnection=$hasConnection');
+
     if (dirty) {
       debugPrint('[QuillEditor] Dirty, scheduling post-frame callback');
       SchedulerBinding.instance
@@ -1584,7 +1585,8 @@ class RawEditorState extends EditorState
 
     debugPrint('[QuillEditor] Calling openOrCloseConnection...');
     openOrCloseConnection();
-    debugPrint('[QuillEditor] After openOrCloseConnection: hasConnection=$hasConnection');
+    debugPrint(
+        '[QuillEditor] After openOrCloseConnection: hasConnection=$hasConnection');
 
     if (_hasFocus) {
       debugPrint('[QuillEditor] Gained focus - setting up observers');
@@ -1598,6 +1600,8 @@ class RawEditorState extends EditorState
       // Mark that we should restore focus if lost on web (e.g., to context menu)
       if (kIsWeb) {
         _shouldRestoreFocusOnWeb = true;
+        // Notify clipboard listener that we have focus (for grace window tracking)
+        web_clipboard.notifyEditorHasFocus();
       }
 
       // On mobile platforms, ensure cursor is visible immediately by setting opacity to 1
@@ -1618,7 +1622,8 @@ class RawEditorState extends EditorState
         _webFocusRestorationTimer?.cancel();
         _webFocusRestorationTimer =
             Timer(const Duration(milliseconds: 100), () {
-          debugPrint('[QuillEditor] Timer fired: mounted=$mounted, hasFocus=$_hasFocus');
+          debugPrint(
+              '[QuillEditor] Timer fired: mounted=$mounted, hasFocus=$_hasFocus');
           if (mounted && !_hasFocus && _shouldRestoreFocusOnWeb) {
             final currentFocus = FocusManager.instance.primaryFocus;
             debugPrint('[QuillEditor] currentFocus=$currentFocus');

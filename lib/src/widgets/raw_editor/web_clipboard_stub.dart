@@ -16,3 +16,8 @@ void setupWebClipboardListeners({
 void removeWebClipboardListeners() {
   // No-op on non-web platforms
 }
+
+/// Notifies the clipboard listener that the editor has focus (no-op on non-web platforms)
+void notifyEditorHasFocus() {
+  // No-op on non-web platforms
+}

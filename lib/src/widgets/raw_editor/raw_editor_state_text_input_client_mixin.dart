@@ -77,23 +77,27 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   /// [focusNode] and [value].
   void openOrCloseConnection() {
     final hasFocus = widget.focusNode.hasFocus;
-    debugPrint('[TextInput] openOrCloseConnection: hasFocus=$hasFocus, hasConnection=$hasConnection');
-    
+    debugPrint(
+        '[TextInput] openOrCloseConnection: hasFocus=$hasFocus, hasConnection=$hasConnection');
+
     // Simplified to match Flutter's EditableText pattern - no delays
     if (hasFocus && widget.focusNode.consumeKeyboardToken()) {
-      debugPrint('[TextInput] Has focus and consumed keyboard token, opening connection');
+      debugPrint(
+          '[TextInput] Has focus and consumed keyboard token, opening connection');
       openConnectionIfNeeded();
     } else if (!hasFocus) {
       debugPrint('[TextInput] No focus, closing connection');
       closeConnectionIfNeeded();
     } else {
-      debugPrint('[TextInput] Has focus but did not consume keyboard token, no action');
+      debugPrint(
+          '[TextInput] Has focus but did not consume keyboard token, no action');
     }
   }
 
   void openConnectionIfNeeded() {
-    debugPrint('[TextInput] openConnectionIfNeeded: shouldCreate=$shouldCreateInputConnection, hasConnection=$hasConnection');
-    
+    debugPrint(
+        '[TextInput] openConnectionIfNeeded: shouldCreate=$shouldCreateInputConnection, hasConnection=$hasConnection');
+
     if (!shouldCreateInputConnection) {
       debugPrint('[TextInput] Skipping - shouldCreateInputConnection is false');
       return;
@@ -142,7 +146,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         _textInputConnection!.show();
       }
     }
-    debugPrint('[TextInput] openConnectionIfNeeded completed, hasConnection=$hasConnection');
+    debugPrint(
+        '[TextInput] openConnectionIfNeeded completed, hasConnection=$hasConnection');
   }
 
   /// Synchronizes editing state for mobile web platforms (Safari, Chrome mobile).
@@ -228,7 +233,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
   /// Closes input connection if it's currently open. Otherwise does nothing.
   void closeConnectionIfNeeded() {
-    debugPrint('[TextInput] closeConnectionIfNeeded: hasConnection=$hasConnection');
+    debugPrint(
+        '[TextInput] closeConnectionIfNeeded: hasConnection=$hasConnection');
     if (!hasConnection) {
       debugPrint('[TextInput] No connection to close');
       return;
