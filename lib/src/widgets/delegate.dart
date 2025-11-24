@@ -156,6 +156,12 @@ class EditorTextSelectionGestureDetectorBuilder {
                 .mouse || // Enable word selection by mouse double tap
         kind == PointerDeviceKind.touch ||
         kind == PointerDeviceKind.stylus;
+
+    // Ensure editor has focus on tap - this is critical on web after
+    // browser context menu actions which can steal focus
+    if (!delegate.editableTextKey.currentState!.widget.focusNode.hasFocus) {
+      delegate.editableTextKey.currentState!.widget.focusNode.requestFocus();
+    }
   }
 
   /// Handler for [EditorTextSelectionGestureDetector.onForcePressStart].
