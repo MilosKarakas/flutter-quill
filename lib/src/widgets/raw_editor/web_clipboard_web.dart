@@ -140,17 +140,20 @@ void _handleCopy(web.Event event) {
     return;
   }
 
+  // CRITICAL: Prevent the browser's default copy behavior.
+  // Without this, the browser tries to copy from the DOM (which is empty
+  // for Flutter canvas), potentially overwriting our clipboard data.
+  final clipboardEvent = event as web.ClipboardEvent;
+  clipboardEvent.preventDefault();
+
   // Use the async Clipboard API to write directly to system clipboard.
-  // Flutter's hidden input element doesn't contain the document text,
-  // so native browser copy doesn't work. We must use the Clipboard API.
-  // IMPORTANT: Call _onCopy AFTER the write completes to avoid focus
-  // manipulation interfering with the clipboard write.
   debugPrint(
       '$_kLogTag Copy: Writing ${selectedText.length} chars to clipboard via API');
-  
+
   final onCopyCallback = _onCopy!;
   web.window.navigator.clipboard.writeText(selectedText).toDart.then((_) {
-    debugPrint('$_kLogTag Copy: Successfully wrote to clipboard, calling onCopy');
+    debugPrint(
+        '$_kLogTag Copy: Successfully wrote to clipboard, calling onCopy');
     onCopyCallback();
   }).catchError((e) {
     debugPrint('$_kLogTag Copy: Failed to write to clipboard: $e');
@@ -179,12 +182,14 @@ void _handleCut(web.Event event) {
     return;
   }
 
+  // CRITICAL: Prevent the browser's default cut behavior.
+  final clipboardEvent = event as web.ClipboardEvent;
+  clipboardEvent.preventDefault();
+
   // Use the async Clipboard API to write directly to system clipboard.
-  // Flutter's hidden input element doesn't contain the document text.
-  // IMPORTANT: Call _onCut AFTER the write completes.
   debugPrint(
       '$_kLogTag Cut: Writing ${selectedText.length} chars to clipboard via API');
-  
+
   final onCutCallback = _onCut!;
   web.window.navigator.clipboard.writeText(selectedText).toDart.then((_) {
     debugPrint('$_kLogTag Cut: Successfully wrote to clipboard, calling onCut');
