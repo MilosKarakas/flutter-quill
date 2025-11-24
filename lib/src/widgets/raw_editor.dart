@@ -11,6 +11,11 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:pasteboard/pasteboard.dart';
 
+// Conditional import for web clipboard handling
+import 'raw_editor/web_clipboard_stub.dart'
+    if (dart.library.js_interop) 'raw_editor/web_clipboard_web.dart'
+    as web_clipboard;
+
 import '../../flutter_quill.dart';
 import '../models/documents/attribute.dart';
 import '../models/documents/document.dart';
@@ -1256,6 +1261,18 @@ class RawEditorState extends EditorState
       HardwareKeyboard.instance.addHandler(_hardwareKeyboardEvent);
     }
 
+    // Set up web clipboard event listeners to intercept browser copy/cut/paste
+    // This makes the browser's native context menu work with Flutter-quill
+    if (kIsWeb) {
+      web_clipboard.setupWebClipboardListeners(
+        getSelectedText: _getSelectedTextForClipboard,
+        onCopy: _handleWebCopy,
+        onCut: _handleWebCut,
+        onPaste: _handleWebPaste,
+        hasFocus: () => _hasFocus,
+      );
+    }
+
     // Focus
     widget.focusNode.addListener(_handleFocusChanged);
   }
@@ -1352,6 +1369,11 @@ class RawEditorState extends EditorState
     forceCloseConnection();
     if (!kIsWeb) {
       HardwareKeyboard.instance.removeHandler(_hardwareKeyboardEvent);
+    }
+
+    // Remove web clipboard event listeners
+    if (kIsWeb) {
+      web_clipboard.removeWebClipboardListeners();
     }
 
     // Cancel any pending focus restoration timer
@@ -1586,7 +1608,8 @@ class RawEditorState extends EditorState
       // becoming frozen after context menu interactions.
       if (kIsWeb && !isMobileWeb() && _shouldRestoreFocusOnWeb && mounted) {
         _webFocusRestorationTimer?.cancel();
-        _webFocusRestorationTimer = Timer(const Duration(milliseconds: 100), () {
+        _webFocusRestorationTimer =
+            Timer(const Duration(milliseconds: 100), () {
           if (mounted && !_hasFocus && _shouldRestoreFocusOnWeb) {
             // Only restore if nothing else has taken focus intentionally
             final currentFocus = FocusManager.instance.primaryFocus;
@@ -1768,6 +1791,69 @@ class RawEditorState extends EditorState
         }
       });
     }
+  }
+
+  // ===================== WEB CLIPBOARD EVENT HANDLERS =====================
+  // These methods handle browser clipboard events (copy/cut/paste from context menu)
+  // on web platforms. They intercept browser events and perform the operations
+  // through Flutter-quill's APIs.
+
+  /// Gets the currently selected text for clipboard operations.
+  String _getSelectedTextForClipboard() {
+    final selection = textEditingValue.selection;
+    if (selection.isCollapsed) return '';
+    return selection.textInside(textEditingValue.text);
+  }
+
+  /// Handles browser copy event from context menu.
+  void _handleWebCopy() {
+    // Store style information for internal paste
+    controller.copiedImageUrl = null;
+    _pastePlainText = controller.getPlainText();
+    _pasteStyleAndEmbed = controller.getAllIndividualSelectionStylesAndEmbed();
+
+    // Restore focus after context menu action
+    _restoreFocusAfterToolbarAction();
+  }
+
+  /// Handles browser cut event from context menu.
+  void _handleWebCut() {
+    if (widget.readOnly) return;
+
+    // Store style information for internal paste
+    controller.copiedImageUrl = null;
+    _pastePlainText = controller.getPlainText();
+    _pasteStyleAndEmbed = controller.getAllIndividualSelectionStylesAndEmbed();
+
+    // Delete the selected text
+    final selection = textEditingValue.selection;
+    if (!selection.isCollapsed) {
+      controller.replaceText(
+        selection.start,
+        selection.end - selection.start,
+        '',
+        TextSelection.collapsed(offset: selection.start),
+      );
+    }
+
+    // Restore focus after context menu action
+    _restoreFocusAfterToolbarAction();
+  }
+
+  /// Handles browser paste event from context menu.
+  void _handleWebPaste(String text) {
+    if (widget.readOnly) return;
+
+    final selection = textEditingValue.selection;
+    controller.replaceText(
+      selection.start,
+      selection.end - selection.start,
+      text,
+      TextSelection.collapsed(offset: selection.start + text.length),
+    );
+
+    // Restore focus after context menu action
+    _restoreFocusAfterToolbarAction();
   }
 
   /// Copy current selection to [Clipboard].
