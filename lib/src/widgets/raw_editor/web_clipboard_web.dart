@@ -1,5 +1,8 @@
 import 'dart:js_interop';
+import 'package:flutter/foundation.dart';
 import 'package:web/web.dart' as web;
+
+const _kLogTag = '[WebClipboard]';
 
 /// Callbacks for clipboard operations
 String Function()? _getSelectedText;
@@ -63,50 +66,91 @@ void removeWebClipboardListeners() {
 
 /// Handles browser copy event
 void _handleCopy(web.Event event) {
+  debugPrint('$_kLogTag _handleCopy triggered');
+
   // Only handle if our editor has focus
-  if (_hasFocus == null || !_hasFocus!()) return;
-  if (_getSelectedText == null || _onCopy == null) return;
+  final hasFocus = _hasFocus?.call() ?? false;
+  debugPrint('$_kLogTag hasFocus=$hasFocus');
+
+  if (!hasFocus) {
+    debugPrint('$_kLogTag Ignoring copy - editor does not have focus');
+    return;
+  }
+  if (_getSelectedText == null || _onCopy == null) {
+    debugPrint('$_kLogTag Ignoring copy - callbacks not set');
+    return;
+  }
 
   final clipboardEvent = event as web.ClipboardEvent;
   final selectedText = _getSelectedText!();
+  debugPrint('$_kLogTag Selected text length: ${selectedText.length}');
 
   if (selectedText.isNotEmpty) {
     // Prevent default browser copy and use our text
     clipboardEvent.preventDefault();
     clipboardEvent.clipboardData?.setData('text/plain', selectedText);
+    debugPrint('$_kLogTag Copy: Set clipboard data, calling onCopy callback');
     _onCopy!();
+  } else {
+    debugPrint('$_kLogTag Copy: No text selected, skipping');
   }
 }
 
 /// Handles browser cut event
 void _handleCut(web.Event event) {
-  // Only handle if our editor has focus
-  if (_hasFocus == null || !_hasFocus!()) return;
-  if (_getSelectedText == null || _onCut == null) return;
+  debugPrint('$_kLogTag _handleCut triggered');
+
+  final hasFocus = _hasFocus?.call() ?? false;
+  debugPrint('$_kLogTag hasFocus=$hasFocus');
+
+  if (!hasFocus) {
+    debugPrint('$_kLogTag Ignoring cut - editor does not have focus');
+    return;
+  }
+  if (_getSelectedText == null || _onCut == null) {
+    debugPrint('$_kLogTag Ignoring cut - callbacks not set');
+    return;
+  }
 
   final clipboardEvent = event as web.ClipboardEvent;
   final selectedText = _getSelectedText!();
+  debugPrint('$_kLogTag Selected text length: ${selectedText.length}');
 
   if (selectedText.isNotEmpty) {
-    // Prevent default browser cut and use our text
     clipboardEvent.preventDefault();
     clipboardEvent.clipboardData?.setData('text/plain', selectedText);
+    debugPrint('$_kLogTag Cut: Set clipboard data, calling onCut callback');
     _onCut!();
+  } else {
+    debugPrint('$_kLogTag Cut: No text selected, skipping');
   }
 }
 
 /// Handles browser paste event
 void _handlePaste(web.Event event) {
-  // Only handle if our editor has focus
-  if (_hasFocus == null || !_hasFocus!()) return;
-  if (_onPaste == null) return;
+  debugPrint('$_kLogTag _handlePaste triggered');
+
+  final hasFocus = _hasFocus?.call() ?? false;
+  debugPrint('$_kLogTag hasFocus=$hasFocus');
+
+  if (!hasFocus) {
+    debugPrint('$_kLogTag Ignoring paste - editor does not have focus');
+    return;
+  }
+  if (_onPaste == null) {
+    debugPrint('$_kLogTag Ignoring paste - callback not set');
+    return;
+  }
 
   final clipboardEvent = event as web.ClipboardEvent;
   final text = clipboardEvent.clipboardData?.getData('text/plain');
+  debugPrint('$_kLogTag Paste text length: ${text?.length ?? 0}');
 
   if (text != null && text.isNotEmpty) {
-    // Prevent default browser paste and handle it ourselves
     clipboardEvent.preventDefault();
+    debugPrint('$_kLogTag Paste: Calling onPaste callback with text');
     _onPaste!(text);
+  } else {
+    debugPrint('$_kLogTag Paste: No text in clipboard, skipping');
   }
 }

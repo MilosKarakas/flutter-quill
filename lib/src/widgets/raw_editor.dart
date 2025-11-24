@@ -1573,15 +1573,21 @@ class RawEditorState extends EditorState
   Timer? _webFocusRestorationTimer;
 
   void _handleFocusChanged() {
+    debugPrint('[QuillEditor] _handleFocusChanged: hasFocus=$_hasFocus, dirty=$dirty, hasConnection=$hasConnection');
+    
     if (dirty) {
+      debugPrint('[QuillEditor] Dirty, scheduling post-frame callback');
       SchedulerBinding.instance
           .addPostFrameCallback((_) => _handleFocusChanged());
       return;
     }
 
+    debugPrint('[QuillEditor] Calling openOrCloseConnection...');
     openOrCloseConnection();
+    debugPrint('[QuillEditor] After openOrCloseConnection: hasConnection=$hasConnection');
 
     if (_hasFocus) {
+      debugPrint('[QuillEditor] Gained focus - setting up observers');
       WidgetsBinding.instance.addObserver(this);
       _showCaretOnScreen();
 
@@ -1601,20 +1607,23 @@ class RawEditorState extends EditorState
         _cursorCont.blink.value = true;
       }
     } else {
+      debugPrint('[QuillEditor] Lost focus - removing observers');
       WidgetsBinding.instance.removeObserver(this);
 
       // On desktop web, if we lose focus unexpectedly (e.g., to browser context menu),
       // schedule focus restoration after a brief delay. This prevents the editor from
       // becoming frozen after context menu interactions.
       if (kIsWeb && !isMobileWeb() && _shouldRestoreFocusOnWeb && mounted) {
+        debugPrint('[QuillEditor] Scheduling focus restoration timer (100ms)');
         _webFocusRestorationTimer?.cancel();
         _webFocusRestorationTimer =
             Timer(const Duration(milliseconds: 100), () {
+          debugPrint('[QuillEditor] Timer fired: mounted=$mounted, hasFocus=$_hasFocus');
           if (mounted && !_hasFocus && _shouldRestoreFocusOnWeb) {
-            // Only restore if nothing else has taken focus intentionally
             final currentFocus = FocusManager.instance.primaryFocus;
-            // Restore focus if no other widget has claimed it
+            debugPrint('[QuillEditor] currentFocus=$currentFocus');
             if (currentFocus == null || currentFocus.context == null) {
+              debugPrint('[QuillEditor] Requesting focus from timer');
               widget.focusNode.requestFocus();
             }
           }
@@ -1626,6 +1635,7 @@ class RawEditorState extends EditorState
     _cursorCont.startOrStopCursorTimerIfNeeded(_hasFocus, controller.selection);
     _updateOrDisposeSelectionOverlayIfNeeded();
     updateKeepAlive();
+    debugPrint('[QuillEditor] _handleFocusChanged completed');
   }
 
   void _onChangedClipboardStatus() {
@@ -1787,16 +1797,29 @@ class RawEditorState extends EditorState
   ///    and causes the engine to re-focus the hidden DOM element
   void _restoreFocusAfterToolbarAction() {
     if (kIsWeb) {
+      debugPrint('[QuillEditor] _restoreFocusAfterToolbarAction called');
+      debugPrint(
+          '[QuillEditor] Current state: hasFocus=$_hasFocus, hasConnection=$hasConnection');
+
       SchedulerBinding.instance.addPostFrameCallback((_) {
+        debugPrint('[QuillEditor] PostFrameCallback executing');
+        debugPrint(
+            '[QuillEditor] mounted=$mounted, hasFocus=$_hasFocus, hasConnection=$hasConnection');
+
         if (mounted) {
           // Force close the connection first - this is critical!
           // Without this, the engine thinks we're still connected and won't
           // re-focus the hidden DOM element when we request focus.
+          debugPrint('[QuillEditor] Closing connection...');
           closeConnectionIfNeeded();
+          debugPrint(
+              '[QuillEditor] Connection closed, hasConnection=$hasConnection');
 
           // Now request focus - this triggers _handleFocusChanged which will
           // call openOrCloseConnection() to create a fresh connection
+          debugPrint('[QuillEditor] Requesting focus...');
           widget.focusNode.requestFocus();
+          debugPrint('[QuillEditor] Focus requested, hasFocus=$_hasFocus');
         }
       });
     }
@@ -1811,15 +1834,24 @@ class RawEditorState extends EditorState
   String _getSelectedTextForClipboard() {
     final selection = textEditingValue.selection;
     if (selection.isCollapsed) return '';
-    return selection.textInside(textEditingValue.text);
+    final text = selection.textInside(textEditingValue.text);
+    debugPrint(
+        '[QuillEditor] _getSelectedTextForClipboard: selection=$selection, textLength=${text.length}');
+    return text;
   }
 
   /// Handles browser copy event from context menu.
   void _handleWebCopy() {
+    debugPrint('[QuillEditor] _handleWebCopy called');
+    debugPrint(
+        '[QuillEditor] hasFocus=$_hasFocus, hasConnection=$hasConnection');
+
     // Store style information for internal paste
     controller.copiedImageUrl = null;
     _pastePlainText = controller.getPlainText();
     _pasteStyleAndEmbed = controller.getAllIndividualSelectionStylesAndEmbed();
+    debugPrint(
+        '[QuillEditor] Stored style info, calling _restoreFocusAfterToolbarAction');
 
     // Restore focus after context menu action
     _restoreFocusAfterToolbarAction();
@@ -1827,7 +1859,14 @@ class RawEditorState extends EditorState
 
   /// Handles browser cut event from context menu.
   void _handleWebCut() {
-    if (widget.readOnly) return;
+    debugPrint('[QuillEditor] _handleWebCut called');
+    debugPrint(
+        '[QuillEditor] readOnly=${widget.readOnly}, hasFocus=$_hasFocus, hasConnection=$hasConnection');
+
+    if (widget.readOnly) {
+      debugPrint('[QuillEditor] Cut ignored - readOnly');
+      return;
+    }
 
     // Store style information for internal paste
     controller.copiedImageUrl = null;
@@ -1836,7 +1875,9 @@ class RawEditorState extends EditorState
 
     // Delete the selected text
     final selection = textEditingValue.selection;
+    debugPrint('[QuillEditor] Selection: $selection');
     if (!selection.isCollapsed) {
+      debugPrint('[QuillEditor] Deleting selected text');
       controller.replaceText(
         selection.start,
         selection.end - selection.start,
@@ -1845,15 +1886,24 @@ class RawEditorState extends EditorState
       );
     }
 
-    // Restore focus after context menu action
+    debugPrint('[QuillEditor] Calling _restoreFocusAfterToolbarAction');
     _restoreFocusAfterToolbarAction();
   }
 
   /// Handles browser paste event from context menu.
   void _handleWebPaste(String text) {
-    if (widget.readOnly) return;
+    debugPrint(
+        '[QuillEditor] _handleWebPaste called, textLength=${text.length}');
+    debugPrint(
+        '[QuillEditor] readOnly=${widget.readOnly}, hasFocus=$_hasFocus, hasConnection=$hasConnection');
+
+    if (widget.readOnly) {
+      debugPrint('[QuillEditor] Paste ignored - readOnly');
+      return;
+    }
 
     final selection = textEditingValue.selection;
+    debugPrint('[QuillEditor] Inserting text at selection: $selection');
     controller.replaceText(
       selection.start,
       selection.end - selection.start,
@@ -1861,7 +1911,7 @@ class RawEditorState extends EditorState
       TextSelection.collapsed(offset: selection.start + text.length),
     );
 
-    // Restore focus after context menu action
+    debugPrint('[QuillEditor] Calling _restoreFocusAfterToolbarAction');
     _restoreFocusAfterToolbarAction();
   }
 
