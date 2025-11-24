@@ -240,7 +240,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
     if (!mounted) {
-      debugPrint('[TextInput] _safeShowConnection: Widget not mounted, skipping');
+      debugPrint(
+          '[TextInput] _safeShowConnection: Widget not mounted, skipping');
       return;
     }
     try {
@@ -248,7 +249,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     } catch (e) {
       // On Flutter Web, this can fail with "Could not find View with id 0"
       // if the view is disposed or navigation happened during async operation
-      debugPrint('[TextInput] _safeShowConnection: Error showing connection: $e');
+      debugPrint(
+          '[TextInput] _safeShowConnection: Error showing connection: $e');
       // Close the broken connection so it can be recreated
       _textInputConnection?.close();
       _textInputConnection = null;
