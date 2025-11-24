@@ -1628,6 +1628,7 @@ class RawEditorState extends EditorState
       // NOTE: We removed the check for currentFocus because the SelectableRegion
       // (Flutter's web selection overlay) often has focus, and that's exactly when
       // we need to restore focus to our editor.
+      // See: https://github.com/flutter/flutter/blob/main/packages/flutter/lib/src/widgets/selectable_region.dart
       if (kIsWeb && !isMobileWeb() && _shouldRestoreFocusOnWeb && mounted) {
         debugPrint('[QuillEditor] Scheduling focus restoration timer (150ms)');
         _webFocusRestorationTimer?.cancel();
@@ -1636,6 +1637,11 @@ class RawEditorState extends EditorState
           debugPrint(
               '[QuillEditor] Timer fired: mounted=$mounted, hasFocus=$_hasFocus');
           if (mounted && !_hasFocus && _shouldRestoreFocusOnWeb) {
+            // First, unfocus whatever currently has focus (e.g., SelectableRegion)
+            final currentFocus = FocusManager.instance.primaryFocus;
+            debugPrint('[QuillEditor] Current focus before unfocus: $currentFocus');
+            currentFocus?.unfocus();
+            
             debugPrint('[QuillEditor] Requesting focus from timer (forcing)');
             // Force close any stale connection first
             closeConnectionIfNeeded();
@@ -1818,12 +1824,20 @@ class RawEditorState extends EditorState
       // Use a timer instead of postFrameCallback to let the browser fully process
       // the context menu close event before we try to restore focus.
       // The browser's SelectableRegion often steals focus back if we're too quick.
+      // See: https://github.com/flutter/flutter/blob/main/packages/flutter/lib/src/widgets/selectable_region.dart
       Timer(const Duration(milliseconds: 200), () {
-        debugPrint('[QuillEditor] Timer (200ms) executing for focus restoration');
+        debugPrint(
+            '[QuillEditor] Timer (200ms) executing for focus restoration');
         debugPrint(
             '[QuillEditor] mounted=$mounted, hasFocus=$_hasFocus, hasConnection=$hasConnection');
 
         if (mounted && !_hasFocus) {
+          // First, unfocus whatever currently has focus (e.g., SelectableRegion)
+          // SelectableRegion creates its own FocusNode and competes for focus
+          final currentFocus = FocusManager.instance.primaryFocus;
+          debugPrint('[QuillEditor] Current focus before unfocus: $currentFocus');
+          currentFocus?.unfocus();
+          
           // Force close the connection first - this is critical!
           // Without this, the engine thinks we're still connected and won't
           // re-focus the hidden DOM element when we request focus.
