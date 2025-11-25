@@ -1720,10 +1720,15 @@ class RawEditorState extends EditorState
   /// When toolbar buttons are tapped, focus temporarily moves to the button.
   /// This method ensures focus returns to the editor so the user can continue typing.
   /// Works on all platforms where toolbar buttons can steal focus.
+  ///
+  /// Uses post-frame callback to avoid interfering with the current frame's
+  /// state updates (e.g., toggledStyle for collapsed selections).
   void _restoreFocusAfterToolbarAction() {
-    if (mounted && !_hasFocus) {
-      widget.focusNode.requestFocus();
-    }
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_hasFocus) {
+        widget.focusNode.requestFocus();
+      }
+    });
   }
 
   /// Syncs selection to browser before native paste on web.
