@@ -32,23 +32,20 @@ class QuillIconButton extends StatelessWidget {
       constraints: BoxConstraints.tightFor(width: size, height: size),
       child: UtilityWidgets.maybeTooltip(
         message: tooltip,
-        // Prevent toolbar buttons from stealing focus from the editor
-        child: ExcludeFocus(
-          child: RawMaterialButton(
-            visualDensity: VisualDensity.compact,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(borderRadius),
-            ),
-            fillColor: fillColor,
-            elevation: 0,
-            hoverElevation: hoverElevation,
-            highlightElevation: hoverElevation,
-            onPressed: () {
-              onPressed?.call();
-              afterPressed?.call();
-            },
-            child: icon,
+        child: RawMaterialButton(
+          visualDensity: VisualDensity.compact,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(borderRadius),
           ),
+          fillColor: fillColor,
+          elevation: 0,
+          hoverElevation: hoverElevation,
+          highlightElevation: hoverElevation,
+          onPressed: () {
+            onPressed?.call();
+            afterPressed?.call();
+          },
+          child: icon,
         ),
       ),
     );
