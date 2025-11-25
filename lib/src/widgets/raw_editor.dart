@@ -1715,13 +1715,33 @@ class RawEditorState extends EditorState
   /// On web platforms, the browser context menu steals focus from Flutter's hidden
   /// input element. Simply calling requestFocus() only restores Flutter's logical
   /// focus, but doesn't re-focus the hidden DOM element. To fix this, we must:
-  /// 1. Close the TextInputConnection (detaches from hidden element)
-  /// Restores focus after a toolbar action on web.
-  /// On web, clicking toolbar buttons can cause the editor to lose focus.
+  /// Restores focus after a toolbar action.
+  ///
+  /// When toolbar buttons are tapped, focus temporarily moves to the button.
+  /// This method ensures focus returns to the editor so the user can continue typing.
+  /// Works on all platforms where toolbar buttons can steal focus.
   void _restoreFocusAfterToolbarAction() {
-    if (kIsWeb && mounted && !_hasFocus) {
+    if (mounted && !_hasFocus) {
       widget.focusNode.requestFocus();
     }
+  }
+
+  /// Syncs selection to browser before native paste on web.
+  ///
+  /// On web, we intercept PasteTextIntent to ensure the browser's hidden input
+  /// has the correct selection before native paste happens. This fixes the issue
+  /// where paste happens at the wrong cursor position when selection is out of sync.
+  ///
+  /// We DON'T call Clipboard.getData() here to avoid permission dialogs.
+  /// The actual paste happens via browser native → updateEditingValue().
+  void _syncSelectionBeforePaste() {
+    // Ensure connection exists
+    if (!hasConnection) {
+      openConnectionIfNeeded();
+    }
+    // Force sync selection to browser
+    updateRemoteValueIfNeeded();
+    // Note: Native paste will happen automatically via browser → updateEditingValue()
   }
 
   /// Copy current selection to [Clipboard].
@@ -2332,9 +2352,12 @@ class RawEditorState extends EditorState
     // Copy Paste
     SelectAllTextIntent: _makeOverridable(_SelectAllAction(this)),
     CopySelectionTextIntent: _makeOverridable(_CopySelectionAction(this)),
-    // On web, DON'T intercept PasteTextIntent - let the browser handle it natively.
-    // The browser pastes into the hidden <input>, and we receive it via updateEditingValue().
-    // This avoids the clipboard permission dialog that Clipboard.getData() triggers.
+    // On web, we intercept PasteTextIntent to sync selection before native paste.
+    // We DON'T call Clipboard.getData() to avoid permission dialogs.
+    // Instead, we ensure selection is synced, then let native paste happen via updateEditingValue().
+    if (kIsWeb)
+      PasteTextIntent: _makeOverridable(CallbackAction<PasteTextIntent>(
+          onInvoke: (intent) => _syncSelectionBeforePaste())),
     if (!kIsWeb)
       PasteTextIntent: _makeOverridable(CallbackAction<PasteTextIntent>(
           onInvoke: (intent) => pasteText(intent.cause))),
@@ -3161,6 +3184,8 @@ class _ToggleTextStyleAction extends Action<ToggleTextStyleIntent> {
         intent.attribute, state.controller.getSelectionStyle().attributes);
     state.controller.formatSelection(
         isActive ? Attribute.clone(intent.attribute, null) : intent.attribute);
+    // Restore focus after toolbar action
+    state._restoreFocusAfterToolbarAction();
   }
 
   @override
@@ -3182,6 +3207,8 @@ class _IndentSelectionAction extends Action<IndentSelectionIntent> {
   @override
   void invoke(IndentSelectionIntent intent, [BuildContext? context]) {
     state.controller.indentSelection(intent.isIncrease);
+    // Restore focus after toolbar action
+    state._restoreFocusAfterToolbarAction();
   }
 
   @override
@@ -3239,6 +3266,8 @@ class _ApplyHeaderAction extends Action<ApplyHeaderIntent> {
     final _attribute =
         _getHeaderValue() == intent.header ? Attribute.header : intent.header;
     state.controller.formatSelection(_attribute);
+    // Restore focus after toolbar action
+    state._restoreFocusAfterToolbarAction();
   }
 
   @override
@@ -3278,6 +3307,8 @@ class _ApplyCheckListAction extends Action<ApplyCheckListIntent> {
     state.controller.formatSelection(_getIsToggled()
         ? Attribute.clone(Attribute.unchecked, null)
         : Attribute.unchecked);
+    // Restore focus after toolbar action
+    state._restoreFocusAfterToolbarAction();
   }
 
   @override
