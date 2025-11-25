@@ -1725,8 +1725,11 @@ class RawEditorState extends EditorState
   /// state updates (e.g., toggledStyle for collapsed selections).
   void _restoreFocusAfterToolbarAction() {
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_hasFocus) {
+      if (mounted) {
+        // Always request focus - this is safe even if already focused
         widget.focusNode.requestFocus();
+        // Ensure connection is open for cursor to show
+        openConnectionIfNeeded();
       }
     });
   }
