@@ -617,11 +617,6 @@ class QuillEditorState extends State<QuillEditor>
                 if (!widget.focusNode.hasFocus) {
                   widget.focusNode.requestFocus();
                 }
-                // On mobile web (Safari), also request keyboard to ensure it opens
-                // Safari requires keyboard request to happen within user gesture
-                if (isMobileWeb()) {
-                  _editorKey.currentState?.requestKeyboard();
-                }
               },
               child: gestureChild,
             )
