@@ -612,12 +612,9 @@ class QuillEditorState extends State<QuillEditor>
           ? Listener(
               behavior: HitTestBehavior.translucent,
               onPointerDown: (event) {
-                debugPrint(
-                    '[Editor] Listener.onPointerDown: ${event.position}, buttons: ${event.buttons}');
                 // Ensure editor has focus when user taps/clicks on it
                 // This is critical after browser context menu actions
                 if (!widget.focusNode.hasFocus) {
-                  debugPrint('[Editor] Listener: requesting focus');
                   widget.focusNode.requestFocus();
                 }
               },
@@ -780,8 +777,6 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   @override
   void onSingleTapUp(TapUpDetails details) {
-    debugPrint(
-        '[Builder] onSingleTapUp: ${details.globalPosition}, kind: ${details.kind}');
     if (_state.widget.onTapUp != null &&
         renderEditor != null &&
         _state.widget.onTapUp!(details, renderEditor!.getPositionForOffset)) {
