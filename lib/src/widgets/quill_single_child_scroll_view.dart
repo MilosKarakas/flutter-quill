@@ -60,6 +60,7 @@ class QuillSingleChildScrollView extends StatelessWidget {
       controller: scrollController,
       physics: physics,
       restorationId: restorationId,
+      excludeFromSemantics: true,
       viewportBuilder: (context, offset) {
         return _SingleChildViewport(
           offset: offset,

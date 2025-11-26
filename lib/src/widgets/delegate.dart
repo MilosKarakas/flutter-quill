@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -96,6 +97,40 @@ class EditorTextSelectionGestureDetectorBuilder {
   /// provide a [EditorTextSelectionGestureDetector].
   @protected
   RenderEditor? get renderEditor => editor?.renderEditor;
+
+  /// Shows the magnifier on supported platforms (iOS and Android, including mobile web).
+  @protected
+  void showMagnifierIfSupportedByPlatform(Offset positionToShow) {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.iOS:
+      case TargetPlatform.android:
+        editor!.showMagnifier(positionToShow);
+        break;
+      case TargetPlatform.fuchsia:
+      case TargetPlatform.linux:
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+        // Magnifier not supported on these platforms
+        break;
+    }
+  }
+
+  /// Hides the magnifier on supported platforms (iOS and Android, including mobile web).
+  @protected
+  void hideMagnifierIfSupportedByPlatform() {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.iOS:
+      case TargetPlatform.android:
+        editor!.hideMagnifier();
+        break;
+      case TargetPlatform.fuchsia:
+      case TargetPlatform.linux:
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+        // Magnifier not supported on these platforms
+        break;
+    }
+  }
 
   /// Handler for [EditorTextSelectionGestureDetector.onTapDown].
   ///
@@ -224,6 +259,9 @@ class EditorTextSelectionGestureDetectorBuilder {
         from: details.globalPosition,
         cause: SelectionChangedCause.longPress,
       );
+
+      // Show magnifier on mobile platforms during long press
+      showMagnifierIfSupportedByPlatform(details.globalPosition);
     }
   }
 
@@ -243,6 +281,9 @@ class EditorTextSelectionGestureDetectorBuilder {
         from: details.globalPosition,
         cause: SelectionChangedCause.longPress,
       );
+
+      // Update magnifier position during long press drag
+      showMagnifierIfSupportedByPlatform(details.globalPosition);
     }
   }
 
@@ -256,8 +297,29 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///  which triggers this callback.
   @protected
   void onSingleLongTapEnd(LongPressEndDetails details) {
-    if (shouldShowSelectionToolbar) {
-      editor!.showToolbar();
+    // Hide magnifier on mobile platforms when long press ends
+    hideMagnifierIfSupportedByPlatform();
+
+    // On mobile platforms, reopen keyboard first so toolbar is positioned correctly
+    // The keyboard changes the viewport size, so we need it open before calculating toolbar position
+    if (isMobileWeb() || isMobile()) {
+      editor!.requestKeyboard();
+
+      // Wait for keyboard to open before showing toolbar
+      // Keyboard animation takes ~200-300ms, so we wait for it to mostly complete
+      // This ensures toolbar calculates position with the correct viewport size
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (shouldShowSelectionToolbar) {
+          editor!.showToolbar();
+        }
+      });
+    } else {
+      // On desktop, show toolbar immediately after selection updates
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (shouldShowSelectionToolbar) {
+          editor!.showToolbar();
+        }
+      });
     }
   }
 

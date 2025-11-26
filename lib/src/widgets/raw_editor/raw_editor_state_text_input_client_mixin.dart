@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/animation.dart';
@@ -7,12 +8,42 @@ import 'package:flutter/services.dart';
 
 import '../../models/documents/document.dart';
 import '../../utils/delta.dart';
+import '../../utils/platform.dart';
 import '../editor.dart';
 
 mixin RawEditorStateTextInputClientMixin on EditorState
     implements TextInputClient {
   TextInputConnection? _textInputConnection;
   TextEditingValue? _lastKnownRemoteTextEditingValue;
+
+  // Track the last programmatically set selection to use when syncing with Safari
+  // This prevents Safari's stale selection updates from overwriting our correct selection
+  TextSelection? _lastProgrammaticSelection;
+  DateTime? _lastProgrammaticSelectionTime;
+
+  /// Stores the programmatic selection that was just set (from tap/gesture)
+  /// This is used to override Safari's potentially stale selection when syncing
+  /// Note: Not private because it's called from RawEditorState which uses this mixin
+  void setProgrammaticSelection(TextSelection selection) {
+    _lastProgrammaticSelection = selection;
+    _lastProgrammaticSelectionTime = DateTime.now();
+  }
+
+  /// Gets the selection to use when syncing with Safari
+  /// Prefers programmatic selection if it was set recently (within 100ms)
+  TextSelection getSelectionForSync() {
+    if (_lastProgrammaticSelection != null &&
+        _lastProgrammaticSelectionTime != null) {
+      final timeSinceProgrammatic =
+          DateTime.now().difference(_lastProgrammaticSelectionTime!);
+      // Use programmatic selection if it was set within the last 100ms
+      if (timeSinceProgrammatic.inMilliseconds < 100) {
+        return _lastProgrammaticSelection!;
+      }
+    }
+    // Fallback to controller selection
+    return widget.controller.selection;
+  }
 
   /// Whether to create an input connection with the platform for text editing
   /// or not.
@@ -36,8 +67,9 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   /// Opens or closes input connection based on the current state of
   /// [focusNode] and [value].
   void openOrCloseConnection() {
+    // Simplified to match Flutter's EditableText pattern - no delays
     if (widget.focusNode.hasFocus && widget.focusNode.consumeKeyboardToken()) {
-      Future.delayed(const Duration(milliseconds: 125), openConnectionIfNeeded);
+      openConnectionIfNeeded();
     } else if (!widget.focusNode.hasFocus) {
       closeConnectionIfNeeded();
     }
@@ -49,7 +81,6 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     }
 
     if (!hasConnection) {
-      _lastKnownRemoteTextEditingValue = textEditingValue;
       _textInputConnection = TextInput.attach(
         this,
         TextInputConfiguration(
@@ -70,9 +101,73 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       _updateComposingRectIfNeeded();
       //update IME position for Macos
       _updateCaretRectIfNeeded();
-      _textInputConnection!.setEditingState(_lastKnownRemoteTextEditingValue!);
+
+      // On mobile web (especially Safari), ensure selection has propagated before
+      // setting initial editing state. This prevents cursor from jumping to end.
+      // Safari needs a small delay after frame to properly sync selection state.
+      if (isMobileWeb()) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !hasConnection) return;
+
+          // Add a small delay for Safari to process selection changes internally
+          // This is necessary because Safari's text input system is asynchronous
+          // and needs time to sync with Flutter's selection state
+          Future.delayed(const Duration(milliseconds: 16), () {
+            if (!mounted || !hasConnection) return;
+
+            // Use programmatic selection if available (set via tap/gesture)
+            // This prevents Safari's stale selection from overwriting our correct selection
+            final currentSelection = getSelectionForSync();
+            final currentText = widget.controller.document.toPlainText();
+            final currentValue = TextEditingValue(
+              text: currentText,
+              selection: currentSelection,
+            );
+
+            _lastKnownRemoteTextEditingValue = currentValue;
+            _textInputConnection!.setEditingState(currentValue);
+            _textInputConnection!.show();
+          });
+        });
+      } else {
+        _lastKnownRemoteTextEditingValue = textEditingValue;
+        _textInputConnection!
+            .setEditingState(_lastKnownRemoteTextEditingValue!);
+        _textInputConnection!.show();
+      }
+    } else {
+      // On mobile web (especially Safari), ensure selection is synced before showing keyboard
+      // This prevents the cursor from jumping to the end when keyboard opens
+      // Safari needs a small delay after frame to properly sync selection state
+      if (isMobileWeb()) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !hasConnection) return;
+
+          // Add a small delay for Safari to process selection changes internally
+          Future.delayed(const Duration(milliseconds: 16), () {
+            if (!mounted || !hasConnection) return;
+
+            // Use programmatic selection if available (set via tap/gesture)
+            // This prevents Safari's stale selection from overwriting our correct selection
+            final currentSelection = getSelectionForSync();
+            final currentText = widget.controller.document.toPlainText();
+            final currentValue = TextEditingValue(
+              text: currentText,
+              selection: currentSelection,
+            );
+
+            if (_lastKnownRemoteTextEditingValue != currentValue) {
+              _lastKnownRemoteTextEditingValue = currentValue;
+              _textInputConnection!.setEditingState(currentValue);
+            }
+            _textInputConnection!.show();
+          });
+        });
+      } else {
+        // Non-mobile-web: show immediately
+        _textInputConnection!.show();
+      }
     }
-    _textInputConnection!.show();
   }
 
   void _updateComposingRectIfNeeded() {
@@ -110,6 +205,17 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     if (!hasConnection) {
       return;
     }
+
+    _textInputConnection!.close();
+    _textInputConnection = null;
+    _lastKnownRemoteTextEditingValue = null;
+  }
+
+  /// Force closes the connection (used during dispose)
+  void forceCloseConnection() {
+    if (!hasConnection) {
+      return;
+    }
     _textInputConnection!.close();
     _textInputConnection = null;
     _lastKnownRemoteTextEditingValue = null;
@@ -125,7 +231,16 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
 
-    final value = textEditingValue;
+    // On mobile web, use programmatic selection if available to prevent Safari
+    // stale selection from being synced. On other platforms, use textEditingValue.
+    final selection =
+        isMobileWeb() ? getSelectionForSync() : textEditingValue.selection;
+    final text = widget.controller.document.toPlainText();
+    final value = TextEditingValue(
+      text: text,
+      selection: selection,
+      composing: textEditingValue.composing,
+    );
 
     // Since we don't keep track of the composing range in value provided
     // by the Controller we need to add it here manually before comparing
@@ -186,11 +301,33 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     final text = value.text;
     final cursorPosition = value.selection.extentOffset;
     final diff = getDiff(oldText, text, cursorPosition);
+
+    // On mobile web Safari, ignore stale selection updates from platform if we just set
+    // a programmatic selection (e.g., from tap). Safari may send back an old selection
+    // before processing our new one, causing cursor to jump.
+    TextSelection selectionToUse = value.selection;
+    if (isMobileWeb() &&
+        _lastProgrammaticSelection != null &&
+        _lastProgrammaticSelectionTime != null) {
+      final timeSinceProgrammatic =
+          DateTime.now().difference(_lastProgrammaticSelectionTime!);
+      // If programmatic selection was set within last 200ms and incoming selection is very different
+      // (more than 5 characters off), use our programmatic selection instead
+      if (timeSinceProgrammatic.inMilliseconds < 200) {
+        final programmaticOffset = _lastProgrammaticSelection!.extentOffset;
+        final incomingOffset = value.selection.extentOffset;
+        if ((programmaticOffset - incomingOffset).abs() > 5) {
+          // Safari sent stale selection, use our programmatic one
+          selectionToUse = _lastProgrammaticSelection!;
+        }
+      }
+    }
+
     if (diff.deleted.isEmpty && diff.inserted.isEmpty) {
-      widget.controller.updateSelection(value.selection, ChangeSource.LOCAL);
+      widget.controller.updateSelection(selectionToUse, ChangeSource.LOCAL);
     } else {
       widget.controller.replaceText(
-          diff.start, diff.deleted.length, diff.inserted, value.selection);
+          diff.start, diff.deleted.length, diff.inserted, selectionToUse);
     }
   }
 
@@ -239,13 +376,37 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         // we cache the position.
         _pointOffsetOrigin = point.offset;
 
-        final currentTextPosition =
-            TextPosition(offset: renderEditor.selection.baseOffset);
-        _startCaretRect =
-            renderEditor.getLocalRectForCaret(currentTextPosition);
+        // Determine the starting position and whether to reset origin
+        late final Offset startCaretCenter;
+        late final TextPosition currentTextPosition;
+        final bool shouldResetOrigin;
 
-        _lastBoundedOffset = _startCaretRect!.center -
-            _floatingCursorOffset(currentTextPosition);
+        // Only non-null when starting a floating cursor via long press
+        if (point.startLocation != null) {
+          shouldResetOrigin = false;
+          final location = point.startLocation!;
+          startCaretCenter = location.$1;
+          currentTextPosition = location.$2;
+        } else {
+          shouldResetOrigin = true;
+          currentTextPosition = TextPosition(
+            offset: renderEditor.selection.baseOffset,
+            affinity: renderEditor.selection.affinity,
+          );
+          startCaretCenter =
+              renderEditor.getLocalRectForCaret(currentTextPosition).center;
+        }
+
+        _startCaretRect = Rect.fromCenter(
+          center: startCaretCenter,
+          width: 0,
+          height: renderEditor.preferredLineHeight(currentTextPosition),
+        );
+
+        _lastBoundedOffset = renderEditor.calculateBoundedFloatingCursorOffset(
+          startCaretCenter - _floatingCursorOffset(currentTextPosition),
+          shouldResetOrigin: shouldResetOrigin,
+        );
         _lastTextPosition = currentTextPosition;
         renderEditor.setFloatingCursor(
             point.state, _lastBoundedOffset!, _lastTextPosition!);
@@ -257,23 +418,15 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         final rawCursorOffset =
             _startCaretRect!.center + centeredPoint - floatingCursorOffset;
 
-        final preferredLineHeight =
-            renderEditor.preferredLineHeight(_lastTextPosition!);
         _lastBoundedOffset = renderEditor.calculateBoundedFloatingCursorOffset(
           rawCursorOffset,
-          preferredLineHeight,
         );
         _lastTextPosition = renderEditor.getPositionForOffset(renderEditor
             .localToGlobal(_lastBoundedOffset! + floatingCursorOffset));
         renderEditor.setFloatingCursor(
             point.state, _lastBoundedOffset!, _lastTextPosition!);
-        final newSelection = TextSelection.collapsed(
-            offset: _lastTextPosition!.offset,
-            affinity: _lastTextPosition!.affinity);
-        // Setting selection as floating cursor moves will have scroll view
-        // bring background cursor into view
-        renderEditor.onSelectionChanged(
-            newSelection, SelectionChangedCause.forcePress);
+        // NOTE: Selection is NOT updated during drag, matching Flutter's EditableText.
+        // Selection will be updated once when the animation completes in onFloatingCursorResetTick.
         break;
       case FloatingCursorDragState.End:
         // We skip animation if no update has happened.
@@ -300,6 +453,29 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     if (floatingCursorResetController.isCompleted) {
       renderEditor.setFloatingCursor(
           FloatingCursorDragState.End, finalPosition, _lastTextPosition!);
+
+      // During a floating cursor's move gesture (1 finger), the cursor is
+      // animated only visually, without actually updating the selection.
+      // Only after the move gesture is complete, we update the selection
+      // to the new cursor location with zero selection length.
+      //
+      // However, during a floating cursor's selection gesture (2 fingers),
+      // the selection is constantly updated by the engine throughout the gesture.
+      // Thus when the gesture is complete, we should not update the selection
+      // to the cursor location with zero selection length, because that would
+      // overwrite the selection made by floating cursor selection.
+      //
+      // Here we use `isCollapsed` to distinguish between floating cursor's
+      // move gesture (1 finger) vs selection gesture (2 fingers).
+      if (renderEditor.selection.isCollapsed) {
+        // Update selection to final cursor position
+        // This matches Flutter's EditableText behavior
+        renderEditor.onSelectionChanged(
+          TextSelection.fromPosition(_lastTextPosition!),
+          SelectionChangedCause.forcePress,
+        );
+      }
+
       _startCaretRect = null;
       _lastTextPosition = null;
       _pointOffsetOrigin = null;

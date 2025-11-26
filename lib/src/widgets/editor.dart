@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:i18n_extension/i18n_extension.dart';
 
@@ -42,6 +43,12 @@ abstract class EditorState extends State<RawEditor>
   List<OffsetValue> get pasteStyleAndEmbed;
 
   String get pastePlainText;
+
+  /// Shows the magnifier at the given position.
+  void showMagnifier(Offset positionToShow);
+
+  /// Hides the magnifier if it's currently visible.
+  void hideMagnifier();
 
   /// Controls the floating cursor animation when it is released.
   /// The floating cursor is animated to merge with the regular cursor.
@@ -185,6 +192,7 @@ class QuillEditor extends StatefulWidget {
     this.locale,
     this.floatingCursorDisabled = false,
     this.textSelectionControls,
+    this.magnifierConfiguration = TextMagnifierConfiguration.disabled,
     this.onImagePaste,
     this.customShortcuts,
     this.customActions,
@@ -421,6 +429,14 @@ class QuillEditor extends StatefulWidget {
   /// will be used
   final TextSelectionControls? textSelectionControls;
 
+  /// Configuration for the magnifier that appears during text selection.
+  ///
+  /// By default, the magnifier is disabled. To enable it on mobile platforms:
+  /// ```dart
+  /// magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
+  /// ```
+  final TextMagnifierConfiguration magnifierConfiguration;
+
   /// Callback when the user pastes the given image.
   ///
   /// Returns the url of the image if the image should be inserted.
@@ -540,7 +556,7 @@ class QuillEditorState extends State<QuillEditor>
       contextMenuBuilder: showSelectionToolbar
           ? (widget.contextMenuBuilder ?? RawEditor.defaultContextMenuBuilder)
           : null,
-      showSelectionHandles: isMobile(theme.platform),
+      showSelectionHandles: isMobile(theme.platform) || isMobileWeb(),
       showCursor: widget.showCursor,
       cursorStyle: CursorStyle(
         color: cursorColor,
@@ -568,6 +584,7 @@ class QuillEditorState extends State<QuillEditor>
       customStyleBuilder: widget.customStyleBuilder,
       customRecognizerBuilder: widget.customRecognizerBuilder,
       floatingCursorDisabled: widget.floatingCursorDisabled,
+      magnifierConfiguration: widget.magnifierConfiguration,
       onImagePaste: widget.onImagePaste,
       customShortcuts: widget.customShortcuts,
       customActions: widget.customActions,
@@ -652,6 +669,10 @@ class _QuillEditorSelectionGestureDetectorBuilder
   final QuillEditorState _state;
   final bool _detectWordBoundary;
 
+  // Store tap down position for reliable cursor positioning on mobile web
+  // TapUpDetails.globalPosition can be incorrect on Safari, so we use the tap down position
+  Offset? _lastTapDownPosition;
+
   @override
   void onForcePressStart(ForcePressDetails details) {
     super.onForcePressStart(details);
@@ -689,6 +710,9 @@ class _QuillEditorSelectionGestureDetectorBuilder
         SelectionChangedCause.longPress,
       );
     }
+
+    // Update magnifier position during long press drag
+    showMagnifierIfSupportedByPlatform(details.globalPosition);
   }
 
   bool _isPositionSelected(TapUpDetails details) {
@@ -713,6 +737,10 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   @override
   void onTapDown(TapDownDetails details) {
+    // Store tap down position for reliable cursor positioning on mobile web
+    // This matches Flutter's pattern where handleTapDown sets _lastTapDownPosition
+    _lastTapDownPosition = details.globalPosition;
+
     if (_state.widget.onTapDown != null) {
       if (renderEditor != null &&
           _state.widget.onTapDown!(
@@ -758,9 +786,24 @@ class _QuillEditorSelectionGestureDetectorBuilder
                       cause: SelectionChangedCause.tap)
                   ..onSelectionCompleted();
               } else {
-                renderEditor!
-                  ..selectPosition(cause: SelectionChangedCause.tap)
-                  ..onSelectionCompleted();
+                // Match Flutter's pattern: use _lastTapDownPosition for consistency
+                // Flutter's selectPosition() uses _lastTapDownPosition
+                if (_lastTapDownPosition != null) {
+                  renderEditor!
+                    ..selectPositionAt(
+                      from: _lastTapDownPosition!,
+                      cause: SelectionChangedCause.tap,
+                    )
+                    ..onSelectionCompleted();
+                } else {
+                  // Fallback to TapUpDetails if _lastTapDownPosition wasn't set
+                  renderEditor!
+                    ..selectPositionAt(
+                      from: details.globalPosition,
+                      cause: SelectionChangedCause.tap,
+                    )
+                    ..onSelectionCompleted();
+                }
               }
 
               break;
@@ -768,14 +811,32 @@ class _QuillEditorSelectionGestureDetectorBuilder
             case PointerDeviceKind.unknown:
               // On macOS/iOS/iPadOS a touch tap places the cursor at the edge
               // of the word.
+              // Match Flutter's pattern: use _lastTapDownPosition (set in onTapDown)
+              // instead of details.globalPosition from TapUpDetails
+              // Flutter's selectWordEdge() and selectPosition() both use _lastTapDownPosition
               if (_detectWordBoundary) {
+                // selectWordEdge uses _lastTapDownPosition internally
                 renderEditor!
                   ..selectWordEdge(SelectionChangedCause.tap)
                   ..onSelectionCompleted();
               } else {
-                renderEditor!
-                  ..selectPosition(cause: SelectionChangedCause.tap)
-                  ..onSelectionCompleted();
+                // Use stored tap down position (matches Flutter's selectPosition pattern)
+                if (_lastTapDownPosition != null) {
+                  renderEditor!
+                    ..selectPositionAt(
+                      from: _lastTapDownPosition!,
+                      cause: SelectionChangedCause.tap,
+                    )
+                    ..onSelectionCompleted();
+                } else {
+                  // Fallback if _lastTapDownPosition wasn't set (shouldn't happen)
+                  renderEditor!
+                    ..selectPositionAt(
+                      from: details.globalPosition,
+                      cause: SelectionChangedCause.tap,
+                    )
+                    ..onSelectionCompleted();
+                }
               }
               break;
             case PointerDeviceKind.trackpad:
@@ -783,13 +844,31 @@ class _QuillEditorSelectionGestureDetectorBuilder
               break;
           }
         } else {
-          renderEditor!
-            ..selectPosition(cause: SelectionChangedCause.tap)
-            ..onSelectionCompleted();
+          // Match Flutter's pattern: use _lastTapDownPosition for consistency
+          if (_lastTapDownPosition != null) {
+            renderEditor!
+              ..selectPositionAt(
+                from: _lastTapDownPosition!,
+                cause: SelectionChangedCause.tap,
+              )
+              ..onSelectionCompleted();
+          } else {
+            // Fallback to TapUpDetails if _lastTapDownPosition wasn't set
+            renderEditor!
+              ..selectPositionAt(
+                from: details.globalPosition,
+                cause: SelectionChangedCause.tap,
+              )
+              ..onSelectionCompleted();
+          }
         }
       }
     } finally {
-      _state._requestKeyboard();
+      // Request keyboard if selection wasn't changed (e.g., tap on already selected position)
+      // If selection was changed, _handleSelectionChanged already called requestKeyboard()
+      if (_isPositionSelected(details) || !delegate.selectionEnabled) {
+        _state._requestKeyboard();
+      }
     }
   }
 
@@ -814,11 +893,17 @@ class _QuillEditorSelectionGestureDetectorBuilder
         renderEditor!.selectWord(SelectionChangedCause.longPress);
         Feedback.forLongPress(_state.context);
       }
+
+      // Show magnifier on mobile platforms during long press
+      showMagnifierIfSupportedByPlatform(details.globalPosition);
     }
   }
 
   @override
   void onSingleLongTapEnd(LongPressEndDetails details) {
+    // Hide magnifier first, before any other UI changes
+    hideMagnifierIfSupportedByPlatform();
+
     if (_state.widget.onSingleLongTapEnd != null) {
       if (renderEditor != null) {
         if (_state.widget.onSingleLongTapEnd!(
@@ -1500,14 +1585,47 @@ class RenderEditor extends RenderEditableContainerBox
   // in the rendering position and the raw offset value.
   Offset _relativeOrigin = Offset.zero;
   Offset? _previousOffset;
+  bool _shouldResetOrigin = true;
   bool _resetOriginOnLeft = false;
   bool _resetOriginOnRight = false;
   bool _resetOriginOnTop = false;
   bool _resetOriginOnBottom = false;
 
   /// Returns the position within the editor closest to the raw cursor offset.
-  Offset calculateBoundedFloatingCursorOffset(
-      Offset rawCursorOffset, double preferredLineHeight) {
+  ///
+  /// The [shouldResetOrigin] parameter controls whether the relative origin
+  /// should be reset. This is typically true for keyboard-initiated floating
+  /// cursor and false for long-press initiated floating cursor.
+  Offset calculateBoundedFloatingCursorOffset(Offset rawCursorOffset,
+      {bool? shouldResetOrigin}) {
+    if (shouldResetOrigin != null) {
+      _shouldResetOrigin = shouldResetOrigin;
+    }
+
+    // If shouldResetOrigin is false, use a simpler calculation
+    // This happens during long-press where origin is already set correctly
+    if (!_shouldResetOrigin) {
+      final preferredLineHeight = this.preferredLineHeight(
+        TextPosition(offset: selection.baseOffset),
+      );
+      final topBound = _kFloatingCursorAddedMargin.top;
+      final bottomBound = size.height -
+          preferredLineHeight +
+          _kFloatingCursorAddedMargin.bottom;
+      final leftBound = _kFloatingCursorAddedMargin.left;
+      final rightBound = size.width - _kFloatingCursorAddedMargin.right;
+
+      final currentX = rawCursorOffset.dx - _relativeOrigin.dx;
+      final currentY = rawCursorOffset.dy - _relativeOrigin.dy;
+      final adjustedX = math.min(math.max(currentX, leftBound), rightBound);
+      final adjustedY = math.min(math.max(currentY, topBound), bottomBound);
+      return Offset(adjustedX, adjustedY);
+    }
+
+    // Original logic for keyboard-initiated floating cursor
+    final preferredLineHeight = this.preferredLineHeight(
+      TextPosition(offset: selection.baseOffset),
+    );
     var deltaPosition = Offset.zero;
     final topBound = _kFloatingCursorAddedMargin.top;
     final bottomBound =
@@ -1574,9 +1692,10 @@ class RenderEditor extends RenderEditableContainerBox
     if (dragState == FloatingCursorDragState.Start) {
       _relativeOrigin = Offset.zero;
       _previousOffset = null;
-      _resetOriginOnBottom = false;
-      _resetOriginOnTop = false;
+      _shouldResetOrigin = true;
+      _resetOriginOnLeft = false;
       _resetOriginOnRight = false;
+      _resetOriginOnTop = false;
       _resetOriginOnBottom = false;
     }
     _floatingCursorOn = dragState != FloatingCursorDragState.End;

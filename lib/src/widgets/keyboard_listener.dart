@@ -3,8 +3,7 @@ import 'package:flutter/services.dart';
 
 class QuillPressedKeys extends ChangeNotifier {
   static QuillPressedKeys of(BuildContext context) {
-    final widget =
-        context.dependOnInheritedWidgetOfExactType<_QuillPressedKeysAccess>();
+    final widget = context.dependOnInheritedWidgetOfExactType<_QuillPressedKeysAccess>();
     return widget!.pressedKeys;
   }
 
@@ -18,10 +17,8 @@ class QuillPressedKeys extends ChangeNotifier {
   bool get controlPressed => _controlPressed;
 
   void _updatePressedKeys(Set<LogicalKeyboardKey> pressedKeys) {
-    final meta = pressedKeys.contains(LogicalKeyboardKey.metaLeft) ||
-        pressedKeys.contains(LogicalKeyboardKey.metaRight);
-    final control = pressedKeys.contains(LogicalKeyboardKey.controlLeft) ||
-        pressedKeys.contains(LogicalKeyboardKey.controlRight);
+    final meta = pressedKeys.contains(LogicalKeyboardKey.metaLeft) || pressedKeys.contains(LogicalKeyboardKey.metaRight);
+    final control = pressedKeys.contains(LogicalKeyboardKey.controlLeft) || pressedKeys.contains(LogicalKeyboardKey.controlRight);
     if (_metaPressed != meta || _controlPressed != control) {
       _metaPressed = meta;
       _controlPressed = control;
@@ -31,8 +28,7 @@ class QuillPressedKeys extends ChangeNotifier {
 }
 
 class QuillKeyboardListener extends StatefulWidget {
-  const QuillKeyboardListener({required this.child, Key? key})
-      : super(key: key);
+  const QuillKeyboardListener({required this.child, Key? key}) : super(key: key);
 
   final Widget child;
 
@@ -44,8 +40,7 @@ class QuillKeyboardListenerState extends State<QuillKeyboardListener> {
   final QuillPressedKeys _pressedKeys = QuillPressedKeys();
 
   bool _keyEvent(KeyEvent event) {
-    _pressedKeys
-        ._updatePressedKeys(HardwareKeyboard.instance.logicalKeysPressed);
+    _pressedKeys._updatePressedKeys(HardwareKeyboard.instance.logicalKeysPressed);
     return false;
   }
 
@@ -53,8 +48,7 @@ class QuillKeyboardListenerState extends State<QuillKeyboardListener> {
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_keyEvent);
-    _pressedKeys
-        ._updatePressedKeys(HardwareKeyboard.instance.logicalKeysPressed);
+    _pressedKeys._updatePressedKeys(HardwareKeyboard.instance.logicalKeysPressed);
   }
 
   @override

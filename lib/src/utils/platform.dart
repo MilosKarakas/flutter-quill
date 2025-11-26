@@ -50,3 +50,9 @@ Future<bool> isIOSSimulator() async {
   }
   return false;
 }
+
+bool isMobileWeb() {
+  return kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.android);
+}
