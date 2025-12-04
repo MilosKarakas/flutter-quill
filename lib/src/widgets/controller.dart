@@ -108,11 +108,11 @@ class QuillController extends ChangeNotifier {
     }
   }
 
-  /// Checks if the current list item is the first item at its indentation level.
+  /// Checks if the list item at the given offset is the first item at its indentation level.
   /// Returns true if it's NOT the first (i.e., indentation is allowed).
   /// Returns false if it IS the first (i.e., indentation should be prevented).
-  bool _isNotFirstListItem() {
-    final childQuery = document.queryChild(selection.start);
+  bool _isNotFirstListItem(int offset) {
+    final childQuery = document.queryChild(offset);
     if (childQuery.node == null) {
       return true;
     }
@@ -197,8 +197,7 @@ class QuillController extends ChangeNotifier {
     final indent = getSelectionStyle().attributes[Attribute.indent.key];
     if (indent == null) {
       if (isIncrease) {
-        // Check if this is NOT the first list item - if it is first, prevent indentation
-        if (_isNotFirstListItem()) {
+        if (_isNotFirstListItem(selection.start)) {
           formatSelection(Attribute.indentL1);
         }
       }
@@ -210,8 +209,7 @@ class QuillController extends ChangeNotifier {
     }
     if (isIncrease) {
       if (indent.value < 5) {
-        // Check if this is NOT the first list item - if it is first, prevent indentation
-        if (_isNotFirstListItem()) {
+        if (_isNotFirstListItem(selection.start)) {
           formatSelection(Attribute.getIndentLevel(indent.value + 1));
         }
       }
@@ -236,16 +234,7 @@ class QuillController extends ChangeNotifier {
       Attribute? formatAttribute;
       if (indent == null) {
         if (isIncrease) {
-          // Check if this is NOT the first list item - if it is first, prevent indentation
-          // Temporarily update selection to check for this specific line
-          final oldSelection = selection;
-          updateSelection(
-            TextSelection.collapsed(offset: formatIndex),
-            ChangeSource.LOCAL,
-          );
-          final isNotFirst = _isNotFirstListItem();
-          updateSelection(oldSelection, ChangeSource.LOCAL);
-          if (isNotFirst) {
+          if (_isNotFirstListItem(formatIndex)) {
             formatAttribute = Attribute.indentL1;
           }
         }
@@ -253,16 +242,7 @@ class QuillController extends ChangeNotifier {
         formatAttribute = Attribute.clone(Attribute.indentL1, null);
       } else if (isIncrease) {
         if (indent.value < 5) {
-          // Check if this is NOT the first list item - if it is first, prevent indentation
-          // Temporarily update selection to check for this specific line
-          final oldSelection = selection;
-          updateSelection(
-            TextSelection.collapsed(offset: formatIndex),
-            ChangeSource.LOCAL,
-          );
-          final isNotFirst = _isNotFirstListItem();
-          updateSelection(oldSelection, ChangeSource.LOCAL);
-          if (isNotFirst) {
+          if (_isNotFirstListItem(formatIndex)) {
             formatAttribute = Attribute.getIndentLevel(indent.value + 1);
           }
         }
