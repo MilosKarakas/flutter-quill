@@ -10,7 +10,7 @@ import '../models/documents/nodes/block.dart';
 import '../models/documents/nodes/embeddable.dart';
 import '../models/documents/nodes/leaf.dart' as leaf;
 import '../models/documents/style.dart';
-import '../models/quill_delta.dart';
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 import '../models/structs/doc_change.dart';
 import '../models/structs/image_url.dart';
 import '../models/structs/offset_value.dart';

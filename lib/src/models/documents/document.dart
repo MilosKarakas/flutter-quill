@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import '../../widgets/embeds.dart';
-import '../quill_delta.dart';
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 import '../rules/rule.dart';
 import '../structs/doc_change.dart';
 import '../structs/history_changed.dart';
