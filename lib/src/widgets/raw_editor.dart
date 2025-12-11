@@ -1477,8 +1477,8 @@ class RawEditorState extends EditorState
 
   void _handleFocusChanged() {
     if (dirty) {
-      SchedulerBinding.instance
-          .addPostFrameCallback((_) => _handleFocusChanged());
+      requestKeyboard();
+      SchedulerBinding.instance.addPostFrameCallback((_) => _handleFocusChanged());
       return;
     }
 
