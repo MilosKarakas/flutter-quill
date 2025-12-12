@@ -1,6 +1,6 @@
 import '../documents/attribute.dart';
 import '../documents/nodes/embeddable.dart';
-import '../quill_delta.dart';
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'rule.dart';
 
 /// A heuristic rule for delete operations.

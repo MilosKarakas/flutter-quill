@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
@@ -5,10 +6,11 @@ import 'package:flutter/services.dart';
 
 import '../models/documents/attribute.dart';
 import '../models/documents/document.dart';
+import '../models/documents/nodes/block.dart';
 import '../models/documents/nodes/embeddable.dart';
-import '../models/documents/nodes/leaf.dart';
+import '../models/documents/nodes/leaf.dart' as leaf;
 import '../models/documents/style.dart';
-import '../models/quill_delta.dart';
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 import '../models/structs/doc_change.dart';
 import '../models/structs/image_url.dart';
 import '../models/structs/offset_value.dart';
@@ -106,11 +108,98 @@ class QuillController extends ChangeNotifier {
     }
   }
 
+  /// Checks if the list item at the given offset is the first item at its indentation level.
+  /// Returns true if it's NOT the first (i.e., indentation is allowed).
+  /// Returns false if it IS the first (i.e., indentation should be prevented).
+  bool _isNotFirstListItem(int offset) {
+    final childQuery = document.queryChild(offset);
+    if (childQuery.node == null) {
+      return true;
+    }
+
+    final currentLine = childQuery.node;
+    if (currentLine == null || currentLine.parent == null) {
+      return true;
+    }
+
+    final parentBlock = currentLine.parent;
+    if (parentBlock is! Block) {
+      return true;
+    }
+
+    final parentAttrs = parentBlock.style.attributes;
+    final isListItem = parentAttrs.containsKey(Attribute.ol.key) ||
+        parentAttrs.containsKey(Attribute.ul.key) ||
+        parentAttrs.containsKey(Attribute.checked.key);
+
+    if (!isListItem) {
+      return true;
+    }
+
+    final currentIndent = parentAttrs[Attribute.indent.key]?.value ?? 0;
+    final listType = parentAttrs[Attribute.list.key];
+
+    // Check if current line is not the first in its block
+    final linesInBlock = parentBlock.children.toList();
+    final currentLineIndex = linesInBlock.indexOf(currentLine);
+
+    if (currentLineIndex > 0) {
+      return true;
+    }
+
+    // Current line is first in its block, check for previous blocks at same level
+    final root = document.root;
+    Block? currentBlockInRoot;
+    final allBlocks = <Block>[];
+
+    for (final node in root.children) {
+      if (node is Block) {
+        allBlocks.add(node);
+        if (node == parentBlock) {
+          currentBlockInRoot = node;
+        }
+      }
+    }
+
+    if (currentBlockInRoot == null) {
+      return true;
+    }
+
+    final currentIndex = allBlocks.indexOf(currentBlockInRoot);
+
+    for (var i = currentIndex - 1; i >= 0; i--) {
+      final prevBlock = allBlocks[i];
+      final prevAttrs = prevBlock.style.attributes;
+      final prevListAttr = prevAttrs[Attribute.list.key];
+      final prevIndent = prevAttrs[Attribute.indent.key]?.value ?? 0;
+
+      final isPrevListItem = prevAttrs.containsKey(Attribute.ol.key) ||
+          prevAttrs.containsKey(Attribute.ul.key) ||
+          prevAttrs.containsKey(Attribute.checked.key);
+
+      if (!isPrevListItem || prevListAttr == null || prevListAttr != listType) {
+        break;
+      }
+
+      if (prevIndent < currentIndent) {
+        break;
+      }
+
+      if (prevIndent == currentIndent) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   void _indentSelectionFormat(bool isIncrease) {
     final indent = getSelectionStyle().attributes[Attribute.indent.key];
     if (indent == null) {
       if (isIncrease) {
-        formatSelection(Attribute.indentL1);
+        if (_isNotFirstListItem(selection.start)) {
+          formatSelection(Attribute.indentL1);
+        }
       }
       return;
     }
@@ -120,7 +209,9 @@ class QuillController extends ChangeNotifier {
     }
     if (isIncrease) {
       if (indent.value < 5) {
-        formatSelection(Attribute.getIndentLevel(indent.value + 1));
+        if (_isNotFirstListItem(selection.start)) {
+          formatSelection(Attribute.getIndentLevel(indent.value + 1));
+        }
       }
       return;
     }
@@ -143,13 +234,17 @@ class QuillController extends ChangeNotifier {
       Attribute? formatAttribute;
       if (indent == null) {
         if (isIncrease) {
-          formatAttribute = Attribute.indentL1;
+          if (_isNotFirstListItem(formatIndex)) {
+            formatAttribute = Attribute.indentL1;
+          }
         }
       } else if (indent.value == 1 && !isIncrease) {
         formatAttribute = Attribute.clone(Attribute.indentL1, null);
       } else if (isIncrease) {
         if (indent.value < 5) {
-          formatAttribute = Attribute.getIndentLevel(indent.value + 1);
+          if (_isNotFirstListItem(formatIndex)) {
+            formatAttribute = Attribute.getIndentLevel(indent.value + 1);
+          }
         }
       } else {
         formatAttribute = Attribute.getIndentLevel(indent.value - 1);
@@ -411,7 +506,7 @@ class QuillController extends ChangeNotifier {
   }
 
   /// Given offset, find its leaf node in document
-  Leaf? queryNode(int offset) {
+  leaf.Leaf? queryNode(int offset) {
     return document.querySegmentLeafNode(offset).leaf;
   }
 
