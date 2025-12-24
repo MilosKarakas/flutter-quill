@@ -1,5 +1,5 @@
 import '../documents/attribute.dart';
-import '../quill_delta.dart';
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'rule.dart';
 
 /// A heuristic rule for format (retain) operations.

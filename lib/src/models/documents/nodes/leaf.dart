@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import '../../../widgets/embeds.dart';
-import '../../quill_delta.dart';
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 import '../style.dart';
 import 'embeddable.dart';
 import 'line.dart';

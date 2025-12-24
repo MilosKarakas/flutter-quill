@@ -3,7 +3,7 @@ import 'dart:ui';
 
 import '../models/documents/attribute.dart';
 import '../models/documents/nodes/node.dart';
-import '../models/quill_delta.dart';
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 
 // Diff between two texts - old text and new text
 class Diff {

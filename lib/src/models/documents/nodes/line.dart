@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:collection/collection.dart';
 
 import '../../../widgets/embeds.dart';
-import '../../quill_delta.dart';
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 import '../../structs/offset_value.dart';
 import '../attribute.dart';
 import '../style.dart';

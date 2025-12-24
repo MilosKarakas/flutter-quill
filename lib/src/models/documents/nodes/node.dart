@@ -1,7 +1,7 @@
 import 'dart:collection';
 
 import '../../../widgets/embeds.dart';
-import '../../quill_delta.dart';
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 import '../attribute.dart';
 import '../style.dart';
 import 'container.dart';
