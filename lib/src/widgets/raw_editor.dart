@@ -684,32 +684,22 @@ class RawEditorState extends EditorState
         debugPrint('[QuillEditor] Listener.onPointerDown - position: ${event.position}, buttons: ${event.buttons}');
         
         // Workaround: If secondary tap flag is stuck (events not reaching gesture detector),
-        // manually clear it, request focus, and position cursor at tap location.
+        // manually clear it, dispose overlay, and request focus.
         // This breaks out of the stuck state after the native context menu closes.
         if (_isSecondaryTapInProgress && event.buttons == 1) {
-          debugPrint('[QuillEditor] Listener: Clearing stuck secondary tap flag and handling tap');
+          debugPrint('[QuillEditor] Listener: Clearing stuck secondary tap flag');
           _isSecondaryTapInProgress = false;
           
-          // Request focus to restore normal editing state
-          if (!_hasFocus) {
-            widget.focusNode.requestFocus();
+          // Dispose the selection overlay completely - it's likely blocking taps
+          if (_selectionOverlay != null) {
+            debugPrint('[QuillEditor] Listener: Disposing selection overlay');
+            _selectionOverlay!.dispose();
+            _selectionOverlay = null;
           }
           
-          // Position cursor at tap location (simulate what onTapDown would do)
-          // Convert global position to local position
-          final localPosition = renderEditor.globalToLocal(event.position);
-          final position = renderEditor.getPositionForOffset(localPosition);
-          debugPrint('[QuillEditor] Listener: Setting cursor position to offset ${position.offset}');
-          
-          // Collapse selection to tap position
-          final newSelection = TextSelection.collapsed(
-            offset: position.offset,
-            affinity: position.affinity,
-          );
-          controller.updateSelection(newSelection, ChangeSource.LOCAL);
-          
-          // Update overlay state
-          _updateOrDisposeSelectionOverlayIfNeeded();
+          // Request focus to restore normal editing state
+          widget.focusNode.requestFocus();
+          debugPrint('[QuillEditor] Listener: Focus requested');
         }
       },
       child: TextFieldTapRegion(
