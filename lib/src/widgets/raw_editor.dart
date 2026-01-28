@@ -338,6 +338,14 @@ class RawEditorState extends EditorState
       // This ensures copy/cut/paste operate on the correct text
       debugPrint('[QuillEditor] Syncing selection to platform for context menu');
       updateRemoteValueIfNeeded();
+      
+      // Proactively reset the gesture detector to prevent stuck state.
+      // When browser's context menu opens, it steals the PointerUpEvent, leaving
+      // the gesture recognizer stuck. By resetting now, the rebuild happens while
+      // the user interacts with the context menu, so the recognizer is ready
+      // when they tap back into the editor.
+      debugPrint('[QuillEditor] Proactively resetting gesture detector for context menu');
+      widget.onResetGestureDetector?.call();
     }
   }
 
