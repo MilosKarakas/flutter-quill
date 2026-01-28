@@ -72,9 +72,22 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     if (widget.focusNode.hasFocus && widget.focusNode.consumeKeyboardToken()) {
       openConnectionIfNeeded();
     } else if (!widget.focusNode.hasFocus) {
+      // On web, don't close connection during secondary tap (right-click).
+      // The native context menu steals focus, but we need to keep the connection
+      // alive so copy/paste operations work correctly.
+      if (kIsWeb && isSecondaryTapInProgress) {
+        debugPrint('[QuillEditor] openOrCloseConnection - BLOCKING close during secondary tap');
+        return;
+      }
       closeConnectionIfNeeded();
     }
   }
+  
+  /// Whether a secondary tap (right-click) is in progress.
+  /// This is set by the gesture detector and used to prevent connection
+  /// closure when the native context menu steals focus.
+  bool get isSecondaryTapInProgress;
+
 
   void openConnectionIfNeeded() {
     if (!shouldCreateInputConnection) {

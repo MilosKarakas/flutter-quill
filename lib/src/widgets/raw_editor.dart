@@ -320,6 +320,9 @@ class RawEditorState extends EditorState
   // Secondary tap (right-click) tracking
   // Used to prevent tap-outside from unfocusing during right-click context menu
   bool _isSecondaryTapInProgress = false;
+  
+  @override
+  bool get isSecondaryTapInProgress => _isSecondaryTapInProgress;
 
   /// Called by the gesture detector when a secondary tap (right-click) starts.
   /// This prevents the editor from unfocusing when the native context menu appears.
