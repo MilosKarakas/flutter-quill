@@ -684,16 +684,29 @@ class RawEditorState extends EditorState
         debugPrint('[QuillEditor] Listener.onPointerDown - position: ${event.position}, buttons: ${event.buttons}');
         
         // Workaround: If secondary tap flag is stuck (events not reaching gesture detector),
-        // manually clear it and request focus. This breaks out of the stuck state after
-        // the native context menu closes.
+        // manually clear it, request focus, and position cursor at tap location.
+        // This breaks out of the stuck state after the native context menu closes.
         if (_isSecondaryTapInProgress && event.buttons == 1) {
-          debugPrint('[QuillEditor] Listener: Clearing stuck secondary tap flag and requesting focus');
+          debugPrint('[QuillEditor] Listener: Clearing stuck secondary tap flag and handling tap');
           _isSecondaryTapInProgress = false;
           
           // Request focus to restore normal editing state
           if (!_hasFocus) {
             widget.focusNode.requestFocus();
           }
+          
+          // Position cursor at tap location (simulate what onTapDown would do)
+          // Convert global position to local position
+          final localPosition = renderEditor.globalToLocal(event.position);
+          final position = renderEditor.getPositionForOffset(localPosition);
+          debugPrint('[QuillEditor] Listener: Setting cursor position to offset ${position.offset}');
+          
+          // Collapse selection to tap position
+          final newSelection = TextSelection.collapsed(
+            offset: position.offset,
+            affinity: position.affinity,
+          );
+          controller.updateSelection(newSelection, ChangeSource.LOCAL);
           
           // Update overlay state
           _updateOrDisposeSelectionOverlayIfNeeded();
