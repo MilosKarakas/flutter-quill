@@ -1467,6 +1467,8 @@ class RawEditorState extends EditorState
       final shouldKeepOverlay = _hasFocus ||
           (isMobileWeb() && !textEditingValue.selection.isCollapsed) ||
           _isLongPressInProgress;
+      
+      debugPrint('[QuillEditor] _updateOrDisposeSelectionOverlayIfNeeded - shouldKeepOverlay: $shouldKeepOverlay (hasFocus: $_hasFocus, longPress: $_isLongPressInProgress)');
 
       if (!shouldKeepOverlay) {
         // Safety: Ensure magnifier is hidden before disposing overlay

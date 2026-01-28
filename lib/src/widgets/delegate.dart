@@ -225,7 +225,9 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///    this callback.
   @protected
   void onSingleTapUp(TapUpDetails details) {
+    debugPrint('[QuillEditor] onSingleTapUp - position: ${details.globalPosition}, selectionEnabled: ${delegate.selectionEnabled}');
     if (delegate.selectionEnabled) {
+      debugPrint('[QuillEditor] onSingleTapUp - calling selectWordEdge');
       renderEditor!.selectWordEdge(SelectionChangedCause.tap);
     }
   }
