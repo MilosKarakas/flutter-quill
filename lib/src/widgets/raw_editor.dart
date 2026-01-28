@@ -328,12 +328,18 @@ class RawEditorState extends EditorState
   /// This prevents the editor from unfocusing when the native context menu appears.
   void setSecondaryTapInProgress(bool value) {
     debugPrint('[QuillEditor] setSecondaryTapInProgress: $value (was: $_isSecondaryTapInProgress)');
+    final wasInProgress = _isSecondaryTapInProgress;
     _isSecondaryTapInProgress = value;
     if (value && kIsWeb) {
       // On web, sync selection to platform before native context menu appears
       // This ensures copy/cut/paste operate on the correct text
       debugPrint('[QuillEditor] Syncing selection to platform for context menu');
       updateRemoteValueIfNeeded();
+    }
+    // When clearing the flag, ensure overlay state is updated
+    if (wasInProgress && !value) {
+      debugPrint('[QuillEditor] Secondary tap ended - updating overlay state');
+      _updateOrDisposeSelectionOverlayIfNeeded();
     }
   }
 
@@ -1464,11 +1470,13 @@ class RawEditorState extends EditorState
       // 1. Editor has focus
       // 2. On mobile web with non-collapsed selection (for copy/paste menu)
       // 3. During long press gesture (even if focus is lost temporarily)
+      // 4. During secondary tap on web (native context menu needs to show selected text)
       final shouldKeepOverlay = _hasFocus ||
           (isMobileWeb() && !textEditingValue.selection.isCollapsed) ||
-          _isLongPressInProgress;
+          _isLongPressInProgress ||
+          (kIsWeb && _isSecondaryTapInProgress);
       
-      debugPrint('[QuillEditor] _updateOrDisposeSelectionOverlayIfNeeded - shouldKeepOverlay: $shouldKeepOverlay (hasFocus: $_hasFocus, longPress: $_isLongPressInProgress)');
+      debugPrint('[QuillEditor] _updateOrDisposeSelectionOverlayIfNeeded - shouldKeepOverlay: $shouldKeepOverlay (hasFocus: $_hasFocus, secondaryTap: $_isSecondaryTapInProgress, longPress: $_isLongPressInProgress)');
 
       if (!shouldKeepOverlay) {
         // Safety: Ensure magnifier is hidden before disposing overlay
