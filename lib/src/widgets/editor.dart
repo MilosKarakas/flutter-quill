@@ -496,6 +496,19 @@ class QuillEditorState extends State<QuillEditor>
   late EditorTextSelectionGestureDetectorBuilder
       _selectionGestureDetectorBuilder;
 
+  /// Counter used to force gesture detector recreation when recovering from
+  /// stuck gesture states (e.g., after right-click on web where browser
+  /// consumes the PointerUpEvent).
+  int _gestureDetectorResetCount = 0;
+
+  /// Callback passed to RawEditor to request gesture detector reset.
+  void _handleResetGestureDetector() {
+    debugPrint('[QuillEditorState] Resetting gesture detector (count: ${_gestureDetectorResetCount + 1})');
+    setState(() {
+      _gestureDetectorResetCount++;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -593,12 +606,17 @@ class QuillEditorState extends State<QuillEditor>
       dialogTheme: widget.dialogTheme,
       contentInsertionConfiguration: widget.contentInsertionConfiguration,
       onPaste: widget.onPaste,
+      onResetGestureDetector: _handleResetGestureDetector,
     );
 
     final editor = I18n(
       initialLocale: widget.locale,
       child: selectionEnabled
           ? _selectionGestureDetectorBuilder.build(
+              // Use a key that changes when we need to reset the gesture detector.
+              // This forces Flutter to dispose the old recognizers and create new ones,
+              // fixing stuck gesture states (e.g., after right-click on web).
+              key: ValueKey('gesture_detector_$_gestureDetectorResetCount'),
               behavior: HitTestBehavior.translucent,
               detectWordBoundary: widget.detectWordBoundary,
               child: child,

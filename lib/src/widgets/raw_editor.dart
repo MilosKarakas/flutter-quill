@@ -86,6 +86,7 @@ class RawEditor extends StatefulWidget {
     this.dialogTheme,
     this.contentInsertionConfiguration,
     this.onPaste,
+    this.onResetGestureDetector,
   })  : assert(maxHeight == null || maxHeight > 0, 'maxHeight cannot be null'),
         assert(minHeight == null || minHeight >= 0, 'minHeight cannot be null'),
         assert(maxHeight == null || minHeight == null || maxHeight >= minHeight,
@@ -284,6 +285,10 @@ class RawEditor extends StatefulWidget {
 
   /// Clipboard data retriever
   final Future<PasteData> Function()? onPaste;
+
+  /// Callback to request gesture detector reset.
+  /// Called when recovering from a stuck gesture state (e.g., after right-click on web).
+  final VoidCallback? onResetGestureDetector;
 
   @override
   State<StatefulWidget> createState() => RawEditorState();
@@ -669,7 +674,7 @@ class RawEditorState extends EditorState
         debugPrint('[QuillEditor] Listener.onPointerDown - position: ${event.position}, buttons: ${event.buttons}, secondaryTap: $_isSecondaryTapInProgress');
         
         // If secondary tap flag is stuck and user taps with primary button,
-        // clear the flag and force a widget rebuild to reset gesture detector state
+        // clear the flag and request gesture detector reset
         if (_isSecondaryTapInProgress && event.buttons == 1) {
           debugPrint('[QuillEditor] Listener: Recovering from stuck secondary tap state');
           _isSecondaryTapInProgress = false;
@@ -679,10 +684,11 @@ class RawEditorState extends EditorState
             widget.focusNode.requestFocus();
           }
           
-          // Force rebuild to reset any corrupted gesture state
-          setState(() {
-            debugPrint('[QuillEditor] Listener: Forcing rebuild via setState');
-          });
+          // Request gesture detector reset to clear stuck recognizer state
+          // This changes the gesture detector's key, forcing Flutter to dispose
+          // the old recognizer and create a fresh one
+          debugPrint('[QuillEditor] Listener: Requesting gesture detector reset');
+          widget.onResetGestureDetector?.call();
         }
       },
       child: TextFieldTapRegion(
