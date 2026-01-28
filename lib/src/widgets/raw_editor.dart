@@ -678,10 +678,15 @@ class RawEditorState extends EditorState
     // we need to
     final isDesktopMacOS = isMacOS();
 
-    return TextFieldTapRegion(
-      enabled: widget.enableUnfocusOnTapOutside,
-      onTapOutside: _defaultOnTapOutside,
-      child: QuillStyles(
+    // Debug: Listener to detect if pointer events are being received at all
+    return Listener(
+      onPointerDown: (event) {
+        debugPrint('[QuillEditor] Listener.onPointerDown - position: ${event.position}, buttons: ${event.buttons}');
+      },
+      child: TextFieldTapRegion(
+        enabled: widget.enableUnfocusOnTapOutside,
+        onTapOutside: _defaultOnTapOutside,
+        child: QuillStyles(
         data: _styles!,
         child: Shortcuts(
           shortcuts: mergeMaps<ShortcutActivator, Intent>({
@@ -831,6 +836,7 @@ class RawEditorState extends EditorState
           ),
         ),
       ),
+    ),
     );
   }
 
