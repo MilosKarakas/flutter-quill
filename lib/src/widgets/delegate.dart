@@ -146,13 +146,6 @@ class EditorTextSelectionGestureDetectorBuilder {
   @protected
   void onTapDown(TapDownDetails details) {
     debugPrint('[QuillEditor] onTapDown - position: ${details.globalPosition}');
-    
-    // Clear secondary tap flag if it was set (user tapped inside editor after right-click)
-    final editorState = editor;
-    if (editorState is RawEditorState) {
-      editorState.setSecondaryTapInProgress(false);
-    }
-
     renderEditor!.handleTapDown(details);
     // The selection overlay should only be shown when the user is interacting
     // through a touch screen (via either a finger or a stylus).
