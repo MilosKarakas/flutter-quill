@@ -23,14 +23,18 @@ class QuillController extends ChangeNotifier {
   QuillController({
     required Document document,
     required TextSelection selection,
+    @Deprecated(
+      'This parameter no longer affects behavior. '
+      'The toggledStyle now always reflects formatting at the cursor position, '
+      'which is the standard behavior for rich text editors.',
+    )
     bool keepStyleOnNewLine = false,
     this.onReplaceText,
     this.onDelete,
     this.onSelectionCompleted,
     this.onSelectionChanged,
   })  : _document = document,
-        _selection = selection,
-        _keepStyleOnNewLine = keepStyleOnNewLine;
+        _selection = selection;
 
   factory QuillController.basic() {
     return QuillController(
@@ -52,10 +56,6 @@ class QuillController extends ChangeNotifier {
 
     notifyListeners();
   }
-
-  /// Tells whether to keep or reset the [toggledStyle]
-  /// when user adds a new line.
-  final bool _keepStyleOnNewLine;
 
   /// Currently selected text within the [document].
   TextSelection get selection => _selection;
@@ -493,15 +493,27 @@ class QuillController extends ChangeNotifier {
     _selection = selection.copyWith(
         baseOffset: math.min(selection.baseOffset, end),
         extentOffset: math.min(selection.extentOffset, end));
-    if (_keepStyleOnNewLine) {
-      final style = getSelectionStyle();
-      final ignoredStyles = style.attributes.values.where(
-        (s) => !s.isInline || s.key == Attribute.link.key,
-      );
-      toggledStyle = style.removeAll(ignoredStyles.toSet());
-    } else {
-      toggledStyle = const Style();
-    }
+
+    // Always update toggledStyle to reflect the formatting at the current
+    // cursor position. This ensures that when the user clicks on formatted text
+    // and starts typing, the new text inherits that formatting.
+    //
+    // This matches the behavior of standard rich text editors (like super_editor's
+    // composingAttributions pattern) where formatting "follows the cursor".
+    //
+    // Only inline styles are preserved (not block styles like headers, lists).
+    // Link styles are excluded as they should not be automatically inherited.
+    final styleAtPosition = document.collectStyle(
+      selection.start,
+      selection.isCollapsed ? 0 : selection.end - selection.start,
+    );
+    final inlineStyles = styleAtPosition.attributes.values.where(
+      (attr) => attr.isInline && attr.key != Attribute.link.key,
+    );
+    toggledStyle = Style.attr(Map.fromEntries(
+      inlineStyles.map((attr) => MapEntry(attr.key, attr)),
+    ));
+
     onSelectionChanged?.call(textSelection);
   }
 

@@ -317,6 +317,33 @@ class RawEditorState extends EditorState
 
   bool get _hasFocus => widget.focusNode.hasFocus;
 
+  // Secondary tap (right-click) tracking
+  // Used to prevent tap-outside from unfocusing during right-click context menu
+  bool _isSecondaryTapInProgress = false;
+
+  /// Called by the gesture detector when a secondary tap (right-click) starts.
+  /// This prevents the editor from unfocusing when the native context menu appears.
+  void setSecondaryTapInProgress(bool value) {
+    debugPrint('[QuillEditor] setSecondaryTapInProgress: $value (was: $_isSecondaryTapInProgress)');
+    _isSecondaryTapInProgress = value;
+    if (value && kIsWeb) {
+      // On web, sync selection to platform before native context menu appears
+      // This ensures copy/cut/paste operate on the correct text
+      debugPrint('[QuillEditor] Syncing selection to platform for context menu');
+      updateRemoteValueIfNeeded();
+    }
+  }
+
+  // Long press tracking
+  // Used to keep the selection overlay alive during long press gestures on mobile web
+  bool _isLongPressInProgress = false;
+
+  /// Called by the gesture detector when a long press gesture starts/ends.
+  /// This prevents the selection overlay from being disposed during long press.
+  void setLongPressInProgress(bool value) {
+    _isLongPressInProgress = value;
+  }
+
   // Theme
   DefaultStyles? _styles;
 
@@ -479,6 +506,16 @@ class RawEditorState extends EditorState
   }
 
   void _defaultOnTapOutside(PointerDownEvent event) {
+    debugPrint('[QuillEditor] _defaultOnTapOutside called - kind: ${event.kind}, buttons: ${event.buttons}');
+    debugPrint('[QuillEditor] _isSecondaryTapInProgress: $_isSecondaryTapInProgress, _hasFocus: $_hasFocus');
+    
+    // Don't unfocus during secondary tap (right-click) - the native context menu
+    // needs the editor to remain focused to perform copy/cut/paste operations
+    if (_isSecondaryTapInProgress) {
+      debugPrint('[QuillEditor] Blocking unfocus - secondary tap in progress');
+      return;
+    }
+
     /// The focus dropping behavior is only present on desktop platforms
     /// and mobile browsers.
     switch (defaultTargetPlatform) {
@@ -1420,10 +1457,13 @@ class RawEditorState extends EditorState
     // Overlay is primarily managed in _handleSelectionChanged()
     // This method handles focus-related updates
     if (_selectionOverlay != null) {
-      // On mobile web, keep overlay alive during selection even without focus
-      // This is needed for long-press toolbar to work
+      // Keep overlay alive in these cases:
+      // 1. Editor has focus
+      // 2. On mobile web with non-collapsed selection (for copy/paste menu)
+      // 3. During long press gesture (even if focus is lost temporarily)
       final shouldKeepOverlay = _hasFocus ||
-          (isMobileWeb() && !textEditingValue.selection.isCollapsed);
+          (isMobileWeb() && !textEditingValue.selection.isCollapsed) ||
+          _isLongPressInProgress;
 
       if (!shouldKeepOverlay) {
         // Safety: Ensure magnifier is hidden before disposing overlay
@@ -1484,7 +1524,16 @@ class RawEditorState extends EditorState
 
     openOrCloseConnection();
 
+    debugPrint('[QuillEditor] _handleFocusChanged - _hasFocus: $_hasFocus');
+    
     if (_hasFocus) {
+      // Clear secondary tap flag when focus is regained
+      // This handles the case where user clicked elsewhere to dismiss the context menu
+      if (_isSecondaryTapInProgress) {
+        debugPrint('[QuillEditor] Clearing secondary tap flag on focus regain');
+      }
+      _isSecondaryTapInProgress = false;
+
       WidgetsBinding.instance.addObserver(this);
       _showCaretOnScreen();
 

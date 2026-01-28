@@ -67,6 +67,7 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   /// Opens or closes input connection based on the current state of
   /// [focusNode] and [value].
   void openOrCloseConnection() {
+    debugPrint('[QuillEditor] openOrCloseConnection - hasFocus: ${widget.focusNode.hasFocus}, hasConnection: $hasConnection');
     // Simplified to match Flutter's EditableText pattern - no delays
     if (widget.focusNode.hasFocus && widget.focusNode.consumeKeyboardToken()) {
       openConnectionIfNeeded();
@@ -77,10 +78,12 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
   void openConnectionIfNeeded() {
     if (!shouldCreateInputConnection) {
+      debugPrint('[QuillEditor] openConnectionIfNeeded - should not create connection');
       return;
     }
 
     if (!hasConnection) {
+      debugPrint('[QuillEditor] openConnectionIfNeeded - OPENING new connection');
       _textInputConnection = TextInput.attach(
         this,
         TextInputConfiguration(
@@ -102,10 +105,20 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       //update IME position for Macos
       _updateCaretRectIfNeeded();
 
+      // IMPORTANT: Always set _lastKnownRemoteTextEditingValue immediately to prevent
+      // race conditions where keyboard input arrives before the value is initialized.
+      // This fixes Issue #6 (first letter not displayed on mobile web).
+      _lastKnownRemoteTextEditingValue = textEditingValue;
+
       // On mobile web (especially Safari), ensure selection has propagated before
       // setting initial editing state. This prevents cursor from jumping to end.
       // Safari needs a small delay after frame to properly sync selection state.
       if (isMobileWeb()) {
+        // Set initial state immediately so keyboard input works right away
+        _textInputConnection!.setEditingState(_lastKnownRemoteTextEditingValue!);
+        _textInputConnection!.show();
+
+        // Then schedule a selection sync to handle Safari's stale selection issues
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !hasConnection) return;
 
@@ -124,13 +137,14 @@ mixin RawEditorStateTextInputClientMixin on EditorState
               selection: currentSelection,
             );
 
-            _lastKnownRemoteTextEditingValue = currentValue;
-            _textInputConnection!.setEditingState(currentValue);
-            _textInputConnection!.show();
+            // Only update if selection changed (avoid unnecessary updates)
+            if (_lastKnownRemoteTextEditingValue?.selection != currentSelection) {
+              _lastKnownRemoteTextEditingValue = currentValue;
+              _textInputConnection!.setEditingState(currentValue);
+            }
           });
         });
       } else {
-        _lastKnownRemoteTextEditingValue = textEditingValue;
         _textInputConnection!
             .setEditingState(_lastKnownRemoteTextEditingValue!);
         _textInputConnection!.show();
@@ -203,9 +217,11 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   /// Closes input connection if it's currently open. Otherwise does nothing.
   void closeConnectionIfNeeded() {
     if (!hasConnection) {
+      debugPrint('[QuillEditor] closeConnectionIfNeeded - no connection to close');
       return;
     }
 
+    debugPrint('[QuillEditor] closeConnectionIfNeeded - CLOSING connection');
     _textInputConnection!.close();
     _textInputConnection = null;
     _lastKnownRemoteTextEditingValue = null;

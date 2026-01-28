@@ -9,6 +9,7 @@ import '../models/documents/nodes/leaf.dart';
 import '../utils/platform.dart';
 import 'editor.dart';
 import 'embeds.dart';
+import 'raw_editor.dart';
 import 'text_selection.dart';
 
 typedef EmbedsBuilder = EmbedBuilder Function(Embed node);
@@ -144,6 +145,14 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///  which triggers this callback.
   @protected
   void onTapDown(TapDownDetails details) {
+    debugPrint('[QuillEditor] onTapDown - position: ${details.globalPosition}');
+    
+    // Clear secondary tap flag if it was set (user tapped inside editor after right-click)
+    final editorState = editor;
+    if (editorState is RawEditorState) {
+      editorState.setSecondaryTapInProgress(false);
+    }
+
     renderEditor!.handleTapDown(details);
     // The selection overlay should only be shown when the user is interacting
     // through a touch screen (via either a finger or a stylus).
@@ -221,11 +230,38 @@ class EditorTextSelectionGestureDetectorBuilder {
     }
   }
 
+  /// Handler for secondary tap down (right-click start).
+  /// 
+  /// This is called when the user right-clicks on the editor. On web, this
+  /// sets a flag to prevent the editor from losing focus when the native
+  /// browser context menu appears, and syncs the selection to the platform
+  /// so that copy/cut/paste operations work correctly.
+  @protected
+  void onSecondaryTapDown(TapDownDetails details) {
+    debugPrint('[QuillEditor] onSecondaryTapDown (right-click) - position: ${details.globalPosition}');
+    
+    // Set flag to prevent tap-outside from unfocusing during right-click
+    // This is critical on web where the native context menu causes focus issues
+    final editorState = editor;
+    if (editorState is RawEditorState) {
+      editorState.setSecondaryTapInProgress(true);
+    }
+  }
+
   /// onSingleTapUp for mouse right click
   @protected
   void onSecondarySingleTapUp(TapUpDetails details) {
-    // added to show toolbar by right click
+    debugPrint('[QuillEditor] onSecondarySingleTapUp (right-click complete) - position: ${details.globalPosition}');
+    
+    // Note: We don't clear _isSecondaryTapInProgress here.
+    // The flag is cleared when:
+    // 1. The editor regains focus (in _handleFocusChanged)
+    // 2. A new tap occurs inside the editor (in onTapDown)
+    // This is more robust than using a fixed timeout.
+
+    // Show toolbar by right click (only on non-web or mobile web platforms)
     if (shouldShowSelectionToolbar) {
+      debugPrint('[QuillEditor] Attempting to show toolbar');
       editor!.showToolbar();
     }
   }
@@ -254,6 +290,14 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///  which triggers this callback.
   @protected
   void onSingleLongTapStart(LongPressStartDetails details) {
+    // Mark long press as in progress to prevent selection overlay from being
+    // disposed during the gesture (important for mobile web where focus can
+    // be lost temporarily during long press)
+    final editorState = editor;
+    if (editorState is RawEditorState) {
+      editorState.setLongPressInProgress(true);
+    }
+
     if (delegate.selectionEnabled) {
       renderEditor!.selectPositionAt(
         from: details.globalPosition,
@@ -308,14 +352,25 @@ class EditorTextSelectionGestureDetectorBuilder {
       // Wait for keyboard to open before showing toolbar
       // Keyboard animation takes ~200-300ms, so we wait for it to mostly complete
       // This ensures toolbar calculates position with the correct viewport size
+      final editorState = editor;
       Future.delayed(const Duration(milliseconds: 200), () {
+        // Clear long press flag after the toolbar has been shown
+        // This allows the overlay to be properly disposed when needed
+        if (editorState is RawEditorState && editorState.mounted) {
+          editorState.setLongPressInProgress(false);
+        }
         if (shouldShowSelectionToolbar) {
           editor!.showToolbar();
         }
       });
     } else {
       // On desktop, show toolbar immediately after selection updates
+      final editorState = editor;
       SchedulerBinding.instance.addPostFrameCallback((_) {
+        // Clear long press flag
+        if (editorState is RawEditorState && editorState.mounted) {
+          editorState.setLongPressInProgress(false);
+        }
         if (shouldShowSelectionToolbar) {
           editor!.showToolbar();
         }
@@ -420,6 +475,7 @@ class EditorTextSelectionGestureDetectorBuilder {
         onSingleLongTapMoveUpdate: onSingleLongTapMoveUpdate,
         onSingleLongTapEnd: onSingleLongTapEnd,
         onDoubleTapDown: onDoubleTapDown,
+        onSecondaryTapDown: onSecondaryTapDown,
         onSecondarySingleTapUp: onSecondarySingleTapUp,
         onDragSelectionStart: onDragSelectionStart,
         onDragSelectionUpdate: onDragSelectionUpdate,
