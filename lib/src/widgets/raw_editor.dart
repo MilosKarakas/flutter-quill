@@ -678,10 +678,26 @@ class RawEditorState extends EditorState
     // we need to
     final isDesktopMacOS = isMacOS();
 
-    // Debug: Listener to detect if pointer events are being received at all
+    // Listener to detect pointer events and handle stuck secondary tap state
     return Listener(
       onPointerDown: (event) {
         debugPrint('[QuillEditor] Listener.onPointerDown - position: ${event.position}, buttons: ${event.buttons}');
+        
+        // Workaround: If secondary tap flag is stuck (events not reaching gesture detector),
+        // manually clear it and request focus. This breaks out of the stuck state after
+        // the native context menu closes.
+        if (_isSecondaryTapInProgress && event.buttons == 1) {
+          debugPrint('[QuillEditor] Listener: Clearing stuck secondary tap flag and requesting focus');
+          _isSecondaryTapInProgress = false;
+          
+          // Request focus to restore normal editing state
+          if (!_hasFocus) {
+            widget.focusNode.requestFocus();
+          }
+          
+          // Update overlay state
+          _updateOrDisposeSelectionOverlayIfNeeded();
+        }
       },
       child: TextFieldTapRegion(
         enabled: widget.enableUnfocusOnTapOutside,
