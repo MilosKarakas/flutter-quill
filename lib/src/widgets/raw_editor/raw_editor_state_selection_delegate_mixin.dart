@@ -90,21 +90,15 @@ mixin RawEditorStateSelectionDelegateMixin on EditorState
       final localRect = renderEditor.getLocalRectForCaret(position);
       final targetOffset = _getOffsetToRevealCaret(localRect, position);
 
-      print('[bringIntoView] position: ${position.offset}, localRect: $localRect');
-      print('[bringIntoView] targetOffset: ${targetOffset.offset}, currentOffset: ${scrollController.hasClients ? scrollController.offset : "no clients"}');
-
       if (scrollController.hasClients) {
         scrollController.jumpTo(targetOffset.offset);
-        print('[bringIntoView] after jumpTo, actual offset: ${scrollController.offset}');
       }
       // Note: We intentionally don't call renderEditor.showOnScreen here.
       // The showOnScreen call propagates to the viewport which calculates
       // its own scroll position via RenderViewportBase.showInViewport,
       // conflicting with our jumpTo call above and causing scroll jumps
       // during drag selection.
-    } catch (e) {
-      print('[bringIntoView] ERROR: $e');
-    }
+    } catch (_) {}
   }
 
   // Finds the closest scroll offset to the current scroll offset that fully
@@ -119,23 +113,16 @@ mixin RawEditorStateSelectionDelegateMixin on EditorState
   RevealedOffset _getOffsetToRevealCaret(Rect rect, TextPosition position) {
     // Make sure scrollController is attached
     if (!scrollController.hasClients) {
-      print('[_getOffsetToRevealCaret] No scroll clients');
       return RevealedOffset(offset: 0, rect: rect);
     }
 
     if (!scrollController.position.allowImplicitScrolling) {
-      print('[_getOffsetToRevealCaret] Implicit scrolling not allowed');
       return RevealedOffset(offset: scrollController.offset, rect: rect);
     }
 
     // Use viewport dimension, not renderEditor.size (which is document size)
     final viewportHeight = scrollController.position.viewportDimension;
     final currentScrollOffset = scrollController.offset;
-    final maxScroll = scrollController.position.maxScrollExtent;
-    final minScroll = scrollController.position.minScrollExtent;
-
-    print('[_getOffsetToRevealCaret] viewportHeight: $viewportHeight, documentHeight: ${renderEditor.size.height}');
-    print('[_getOffsetToRevealCaret] currentScrollOffset: $currentScrollOffset, scrollRange: [$minScroll, $maxScroll]');
 
     // The caret is vertically centered within the line. Expand the caret's
     // height so that it spans the line because we're going to ensure that the
@@ -152,36 +139,24 @@ mixin RawEditorStateSelectionDelegateMixin on EditorState
     final visibleTop = currentScrollOffset;
     final visibleBottom = currentScrollOffset + viewportHeight;
 
-    print('[_getOffsetToRevealCaret] caretTop: $caretTop, caretBottom: $caretBottom');
-    print('[_getOffsetToRevealCaret] visibleTop: $visibleTop, visibleBottom: $visibleBottom');
-
     var targetOffset = currentScrollOffset;
-    String reason = 'no scroll needed (caret visible)';
 
     if (expandedRect.height >= viewportHeight) {
       // Caret is taller than viewport, center it
       targetOffset = expandedRect.center.dy - viewportHeight / 2;
-      reason = 'caret taller than viewport, centering';
     } else if (caretBottom > visibleBottom) {
       // Caret is below visible area, scroll down to bring caret bottom to viewport bottom
       targetOffset = caretBottom - viewportHeight;
-      reason = 'caret below visible area, scrolling down';
     } else if (caretTop < visibleTop) {
       // Caret is above visible area, scroll up to bring caret top to viewport top
       targetOffset = caretTop;
-      reason = 'caret above visible area, scrolling up';
     }
-
-    print('[_getOffsetToRevealCaret] $reason');
-    print('[_getOffsetToRevealCaret] targetOffset before clamp: $targetOffset');
 
     // Clamp to valid scroll range
     targetOffset = targetOffset.clamp(
       scrollController.position.minScrollExtent,
       scrollController.position.maxScrollExtent,
     );
-
-    print('[_getOffsetToRevealCaret] targetOffset after clamp: $targetOffset');
 
     final offsetDelta = currentScrollOffset - targetOffset;
     return RevealedOffset(

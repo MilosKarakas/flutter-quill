@@ -420,6 +420,54 @@ class EditorTextSelectionGestureDetectorBuilder {
       DragUpdateDetails updateDetails) {
     renderEditor!.extendSelection(updateDetails.globalPosition,
         cause: SelectionChangedCause.drag);
+    
+    // Implement edge scrolling for desktop/web drag selection
+    // When dragging near the top or bottom edge, scroll the viewport
+    if (kIsWeb || isDesktop()) {
+      _handleEdgeScrolling(updateDetails.globalPosition);
+    }
+  }
+  
+  /// Handles auto-scrolling when dragging near the edges of the viewport.
+  void _handleEdgeScrolling(Offset globalPosition) {
+    final editorState = editor;
+    if (editorState == null || editorState is! RawEditorState) return;
+    
+    final scrollController = editorState.scrollController;
+    if (!scrollController.hasClients) return;
+    
+    // Get the editor's render box to convert global position to local
+    final renderBox = editorState.context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    
+    final localPosition = renderBox.globalToLocal(globalPosition);
+    final viewportHeight = renderBox.size.height;
+    
+    // Edge threshold - start scrolling when within this distance from edge
+    const edgeThreshold = 50.0;
+    // Scroll speed in pixels
+    const scrollSpeed = 10.0;
+    
+    final currentOffset = scrollController.offset;
+    final maxOffset = scrollController.position.maxScrollExtent;
+    final minOffset = scrollController.position.minScrollExtent;
+    
+    double? newOffset;
+    
+    if (localPosition.dy < edgeThreshold) {
+      // Near top edge - scroll up
+      final scrollAmount = scrollSpeed * (1 - localPosition.dy / edgeThreshold);
+      newOffset = (currentOffset - scrollAmount).clamp(minOffset, maxOffset);
+    } else if (localPosition.dy > viewportHeight - edgeThreshold) {
+      // Near bottom edge - scroll down
+      final distanceFromBottom = viewportHeight - localPosition.dy;
+      final scrollAmount = scrollSpeed * (1 - distanceFromBottom / edgeThreshold);
+      newOffset = (currentOffset + scrollAmount).clamp(minOffset, maxOffset);
+    }
+    
+    if (newOffset != null && newOffset != currentOffset) {
+      scrollController.jumpTo(newOffset);
+    }
   }
 
   /// Handler for [EditorTextSelectionGestureDetector.onDragSelectionEnd].
