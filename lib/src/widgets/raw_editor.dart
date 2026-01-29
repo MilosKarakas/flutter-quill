@@ -73,6 +73,7 @@ class RawEditor extends StatefulWidget {
     this.expands = false,
     this.autoFocus = false,
     this.enableUnfocusOnTapOutside = true,
+    this.tapRegionGroupId,
     this.keyboardAppearance = Brightness.light,
     this.enableInteractiveSelection = true,
     this.scrollPhysics,
@@ -103,6 +104,12 @@ class RawEditor extends StatefulWidget {
   final bool scrollable;
   final double scrollBottomInset;
   final bool enableUnfocusOnTapOutside;
+
+  /// The group ID for the [TextFieldTapRegion].
+  ///
+  /// Widgets with the same [tapRegionGroupId] are considered part of the same
+  /// tap region, so tapping them won't unfocus the editor.
+  final Object? tapRegionGroupId;
 
   /// Additional space around the editor contents.
   final EdgeInsetsGeometry padding;
@@ -700,6 +707,7 @@ class RawEditorState extends EditorState
         }
       },
       child: TextFieldTapRegion(
+        groupId: widget.tapRegionGroupId,
         enabled: widget.enableUnfocusOnTapOutside,
         onTapOutside: _defaultOnTapOutside,
         child: QuillStyles(

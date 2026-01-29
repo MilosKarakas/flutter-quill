@@ -198,6 +198,7 @@ class QuillEditor extends StatefulWidget {
     this.customActions,
     this.detectWordBoundary = true,
     this.enableUnfocusOnTapOutside = true,
+    this.tapRegionGroupId,
     this.customLinkPrefixes = const <String>[],
     this.dialogTheme,
     this.contentInsertionConfiguration,
@@ -279,6 +280,15 @@ class QuillEditor extends StatefulWidget {
 
   /// Whether focus should be revoked on tap outside the editor.
   final bool enableUnfocusOnTapOutside;
+
+  /// The group ID for the [TextFieldTapRegion].
+  ///
+  /// Widgets with the same [tapRegionGroupId] are considered part of the same
+  /// tap region, so tapping them won't unfocus the editor. This is useful for
+  /// keeping the editor focused when interacting with an associated toolbar.
+  ///
+  /// If null, uses the default group ID (EditableText).
+  final Object? tapRegionGroupId;
 
   /// Whether to show cursor.
   ///
@@ -603,6 +613,7 @@ class QuillEditorState extends State<QuillEditor>
       customActions: widget.customActions,
       customLinkPrefixes: widget.customLinkPrefixes,
       enableUnfocusOnTapOutside: widget.enableUnfocusOnTapOutside,
+      tapRegionGroupId: widget.tapRegionGroupId,
       dialogTheme: widget.dialogTheme,
       contentInsertionConfiguration: widget.contentInsertionConfiguration,
       onPaste: widget.onPaste,
