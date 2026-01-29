@@ -119,6 +119,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       _updateComposingRectIfNeeded();
       //update IME position for Macos
       _updateCaretRectIfNeeded();
+      // Sync font metrics with browser's hidden textarea for web
+      _updateStyle();
 
       // IMPORTANT: Always set _lastKnownRemoteTextEditingValue immediately to prevent
       // race conditions where keyboard input arrives before the value is initialized.
@@ -229,6 +231,27 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       SchedulerBinding.instance
           .addPostFrameCallback((_) => _updateCaretRectIfNeeded());
     }
+  }
+
+  /// Updates the style of the hidden native input element on web.
+  /// This helps synchronize font metrics between Flutter's rendering
+  /// and the browser's textarea for more accurate click positioning.
+  void _updateStyle() {
+    if (!kIsWeb || !hasConnection) return;
+
+    final style = paragraphStyle;
+    if (style == null) return;
+
+    debugPrint(
+        '[QuillEditor] _updateStyle - fontFamily: ${style.fontFamily}, fontSize: ${style.fontSize}, fontWeight: ${style.fontWeight}');
+
+    _textInputConnection!.setStyle(
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      fontWeight: style.fontWeight,
+      textDirection: textDirection,
+      textAlign: TextAlign.left,
+    );
   }
 
   /// Closes input connection if it's currently open. Otherwise does nothing.

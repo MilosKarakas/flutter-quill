@@ -57,6 +57,13 @@ abstract class EditorState extends State<RawEditor>
   /// Returns true if the editor has been marked as needing to be rebuilt.
   bool get dirty;
 
+  /// Returns the base paragraph TextStyle for the editor.
+  /// Used by the text input mixin to sync font metrics with the platform.
+  TextStyle? get paragraphStyle;
+
+  /// Returns the text direction for the editor.
+  TextDirection get textDirection;
+
   bool showToolbar();
 
   void requestKeyboard();

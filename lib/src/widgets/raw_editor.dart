@@ -387,6 +387,12 @@ class RawEditorState extends EditorState
   TextDirection get _textDirection => Directionality.of(context);
 
   @override
+  TextStyle? get paragraphStyle => _styles?.paragraph?.style;
+
+  @override
+  TextDirection get textDirection => _textDirection;
+
+  @override
   bool get dirty => _dirty;
   bool _dirty = false;
 
