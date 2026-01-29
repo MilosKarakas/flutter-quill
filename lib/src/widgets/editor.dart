@@ -1234,10 +1234,15 @@ class RenderEditor extends RenderEditableContainerBox
   void handleDragStart(DragStartDetails details) {
     _isDragging = true;
 
+    print('[handleDragStart] globalPosition: ${details.globalPosition}');
+    print('[handleDragStart] current selection before: $selection');
+    
     final newSelection = selectPositionAt(
       from: details.globalPosition,
       cause: SelectionChangedCause.drag,
     );
+
+    print('[handleDragStart] newSelection from selectPositionAt: $newSelection');
 
     if (newSelection == null) return;
     // Make sure to remember the origin for extend selection.
@@ -1514,11 +1519,18 @@ class RenderEditor extends RenderEditableContainerBox
   @override
   TextPosition getPositionForOffset(Offset offset) {
     final local = globalToLocal(offset);
+    print('[getPositionForOffset] global: $offset -> local: $local');
+    
     final child = childAtOffset(local);
+    print('[getPositionForOffset] child container offset: ${child.container.offset}, child container length: ${child.container.length}');
 
     final parentData = child.parentData as BoxParentData;
     final localOffset = local - parentData.offset;
+    print('[getPositionForOffset] parentData.offset: ${parentData.offset}, localOffset: $localOffset');
+    
     final localPosition = child.getPositionForOffset(localOffset);
+    print('[getPositionForOffset] localPosition: $localPosition, final offset: ${localPosition.offset + child.container.offset}');
+    
     return TextPosition(
       offset: localPosition.offset + child.container.offset,
       affinity: localPosition.affinity,
