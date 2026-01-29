@@ -242,12 +242,28 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     final style = paragraphStyle;
     if (style == null) return;
 
+    // Calculate adjusted font size to compensate for line height differences.
+    // Flutter uses TextStyle.height as a multiplier for line height.
+    // Browsers use a default line-height of approximately 1.2 (normal).
+    // To make the browser's line heights match Flutter's, we adjust the font size:
+    // adjustedFontSize = originalFontSize * (flutterHeight / browserDefaultHeight)
+    const double browserDefaultLineHeight = 1.2;
+    final double? flutterLineHeight = style.height;
+    double? adjustedFontSize = style.fontSize;
+
+    if (adjustedFontSize != null && flutterLineHeight != null) {
+      // Scale the font size so that browser's line height matches Flutter's
+      adjustedFontSize = adjustedFontSize * (flutterLineHeight / browserDefaultLineHeight);
+    }
+
     debugPrint(
-        '[QuillEditor] _updateStyle - fontFamily: ${style.fontFamily}, fontSize: ${style.fontSize}, fontWeight: ${style.fontWeight}');
+        '[QuillEditor] _updateStyle - fontFamily: ${style.fontFamily}, '
+        'originalFontSize: ${style.fontSize}, adjustedFontSize: $adjustedFontSize, '
+        'flutterHeight: $flutterLineHeight, fontWeight: ${style.fontWeight}');
 
     _textInputConnection!.setStyle(
       fontFamily: style.fontFamily,
-      fontSize: style.fontSize,
+      fontSize: adjustedFontSize,
       fontWeight: style.fontWeight,
       textDirection: textDirection,
       textAlign: TextAlign.left,
