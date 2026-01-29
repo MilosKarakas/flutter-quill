@@ -5,6 +5,7 @@ import 'package:flutter/animation.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:vector_math/vector_math_64.dart' show Vector3;
 
 import '../../models/documents/document.dart';
 import '../../utils/delta.dart';
@@ -67,7 +68,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   /// Opens or closes input connection based on the current state of
   /// [focusNode] and [value].
   void openOrCloseConnection() {
-    debugPrint('[QuillEditor] openOrCloseConnection - hasFocus: ${widget.focusNode.hasFocus}, hasConnection: $hasConnection');
+    debugPrint(
+        '[QuillEditor] openOrCloseConnection - hasFocus: ${widget.focusNode.hasFocus}, hasConnection: $hasConnection');
     // Simplified to match Flutter's EditableText pattern - no delays
     if (widget.focusNode.hasFocus && widget.focusNode.consumeKeyboardToken()) {
       openConnectionIfNeeded();
@@ -76,25 +78,27 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       // The native context menu needs the connection to remain open so that
       // the hidden HTML textarea has the correct selection for copy/paste.
       if (kIsWeb && isSecondaryTapInProgress) {
-        debugPrint('[QuillEditor] openOrCloseConnection - BLOCKING close during secondary tap');
+        debugPrint(
+            '[QuillEditor] openOrCloseConnection - BLOCKING close during secondary tap');
         return;
       }
       closeConnectionIfNeeded();
     }
   }
-  
+
   /// Whether a secondary tap (right-click) is in progress.
   bool get isSecondaryTapInProgress;
 
-
   void openConnectionIfNeeded() {
     if (!shouldCreateInputConnection) {
-      debugPrint('[QuillEditor] openConnectionIfNeeded - should not create connection');
+      debugPrint(
+          '[QuillEditor] openConnectionIfNeeded - should not create connection');
       return;
     }
 
     if (!hasConnection) {
-      debugPrint('[QuillEditor] openConnectionIfNeeded - OPENING new connection');
+      debugPrint(
+          '[QuillEditor] openConnectionIfNeeded - OPENING new connection');
       _textInputConnection = TextInput.attach(
         this,
         TextInputConfiguration(
@@ -126,7 +130,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       // Safari needs a small delay after frame to properly sync selection state.
       if (isMobileWeb()) {
         // Set initial state immediately so keyboard input works right away
-        _textInputConnection!.setEditingState(_lastKnownRemoteTextEditingValue!);
+        _textInputConnection!
+            .setEditingState(_lastKnownRemoteTextEditingValue!);
         _textInputConnection!.show();
 
         // Then schedule a selection sync to handle Safari's stale selection issues
@@ -149,7 +154,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
             );
 
             // Only update if selection changed (avoid unnecessary updates)
-            if (_lastKnownRemoteTextEditingValue?.selection != currentSelection) {
+            if (_lastKnownRemoteTextEditingValue?.selection !=
+                currentSelection) {
               _lastKnownRemoteTextEditingValue = currentValue;
               _textInputConnection!.setEditingState(currentValue);
             }
@@ -228,7 +234,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   /// Closes input connection if it's currently open. Otherwise does nothing.
   void closeConnectionIfNeeded() {
     if (!hasConnection) {
-      debugPrint('[QuillEditor] closeConnectionIfNeeded - no connection to close');
+      debugPrint(
+          '[QuillEditor] closeConnectionIfNeeded - no connection to close');
       return;
     }
 
@@ -542,13 +549,13 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       // occurred yet. So we schedule a post frame callback instead.
       var size = renderEditor.size;
       final transform = renderEditor.getTransformTo(null);
-      
+
       // On web, adjust the transform to position the hidden textarea at the
       // actual text content location, not just the editor container location.
       // This is critical for the browser's context menu to appear correctly
       // when right-clicking on selected text.
       Matrix4 adjustedTransform = transform;
-      
+
       if (kIsWeb) {
         // Get the position where text content actually starts within the editor.
         // We use position 0 (start of document) to find the content offset.
@@ -557,48 +564,59 @@ mixin RawEditorStateTextInputClientMixin on EditorState
           final contentRect = renderEditor.getLocalRectForCaret(
             const TextPosition(offset: 0),
           );
-          
+
           // The contentRect gives us where text actually starts within the editor.
           // contentRect.left = horizontal padding (text starts here)
           // contentRect.top = vertical padding (text starts here)
           final contentOffsetX = contentRect.left;
           final contentOffsetY = contentRect.top;
-          
+
           // Calculate the actual content dimensions
           final contentWidth = size.width - contentOffsetX;
           final contentHeight = size.height - contentOffsetY;
-          
-          if ((contentOffsetX > 0 || contentOffsetY > 0) && contentWidth > 0 && contentHeight > 0) {
-            // Create a new transform that includes the content offset
-            // Matrix4 storage uses column-major order:
-            // storage[12] = X translation
-            // storage[13] = Y translation
-            // storage[14] = Z translation
-            adjustedTransform = transform.clone();
-            
-            // Directly modify the translation values in the matrix
-            // This is more reliable than using translate() which can have
-            // unexpected behavior with existing transformations
-            adjustedTransform.storage[12] += contentOffsetX;
-            adjustedTransform.storage[13] += contentOffsetY;
-            
+
+          if ((contentOffsetX > 0 || contentOffsetY > 0) &&
+              contentWidth > 0 &&
+              contentHeight > 0) {
+            // Get the current translation values from the transform
+            final currentX = transform.getTranslation().x;
+            final currentY = transform.getTranslation().y;
+            final currentZ = transform.getTranslation().z;
+
+            // Create a new transform with the adjusted translation
+            // We copy the transform and update translation to include content offset
+            adjustedTransform = Matrix4.copy(transform)
+              ..setTranslation(Vector3(
+                currentX + contentOffsetX,
+                currentY + contentOffsetY,
+                currentZ,
+              ));
+
             // Adjust size to match the content area
             size = Size(contentWidth, contentHeight);
-            
-            debugPrint('[QuillEditor] _updateSizeAndTransform - content offset: ($contentOffsetX, $contentOffsetY)');
-            debugPrint('[QuillEditor] _updateSizeAndTransform - adjusted size: $size');
-            debugPrint('[QuillEditor] _updateSizeAndTransform - adjusted transform Y: ${adjustedTransform.storage[13]}');
+
+            debugPrint(
+                '[QuillEditor] _updateSizeAndTransform - content offset: ($contentOffsetX, $contentOffsetY)');
+            debugPrint(
+                '[QuillEditor] _updateSizeAndTransform - original transform: ($currentX, $currentY)');
+            debugPrint(
+                '[QuillEditor] _updateSizeAndTransform - adjusted size: $size');
+            debugPrint(
+                '[QuillEditor] _updateSizeAndTransform - adjusted transform: (${adjustedTransform.getTranslation().x}, ${adjustedTransform.getTranslation().y})');
           }
         } catch (e) {
           // If we can't get the caret rect (e.g., empty document), use default transform
-          debugPrint('[QuillEditor] _updateSizeAndTransform - could not get content offset: $e');
+          debugPrint(
+              '[QuillEditor] _updateSizeAndTransform - could not get content offset: $e');
         }
-        
+
         debugPrint('[QuillEditor] _updateSizeAndTransform - final size: $size');
-        debugPrint('[QuillEditor] _updateSizeAndTransform - final transform: (${adjustedTransform.storage[12]}, ${adjustedTransform.storage[13]})');
-        
+        debugPrint(
+            '[QuillEditor] _updateSizeAndTransform - final transform: (${adjustedTransform.getTranslation().x}, ${adjustedTransform.getTranslation().y})');
+
         // On web, also log the current selection position for debugging
-        if (renderEditor.selection.isValid && !renderEditor.selection.isCollapsed) {
+        if (renderEditor.selection.isValid &&
+            !renderEditor.selection.isCollapsed) {
           final selectionRects = renderEditor.getEndpointsForSelection(
             TextSelection(
               baseOffset: renderEditor.selection.baseOffset,
@@ -606,15 +624,18 @@ mixin RawEditorStateTextInputClientMixin on EditorState
             ),
           );
           if (selectionRects.isNotEmpty) {
-            debugPrint('[QuillEditor] _updateSizeAndTransform - selection start: ${selectionRects.first.point}');
+            debugPrint(
+                '[QuillEditor] _updateSizeAndTransform - selection start: ${selectionRects.first.point}');
             if (selectionRects.length > 1) {
-              debugPrint('[QuillEditor] _updateSizeAndTransform - selection end: ${selectionRects.last.point}');
+              debugPrint(
+                  '[QuillEditor] _updateSizeAndTransform - selection end: ${selectionRects.last.point}');
             }
           }
         }
       }
-      
-      _textInputConnection?.setEditableSizeAndTransform(size, adjustedTransform);
+
+      _textInputConnection?.setEditableSizeAndTransform(
+          size, adjustedTransform);
       SchedulerBinding.instance
           .addPostFrameCallback((_) => _updateSizeAndTransform());
     }
