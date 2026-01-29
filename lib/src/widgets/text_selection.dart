@@ -1183,38 +1183,16 @@ class _TransparentTapGestureRecognizer extends TapGestureRecognizer {
   }) : super(debugOwner: debugOwner);
 
   @override
-  void addPointer(PointerDownEvent event) {
-    debugPrint('[GestureRecognizer] addPointer called - state: $state, pointer: ${event.pointer}');
-    super.addPointer(event);
-    debugPrint('[GestureRecognizer] addPointer complete - state: $state');
-  }
-
-  @override
   void rejectGesture(int pointer) {
-    debugPrint('[GestureRecognizer] rejectGesture called - state: $state, pointer: $pointer');
     // Accept new gestures that another recognizer has already won.
     // Specifically, this needs to accept taps on the text selection handle on
     // behalf of the text field in order to handle double tap to select. It must
     // not accept other gestures like longpresses and drags that end outside of
     // the text field.
     if (state == GestureRecognizerState.ready) {
-      debugPrint('[GestureRecognizer] Accepting gesture despite rejection (state is ready)');
       acceptGesture(pointer);
     } else {
-      debugPrint('[GestureRecognizer] Rejecting gesture (state is $state, not ready)');
       super.rejectGesture(pointer);
     }
-  }
-
-  @override
-  void acceptGesture(int pointer) {
-    debugPrint('[GestureRecognizer] acceptGesture called - state: $state, pointer: $pointer');
-    super.acceptGesture(pointer);
-  }
-
-  @override
-  void handleEvent(PointerEvent event) {
-    debugPrint('[GestureRecognizer] handleEvent - ${event.runtimeType}, state: $state');
-    super.handleEvent(event);
   }
 }

@@ -520,7 +520,6 @@ class QuillEditorState extends State<QuillEditor>
 
   /// Callback passed to RawEditor to request gesture detector reset.
   void _handleResetGestureDetector() {
-    debugPrint('[QuillEditorState] Resetting gesture detector (count: ${_gestureDetectorResetCount + 1})');
     setState(() {
       _gestureDetectorResetCount++;
     });

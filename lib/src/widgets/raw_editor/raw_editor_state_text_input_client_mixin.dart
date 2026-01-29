@@ -68,8 +68,6 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   /// Opens or closes input connection based on the current state of
   /// [focusNode] and [value].
   void openOrCloseConnection() {
-    debugPrint(
-        '[QuillEditor] openOrCloseConnection - hasFocus: ${widget.focusNode.hasFocus}, hasConnection: $hasConnection');
     // Simplified to match Flutter's EditableText pattern - no delays
     if (widget.focusNode.hasFocus && widget.focusNode.consumeKeyboardToken()) {
       openConnectionIfNeeded();
@@ -78,8 +76,6 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       // The native context menu needs the connection to remain open so that
       // the hidden HTML textarea has the correct selection for copy/paste.
       if (kIsWeb && isSecondaryTapInProgress) {
-        debugPrint(
-            '[QuillEditor] openOrCloseConnection - BLOCKING close during secondary tap');
         return;
       }
       closeConnectionIfNeeded();
@@ -91,14 +87,10 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
   void openConnectionIfNeeded() {
     if (!shouldCreateInputConnection) {
-      debugPrint(
-          '[QuillEditor] openConnectionIfNeeded - should not create connection');
       return;
     }
 
     if (!hasConnection) {
-      debugPrint(
-          '[QuillEditor] openConnectionIfNeeded - OPENING new connection');
       _textInputConnection = TextInput.attach(
         this,
         TextInputConfiguration(
@@ -256,11 +248,6 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       adjustedFontSize = adjustedFontSize * (flutterLineHeight / browserDefaultLineHeight);
     }
 
-    debugPrint(
-        '[QuillEditor] _updateStyle - fontFamily: ${style.fontFamily}, '
-        'originalFontSize: ${style.fontSize}, adjustedFontSize: $adjustedFontSize, '
-        'flutterHeight: $flutterLineHeight, fontWeight: ${style.fontWeight}');
-
     _textInputConnection!.setStyle(
       fontFamily: style.fontFamily,
       fontSize: adjustedFontSize,
@@ -273,12 +260,9 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   /// Closes input connection if it's currently open. Otherwise does nothing.
   void closeConnectionIfNeeded() {
     if (!hasConnection) {
-      debugPrint(
-          '[QuillEditor] closeConnectionIfNeeded - no connection to close');
       return;
     }
 
-    debugPrint('[QuillEditor] closeConnectionIfNeeded - CLOSING connection');
     _textInputConnection!.close();
     _textInputConnection = null;
     _lastKnownRemoteTextEditingValue = null;
@@ -633,43 +617,9 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
             // Adjust size to match the content area
             size = Size(contentWidth, contentHeight);
-
-            debugPrint(
-                '[QuillEditor] _updateSizeAndTransform - content offset: ($contentOffsetX, $contentOffsetY)');
-            debugPrint(
-                '[QuillEditor] _updateSizeAndTransform - original transform: ($currentX, $currentY)');
-            debugPrint(
-                '[QuillEditor] _updateSizeAndTransform - adjusted size: $size');
-            debugPrint(
-                '[QuillEditor] _updateSizeAndTransform - adjusted transform: (${adjustedTransform.getTranslation().x}, ${adjustedTransform.getTranslation().y})');
           }
         } catch (e) {
           // If we can't get the caret rect (e.g., empty document), use default transform
-          debugPrint(
-              '[QuillEditor] _updateSizeAndTransform - could not get content offset: $e');
-        }
-
-        debugPrint('[QuillEditor] _updateSizeAndTransform - final size: $size');
-        debugPrint(
-            '[QuillEditor] _updateSizeAndTransform - final transform: (${adjustedTransform.getTranslation().x}, ${adjustedTransform.getTranslation().y})');
-
-        // On web, also log the current selection position for debugging
-        if (renderEditor.selection.isValid &&
-            !renderEditor.selection.isCollapsed) {
-          final selectionRects = renderEditor.getEndpointsForSelection(
-            TextSelection(
-              baseOffset: renderEditor.selection.baseOffset,
-              extentOffset: renderEditor.selection.extentOffset,
-            ),
-          );
-          if (selectionRects.isNotEmpty) {
-            debugPrint(
-                '[QuillEditor] _updateSizeAndTransform - selection start: ${selectionRects.first.point}');
-            if (selectionRects.length > 1) {
-              debugPrint(
-                  '[QuillEditor] _updateSizeAndTransform - selection end: ${selectionRects.last.point}');
-            }
-          }
         }
       }
 

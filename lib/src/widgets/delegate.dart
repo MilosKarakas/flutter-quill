@@ -145,7 +145,6 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///  which triggers this callback.
   @protected
   void onTapDown(TapDownDetails details) {
-    debugPrint('[QuillEditor] onTapDown - position: ${details.globalPosition}');
     renderEditor!.handleTapDown(details);
     // The selection overlay should only be shown when the user is interacting
     // through a touch screen (via either a finger or a stylus).
@@ -218,9 +217,7 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///    this callback.
   @protected
   void onSingleTapUp(TapUpDetails details) {
-    debugPrint('[QuillEditor] onSingleTapUp - position: ${details.globalPosition}, selectionEnabled: ${delegate.selectionEnabled}');
     if (delegate.selectionEnabled) {
-      debugPrint('[QuillEditor] onSingleTapUp - calling selectWordEdge');
       renderEditor!.selectWordEdge(SelectionChangedCause.tap);
     }
   }
@@ -233,8 +230,6 @@ class EditorTextSelectionGestureDetectorBuilder {
   /// so that copy/cut/paste operations work correctly.
   @protected
   void onSecondaryTapDown(TapDownDetails details) {
-    debugPrint('[QuillEditor] onSecondaryTapDown (right-click) - position: ${details.globalPosition}');
-    
     // Set flag to prevent tap-outside from unfocusing during right-click
     // This is critical on web where the native context menu causes focus issues
     final editorState = editor;
@@ -246,8 +241,6 @@ class EditorTextSelectionGestureDetectorBuilder {
   /// onSingleTapUp for mouse right click
   @protected
   void onSecondarySingleTapUp(TapUpDetails details) {
-    debugPrint('[QuillEditor] onSecondarySingleTapUp (right-click complete) - position: ${details.globalPosition}');
-    
     // Note: We don't clear _isSecondaryTapInProgress here.
     // The flag is cleared when:
     // 1. The editor regains focus (in _handleFocusChanged)
@@ -256,7 +249,6 @@ class EditorTextSelectionGestureDetectorBuilder {
 
     // Show toolbar by right click (only on non-web or mobile web platforms)
     if (shouldShowSelectionToolbar) {
-      debugPrint('[QuillEditor] Attempting to show toolbar');
       editor!.showToolbar();
     }
   }

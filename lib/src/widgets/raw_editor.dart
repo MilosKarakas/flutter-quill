@@ -338,12 +338,10 @@ class RawEditorState extends EditorState
 
   /// Called by the gesture detector when a secondary tap (right-click) starts/ends.
   void setSecondaryTapInProgress(bool value) {
-    debugPrint('[QuillEditor] setSecondaryTapInProgress: $value (was: $_isSecondaryTapInProgress)');
     _isSecondaryTapInProgress = value;
     if (value && kIsWeb) {
       // On web, sync selection to platform before native context menu appears
       // This ensures copy/cut/paste operate on the correct text
-      debugPrint('[QuillEditor] Syncing selection to platform for context menu');
       updateRemoteValueIfNeeded();
       
       // Proactively reset the gesture detector to prevent stuck state.
@@ -351,7 +349,6 @@ class RawEditorState extends EditorState
       // the gesture recognizer stuck. By resetting now, the rebuild happens while
       // the user interacts with the context menu, so the recognizer is ready
       // when they tap back into the editor.
-      debugPrint('[QuillEditor] Proactively resetting gesture detector for context menu');
       widget.onResetGestureDetector?.call();
     }
   }
@@ -534,8 +531,6 @@ class RawEditorState extends EditorState
   }
 
   void _defaultOnTapOutside(PointerDownEvent event) {
-    debugPrint('[QuillEditor] _defaultOnTapOutside called - kind: ${event.kind}, buttons: ${event.buttons}, _hasFocus: $_hasFocus');
-
     /// The focus dropping behavior is only present on desktop platforms
     /// and mobile browsers.
     switch (defaultTargetPlatform) {
@@ -692,12 +687,9 @@ class RawEditorState extends EditorState
     // Listener to handle recovery from secondary tap (right-click) stuck state
     return Listener(
       onPointerDown: (event) {
-        debugPrint('[QuillEditor] Listener.onPointerDown - position: ${event.position}, buttons: ${event.buttons}, secondaryTap: $_isSecondaryTapInProgress');
-        
         // If secondary tap flag is stuck and user taps with primary button,
         // clear the flag and request gesture detector reset
         if (_isSecondaryTapInProgress && event.buttons == 1) {
-          debugPrint('[QuillEditor] Listener: Recovering from stuck secondary tap state');
           _isSecondaryTapInProgress = false;
           
           // Request focus if not focused
@@ -708,7 +700,6 @@ class RawEditorState extends EditorState
           // Request gesture detector reset to clear stuck recognizer state
           // This changes the gesture detector's key, forcing Flutter to dispose
           // the old recognizer and create a fresh one
-          debugPrint('[QuillEditor] Listener: Requesting gesture detector reset');
           widget.onResetGestureDetector?.call();
         }
       },
@@ -1511,8 +1502,6 @@ class RawEditorState extends EditorState
           (isMobileWeb() && !textEditingValue.selection.isCollapsed) ||
           _isLongPressInProgress ||
           (kIsWeb && _isSecondaryTapInProgress);
-      
-      debugPrint('[QuillEditor] _updateOrDisposeSelectionOverlayIfNeeded - shouldKeepOverlay: $shouldKeepOverlay (hasFocus: $_hasFocus, secondaryTap: $_isSecondaryTapInProgress, longPress: $_isLongPressInProgress)');
 
       if (!shouldKeepOverlay) {
         // Safety: Ensure magnifier is hidden before disposing overlay
@@ -1573,8 +1562,6 @@ class RawEditorState extends EditorState
 
     openOrCloseConnection();
 
-    debugPrint('[QuillEditor] _handleFocusChanged - _hasFocus: $_hasFocus');
-    
     if (_hasFocus) {
       WidgetsBinding.instance.addObserver(this);
       _showCaretOnScreen();
