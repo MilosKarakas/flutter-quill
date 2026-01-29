@@ -540,12 +540,59 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     if (hasConnection) {
       // Asking for renderEditor.size here can cause errors if layout hasn't
       // occurred yet. So we schedule a post frame callback instead.
-      final size = renderEditor.size;
+      var size = renderEditor.size;
       final transform = renderEditor.getTransformTo(null);
       
+      // On web, adjust the transform to position the hidden textarea at the
+      // actual text content location, not just the editor container location.
+      // This is critical for the browser's context menu to appear correctly
+      // when right-clicking on selected text.
+      Matrix4 adjustedTransform = transform;
+      
       if (kIsWeb) {
+        // Get the position where text content actually starts within the editor.
+        // We use position 0 (start of document) to find the content offset.
+        // This accounts for any padding/margins applied to the editor.
+        try {
+          final contentRect = renderEditor.getLocalRectForCaret(
+            const TextPosition(offset: 0),
+          );
+          
+          // The contentRect.top tells us how far down the text starts from
+          // the editor's origin. We need to adjust the transform to position
+          // the textarea at this offset.
+          final contentOffsetY = contentRect.top;
+          
+          // Calculate the actual content height (editor height minus top offset)
+          // This ensures the textarea covers the text content area
+          final contentHeight = size.height - contentOffsetY;
+          
+          if (contentOffsetY > 0 && contentHeight > 0) {
+            // Create a new transform that includes the content offset
+            // The transform matrix format is:
+            // [0] [scaleX, 0, 0, translateX]
+            // [1] [0, scaleY, 0, translateY]
+            // [2] [0, 0, 1, 0]
+            // [3] [0, 0, 0, 1]
+            adjustedTransform = transform.clone();
+            
+            // Add the content offset to the Y translation
+            // This shifts the textarea down to where text actually appears
+            adjustedTransform.translate(0.0, contentOffsetY);
+            
+            // Adjust size to match the content area
+            size = Size(size.width, contentHeight);
+            
+            debugPrint('[QuillEditor] _updateSizeAndTransform - adjusted for content offset: $contentOffsetY');
+            debugPrint('[QuillEditor] _updateSizeAndTransform - adjusted size: $size');
+          }
+        } catch (e) {
+          // If we can't get the caret rect (e.g., empty document), use default transform
+          debugPrint('[QuillEditor] _updateSizeAndTransform - could not get content offset: $e');
+        }
+        
         debugPrint('[QuillEditor] _updateSizeAndTransform - size: $size');
-        debugPrint('[QuillEditor] _updateSizeAndTransform - transform: $transform');
+        debugPrint('[QuillEditor] _updateSizeAndTransform - transform: $adjustedTransform');
         
         // On web, also log the current selection position for debugging
         if (renderEditor.selection.isValid && !renderEditor.selection.isCollapsed) {
@@ -564,7 +611,7 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         }
       }
       
-      _textInputConnection?.setEditableSizeAndTransform(size, transform);
+      _textInputConnection?.setEditableSizeAndTransform(size, adjustedTransform);
       SchedulerBinding.instance
           .addPostFrameCallback((_) => _updateSizeAndTransform());
     }
