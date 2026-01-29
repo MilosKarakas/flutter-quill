@@ -88,11 +88,11 @@ class EditorTextSelectionOverlay {
     // our listener being created
     // we won't know the status unless there is forced update
     // i.e. occasionally no paste
-    if (!kIsWeb) {
+    if (!kIsWeb && clipboardStatus is ClipboardStatusNotifier) {
       // Web - esp Safari Mac/iOS has security measures in place that restrict
       // cliboard status checks w/o direct user interaction. So skip this
-      // for web
-      clipboardStatus.update();
+      // for web. On non-web, we use ClipboardStatusNotifier which has update().
+      (clipboardStatus as ClipboardStatusNotifier).update();
     }
   }
 
@@ -181,7 +181,12 @@ class EditorTextSelectionOverlay {
   ///
   /// Useful because the actual value of the clipboard can only be checked
   /// asynchronously (see [Clipboard.getData]).
-  final ClipboardStatusNotifier clipboardStatus;
+  ///
+  /// On web, this is a simple [ValueNotifier] that always returns
+  /// [ClipboardStatus.pasteable] to avoid triggering permission prompts.
+  /// On other platforms, this is a [ClipboardStatusNotifier] that monitors
+  /// actual clipboard status.
+  final ValueNotifier<ClipboardStatus> clipboardStatus;
 
   /// A pair of handles. If this is non-null, there are always 2, though the
   /// second is hidden when the selection is collapsed.
@@ -397,7 +402,7 @@ class EditorTextSelectionOverlay {
           renderObject.getEndpointsForSelection(value.selection),
       selectionControls: null,
       selectionDelegate: selectionDelegate,
-      clipboardStatus: clipboardStatus,
+      clipboardStatus: kIsWeb ? null : clipboardStatus as ClipboardStatusNotifier,
       startHandleLayerLink: startHandleLayerLink,
       endHandleLayerLink: endHandleLayerLink,
       toolbarLayerLink: _toolbarLayerLink,

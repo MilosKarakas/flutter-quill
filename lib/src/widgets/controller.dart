@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 
 import '../models/documents/attribute.dart';
@@ -532,14 +533,20 @@ class QuillController extends ChangeNotifier {
     return document.querySegmentLeafNode(offset).leaf;
   }
 
-  /// Clipboard for image url and its corresponding style
+  /// Internal clipboard for image url and its corresponding style.
+  /// This enables copy/paste of images within the editor.
   ImageUrl? _copiedImageUrl;
 
   ImageUrl? get copiedImageUrl => _copiedImageUrl;
 
   set copiedImageUrl(ImageUrl? value) {
     _copiedImageUrl = value;
-    Clipboard.setData(const ClipboardData(text: ''));
+    // Only clear system clipboard when actually copying an image (non-null value)
+    // and not on web where this would trigger permission prompts.
+    // When setting to null (clearing internal clipboard), don't touch system clipboard.
+    if (value != null && !kIsWeb) {
+      Clipboard.setData(const ClipboardData(text: ''));
+    }
   }
 
   // Notify toolbar buttons directly with attributes

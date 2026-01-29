@@ -44,6 +44,19 @@ import 'text_selection.dart';
 import 'toolbar/link_style_button2.dart';
 import 'toolbar/search_dialog.dart';
 
+/// A web-specific clipboard status notifier that always reports pasteable.
+///
+/// On web, the paste button is always shown, and permission is only requested
+/// when the user actually clicks paste.
+class _WebClipboardStatusNotifier extends ValueNotifier<ClipboardStatus> {
+  _WebClipboardStatusNotifier() : super(ClipboardStatus.pasteable);
+
+  /// No-op on web to avoid triggering clipboard permission prompts.
+  /// The standard [ClipboardStatusNotifier.update] calls [Clipboard.hasStrings]
+  /// which triggers a browser permission dialog.
+  Future<void> update() async {}
+}
+
 class RawEditor extends StatefulWidget {
   const RawEditor({
     required this.controller,
@@ -375,8 +388,12 @@ class RawEditorState extends EditorState
   String get pastePlainText => _pastePlainText;
   String _pastePlainText = '';
 
-  final ClipboardStatusNotifier _clipboardStatus = ClipboardStatusNotifier(
-      value: kIsWeb ? ClipboardStatus.pasteable : ClipboardStatus.unknown);
+  // Use web-specific notifier on web to avoid triggering clipboard permission
+  // prompts on app resume. The standard ClipboardStatusNotifier registers as a
+  // WidgetsBindingObserver and calls Clipboard.hasStrings() on every resume.
+  final ValueNotifier<ClipboardStatus> _clipboardStatus = kIsWeb
+      ? _WebClipboardStatusNotifier()
+      : ClipboardStatusNotifier();
   final LayerLink _toolbarLayerLink = LayerLink();
   final LayerLink _startHandleLayerLink = LayerLink();
   final LayerLink _endHandleLayerLink = LayerLink();
@@ -1828,9 +1845,6 @@ class RawEditorState extends EditorState
         );
       }
       controller.copiedImageUrl = null;
-      await Clipboard.setData(
-        const ClipboardData(text: ''),
-      );
       return;
     }
 
