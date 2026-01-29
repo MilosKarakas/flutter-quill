@@ -1115,10 +1115,15 @@ class RawEditorState extends EditorState
     if (cause == SelectionChangedCause.drag) {
       // When user updates the selection while dragging make sure to
       // bring the updated position (base or extent) into view.
+      print('[_handleSelectionChanged] DRAG: oldSelection: $oldSelection, newSelection: $selection');
       if (oldSelection.baseOffset != selection.baseOffset) {
+        print('[_handleSelectionChanged] base changed, calling bringIntoView(${selection.base})');
         bringIntoView(selection.base);
       } else if (oldSelection.extentOffset != selection.extentOffset) {
+        print('[_handleSelectionChanged] extent changed, calling bringIntoView(${selection.extent})');
         bringIntoView(selection.extent);
+      } else {
+        print('[_handleSelectionChanged] no offset change, skipping bringIntoView');
       }
     }
   }
