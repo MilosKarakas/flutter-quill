@@ -245,7 +245,8 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
     if (adjustedFontSize != null && flutterLineHeight != null) {
       // Scale the font size so that browser's line height matches Flutter's
-      adjustedFontSize = adjustedFontSize * (flutterLineHeight / browserDefaultLineHeight);
+      adjustedFontSize =
+          adjustedFontSize * (flutterLineHeight / browserDefaultLineHeight);
     }
 
     _textInputConnection!.setStyle(

@@ -108,14 +108,17 @@ mixin RawEditorStateSelectionDelegateMixin on EditorState
   // calculated.
   RevealedOffset _getOffsetToRevealCaret(Rect rect, TextPosition position) {
     // Make sure scrollController is attached
-    if (scrollController.hasClients &&
-        !scrollController.position.allowImplicitScrolling) {
+    if (!scrollController.hasClients) {
+      return RevealedOffset(offset: 0, rect: rect);
+    }
+
+    if (!scrollController.position.allowImplicitScrolling) {
       return RevealedOffset(offset: scrollController.offset, rect: rect);
     }
 
-    final editableSize = renderEditor.size;
-    final double additionalOffset;
-    final Offset unitOffset;
+    // Use viewport dimension, not renderEditor.size (which is document size)
+    final viewportHeight = scrollController.position.viewportDimension;
+    final currentScrollOffset = scrollController.offset;
 
     // The caret is vertically centered within the line. Expand the caret's
     // height so that it spans the line because we're going to ensure that the
@@ -126,27 +129,34 @@ mixin RawEditorStateSelectionDelegateMixin on EditorState
       height: math.max(rect.height, renderEditor.preferredLineHeight(position)),
     );
 
-    additionalOffset = expandedRect.height >= editableSize.height
-        ? editableSize.height / 2 - expandedRect.center.dy
-        : 0.0
-            .clamp(expandedRect.bottom - editableSize.height, expandedRect.top);
-    unitOffset = const Offset(0, 1);
+    // Calculate target scroll offset based on caret position relative to viewport
+    final caretTop = expandedRect.top;
+    final caretBottom = expandedRect.bottom;
+    final visibleTop = currentScrollOffset;
+    final visibleBottom = currentScrollOffset + viewportHeight;
 
-    // No overscrolling when encountering tall fonts/scripts that extend past
-    // the ascent.
-    var targetOffset = additionalOffset;
-    if (scrollController.hasClients) {
-      targetOffset = (additionalOffset + scrollController.offset).clamp(
-        scrollController.position.minScrollExtent,
-        scrollController.position.maxScrollExtent,
-      );
+    var targetOffset = currentScrollOffset;
+
+    if (expandedRect.height >= viewportHeight) {
+      // Caret is taller than viewport, center it
+      targetOffset = expandedRect.center.dy - viewportHeight / 2;
+    } else if (caretBottom > visibleBottom) {
+      // Caret is below visible area, scroll down to bring caret bottom to viewport bottom
+      targetOffset = caretBottom - viewportHeight;
+    } else if (caretTop < visibleTop) {
+      // Caret is above visible area, scroll up to bring caret top to viewport top
+      targetOffset = caretTop;
     }
 
-    final offsetDelta =
-        (scrollController.hasClients ? scrollController.offset : 0) -
-            targetOffset;
+    // Clamp to valid scroll range
+    targetOffset = targetOffset.clamp(
+      scrollController.position.minScrollExtent,
+      scrollController.position.maxScrollExtent,
+    );
+
+    final offsetDelta = currentScrollOffset - targetOffset;
     return RevealedOffset(
-        rect: rect.shift(unitOffset * offsetDelta), offset: targetOffset);
+        rect: rect.shift(Offset(0, offsetDelta)), offset: targetOffset);
   }
 
   @override
