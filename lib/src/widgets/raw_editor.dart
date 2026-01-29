@@ -1113,17 +1113,19 @@ class RawEditorState extends EditorState
     }
 
     if (cause == SelectionChangedCause.drag) {
-      // When user updates the selection while dragging make sure to
-      // bring the updated position (base or extent) into view.
-      print('[_handleSelectionChanged] DRAG: oldSelection: $oldSelection, newSelection: $selection');
-      if (oldSelection.baseOffset != selection.baseOffset) {
-        print('[_handleSelectionChanged] base changed, calling bringIntoView(${selection.base})');
-        bringIntoView(selection.base);
-      } else if (oldSelection.extentOffset != selection.extentOffset) {
-        print('[_handleSelectionChanged] extent changed, calling bringIntoView(${selection.extent})');
-        bringIntoView(selection.extent);
-      } else {
-        print('[_handleSelectionChanged] no offset change, skipping bringIntoView');
+      // On desktop/web with mouse drag, skip bringIntoView during drag.
+      // The user controls the viewport with their mouse and can see where they're selecting.
+      // Calling bringIntoView conflicts with the Scrollable's own gesture handling,
+      // causing the scroll position to fight between our jumpTo and the scrollable's state.
+      // For touch devices, bringIntoView during drag is more useful since the finger
+      // might cover the selection area.
+      if (!kIsWeb && !isDesktop()) {
+        // Only auto-scroll on mobile touch devices during drag
+        if (oldSelection.baseOffset != selection.baseOffset) {
+          bringIntoView(selection.base);
+        } else if (oldSelection.extentOffset != selection.extentOffset) {
+          bringIntoView(selection.extent);
+        }
       }
     }
   }
