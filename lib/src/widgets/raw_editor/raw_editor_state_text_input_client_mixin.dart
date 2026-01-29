@@ -352,13 +352,6 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       return;
     }
 
-    final effectiveLastKnownValue = _lastKnownRemoteTextEditingValue!;
-    _lastKnownRemoteTextEditingValue = value;
-    final oldText = effectiveLastKnownValue.text;
-    final text = value.text;
-    final cursorPosition = value.selection.extentOffset;
-    final diff = getDiff(oldText, text, cursorPosition);
-
     // On mobile web Safari, ignore stale selection updates from platform if we just set
     // a programmatic selection (e.g., from tap). Safari may send back an old selection
     // before processing our new one, causing cursor to jump.
@@ -379,6 +372,30 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         }
       }
     }
+
+    // Check if the document already matches the incoming text.
+    // This handles the race condition where paste was already applied programmatically
+    // (via pasteText()) before this platform callback arrived. In this case, applying
+    // a diff would fail because the document state doesn't match _lastKnownRemoteTextEditingValue.
+    // This mirrors Flutter's EditableText pattern: if value == _value, return early.
+    final currentDocText = widget.controller.document.toPlainText();
+    // Document always ends with '\n', but platform value may not include it
+    final normalizedDocText = currentDocText.endsWith('\n')
+        ? currentDocText.substring(0, currentDocText.length - 1)
+        : currentDocText;
+    if (normalizedDocText == value.text) {
+      // Document already has the expected content - just sync selection and cache
+      _lastKnownRemoteTextEditingValue = value;
+      widget.controller.updateSelection(selectionToUse, ChangeSource.LOCAL);
+      return;
+    }
+
+    final effectiveLastKnownValue = _lastKnownRemoteTextEditingValue!;
+    _lastKnownRemoteTextEditingValue = value;
+    final oldText = effectiveLastKnownValue.text;
+    final text = value.text;
+    final cursorPosition = value.selection.extentOffset;
+    final diff = getDiff(oldText, text, cursorPosition);
 
     if (diff.deleted.isEmpty && diff.inserted.isEmpty) {
       widget.controller.updateSelection(selectionToUse, ChangeSource.LOCAL);
