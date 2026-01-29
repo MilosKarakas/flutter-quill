@@ -542,6 +542,28 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       // occurred yet. So we schedule a post frame callback instead.
       final size = renderEditor.size;
       final transform = renderEditor.getTransformTo(null);
+      
+      if (kIsWeb) {
+        debugPrint('[QuillEditor] _updateSizeAndTransform - size: $size');
+        debugPrint('[QuillEditor] _updateSizeAndTransform - transform: $transform');
+        
+        // On web, also log the current selection position for debugging
+        if (renderEditor.selection.isValid && !renderEditor.selection.isCollapsed) {
+          final selectionRects = renderEditor.getEndpointsForSelection(
+            TextSelection(
+              baseOffset: renderEditor.selection.baseOffset,
+              extentOffset: renderEditor.selection.extentOffset,
+            ),
+          );
+          if (selectionRects.isNotEmpty) {
+            debugPrint('[QuillEditor] _updateSizeAndTransform - selection start: ${selectionRects.first.point}');
+            if (selectionRects.length > 1) {
+              debugPrint('[QuillEditor] _updateSizeAndTransform - selection end: ${selectionRects.last.point}');
+            }
+          }
+        }
+      }
+      
       _textInputConnection?.setEditableSizeAndTransform(size, transform);
       SchedulerBinding.instance
           .addPostFrameCallback((_) => _updateSizeAndTransform());

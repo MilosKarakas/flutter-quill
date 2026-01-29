@@ -494,15 +494,22 @@ class QuillController extends ChangeNotifier {
         baseOffset: math.min(selection.baseOffset, end),
         extentOffset: math.min(selection.extentOffset, end));
 
-    // Always update toggledStyle to reflect the formatting at the current
-    // cursor position. This ensures that when the user clicks on formatted text
-    // and starts typing, the new text inherits that formatting.
+    // Update toggledStyle to reflect the formatting at the current cursor position.
+    // This ensures that when the user clicks on formatted text and starts typing,
+    // the new text inherits that formatting.
     //
     // This matches the behavior of standard rich text editors (like super_editor's
     // composingAttributions pattern) where formatting "follows the cursor".
     //
     // Only inline styles are preserved (not block styles like headers, lists).
     // Link styles are excluded as they should not be automatically inherited.
+    //
+    // IMPORTANT: When the document is empty (length <= 1, only trailing newline),
+    // we preserve the existing toggledStyle. This allows users to:
+    // 1. Click Bold on toolbar
+    // 2. Tap into empty editor
+    // 3. Type - and the text will be bold
+    // Without this check, the empty document would clear the toolbar selection.
     final styleAtPosition = document.collectStyle(
       selection.start,
       selection.isCollapsed ? 0 : selection.end - selection.start,
@@ -510,9 +517,18 @@ class QuillController extends ChangeNotifier {
     final inlineStyles = styleAtPosition.attributes.values.where(
       (attr) => attr.isInline && attr.key != Attribute.link.key,
     );
-    toggledStyle = Style.attr(Map.fromEntries(
-      inlineStyles.map((attr) => MapEntry(attr.key, attr)),
-    ));
+    
+    // Only update toggledStyle if:
+    // 1. We found inline styles at the cursor position, OR
+    // 2. The document has actual content (not just the trailing newline)
+    // This preserves user's toolbar selection when document is empty.
+    final hasContent = document.length > 1;
+    if (inlineStyles.isNotEmpty || hasContent) {
+      toggledStyle = Style.attr(Map.fromEntries(
+        inlineStyles.map((attr) => MapEntry(attr.key, attr)),
+      ));
+    }
+    // else: preserve existing toggledStyle for empty document
 
     onSelectionChanged?.call(textSelection);
   }
