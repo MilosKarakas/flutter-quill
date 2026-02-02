@@ -1773,6 +1773,7 @@ class RawEditorState extends EditorState
 
     if (cause == SelectionChangedCause.toolbar) {
       bringIntoView(textEditingValue.selection.extent);
+      hideToolbar();
 
       // Collapse the selection and hide the toolbar and handles.
       userUpdateTextEditingValue(
@@ -1835,6 +1836,11 @@ class RawEditorState extends EditorState
   Future<void> pasteText(SelectionChangedCause cause) async {
     if (widget.readOnly) {
       return;
+    }
+
+    // Hide toolbar immediately when paste is triggered from toolbar
+    if (cause == SelectionChangedCause.toolbar) {
+      hideToolbar();
     }
 
     if (controller.copiedImageUrl != null) {

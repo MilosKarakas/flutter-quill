@@ -371,23 +371,38 @@ class EditorTextSelectionOverlay {
 
   /// Shows the magnifier at the given position.
   ///
-  /// To avoid collision, this hides the selection handles while the magnifier is visible.
-  /// Handles will be restored when the magnifier is hidden.
+  /// To avoid collision, this hides the selection handles and toolbar while
+  /// the magnifier is visible. They will be restored when the magnifier is hidden.
   void showMagnifier(Offset positionToShow) {
+    debugPrint('[Magnifier] showMagnifier called at $positionToShow');
+
     if (_magnifierConfiguration == TextMagnifierConfiguration.disabled) {
+      debugPrint('[Magnifier] Magnifier is disabled');
       return;
     }
 
-    // Only hide handles if magnifier is about to become visible for the first time
-    // AND handles actually exist and are inserted in the overlay
-    if (_handles != null && !_magnifierVisible) {
-      _savedHandles = _handles;
-      _handlesVisibleBeforeMagnifier = handlesVisible;
+    // Only hide handles/toolbar if magnifier is about to become visible for the first time
+    if (!_magnifierVisible) {
+      debugPrint('[Magnifier] First show - hiding handles and toolbar');
 
-      // Temporarily hide handles by setting visibility to false
-      // Don't remove them from overlay - just hide them
-      handlesVisible = false;
-      markNeedsBuild();
+      // Hide handles if they exist
+      if (_handles != null) {
+        _savedHandles = _handles;
+        _handlesVisibleBeforeMagnifier = handlesVisible;
+
+        // Temporarily hide handles by setting visibility to false
+        // Don't remove them from overlay - just hide them
+        handlesVisible = false;
+        markNeedsBuild();
+        debugPrint('[Magnifier] Handles hidden');
+      }
+
+      // Hide toolbar if it's visible - toolbar will be shown again by the
+      // gesture handler when appropriate (e.g., onSingleLongTapEnd)
+      if (toolbar != null) {
+        hideToolbar();
+        debugPrint('[Magnifier] Toolbar hidden');
+      }
     }
 
     // Create the magnifier overlay if it doesn't exist
@@ -435,11 +450,15 @@ class EditorTextSelectionOverlay {
 
   /// Hides the magnifier.
   ///
-  /// This also restores selection handles visibility if they were visible before the magnifier was shown.
+  /// This also restores selection handles and toolbar visibility if they were
+  /// visible before the magnifier was shown.
   void hideMagnifier() {
+    debugPrint('[Magnifier] hideMagnifier called');
+
     if (_magnifierOverlay != null && _magnifierVisible) {
       _magnifierOverlay!.hideMagnifier();
       _magnifierVisible = false;
+      debugPrint('[Magnifier] Magnifier hidden');
 
       // Restore handles visibility if they were visible before magnifier
       if (_savedHandles != null) {
@@ -448,7 +467,11 @@ class EditorTextSelectionOverlay {
         markNeedsBuild();
         _savedHandles = null;
         _handlesVisibleBeforeMagnifier = false;
+        debugPrint('[Magnifier] Handles restored');
       }
+
+      // Note: Don't restore toolbar here - let the gesture handler decide
+      // whether to show it (e.g., onSingleLongTapEnd shows toolbar if needed)
     }
   }
 
