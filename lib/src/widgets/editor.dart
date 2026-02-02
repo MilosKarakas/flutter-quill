@@ -926,6 +926,17 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   @override
   void onSingleLongTapStart(LongPressStartDetails details) {
+    debugPrint('[LongPress] START - position: ${details.globalPosition}');
+
+    // Mark long press as in progress to prevent selection overlay from being
+    // disposed during the gesture (important for mobile where focus can
+    // be lost temporarily during long press)
+    final editorState = editor;
+    if (editorState is RawEditorState) {
+      editorState.setLongPressInProgress(true);
+      debugPrint('[LongPress] Flag set to TRUE');
+    }
+
     if (_state.widget.onSingleLongTapStart != null) {
       if (renderEditor != null &&
           _state.widget.onSingleLongTapStart!(
