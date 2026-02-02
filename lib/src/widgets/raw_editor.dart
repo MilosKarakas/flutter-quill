@@ -1530,7 +1530,12 @@ class RawEditorState extends EditorState
           _isLongPressInProgress ||
           (kIsWeb && _isSecondaryTapInProgress);
 
+      debugPrint(
+          '[Overlay] _updateOrDisposeSelectionOverlayIfNeeded: hasFocus=$_hasFocus, longPress=$_isLongPressInProgress, shouldKeep=$shouldKeepOverlay');
+
       if (!shouldKeepOverlay) {
+        debugPrint(
+            '[Overlay] DISPOSING overlay ${identityHashCode(_selectionOverlay)}');
         // Safety: Ensure magnifier is hidden before disposing overlay
         // This prevents orphaned magnifier widgets
         if (_selectionOverlay!.magnifierIsVisible) {
@@ -1557,6 +1562,7 @@ class RawEditorState extends EditorState
   /// text editing value. If it doesn't exist, a new overlay will be created.
   void _ensureSelectionOverlay() {
     if (_selectionOverlay == null) {
+      debugPrint('[Overlay] Creating NEW selection overlay (was null)');
       _selectionOverlay = EditorTextSelectionOverlay(
         value: textEditingValue,
         context: context,
@@ -1572,10 +1578,14 @@ class RawEditorState extends EditorState
             : (context) => widget.contextMenuBuilder!(context, this),
         magnifierConfiguration: widget.magnifierConfiguration,
       );
+      debugPrint(
+          '[Overlay] New overlay created: ${identityHashCode(_selectionOverlay)}');
     } else {
       // Update the overlay without hiding the magnifier
       // The magnifier should persist during long press gestures and only hide
       // when explicitly requested (e.g., on long press end)
+      debugPrint(
+          '[Overlay] Updating existing overlay: ${identityHashCode(_selectionOverlay)}');
       _selectionOverlay!.update(textEditingValue);
     }
   }

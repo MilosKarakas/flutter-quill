@@ -376,7 +376,8 @@ class EditorTextSelectionOverlay {
   /// To avoid collision, this hides the selection handles and toolbar while
   /// the magnifier is visible. They will be restored when the magnifier is hidden.
   void showMagnifier(Offset positionToShow) {
-    debugPrint('[Magnifier] showMagnifier called at $positionToShow');
+    debugPrint(
+        '[Magnifier] showMagnifier called at $positionToShow (overlay: ${identityHashCode(this)}, controller.shown: ${_magnifierController.shown})');
 
     if (_magnifierConfiguration == TextMagnifierConfiguration.disabled) {
       debugPrint('[Magnifier] Magnifier is disabled');
