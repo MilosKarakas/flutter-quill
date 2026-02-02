@@ -402,7 +402,8 @@ class EditorTextSelectionOverlay {
           renderObject.getEndpointsForSelection(value.selection),
       selectionControls: null,
       selectionDelegate: selectionDelegate,
-      clipboardStatus: kIsWeb ? null : clipboardStatus as ClipboardStatusNotifier,
+      clipboardStatus:
+          kIsWeb ? null : clipboardStatus as ClipboardStatusNotifier,
       startHandleLayerLink: startHandleLayerLink,
       endHandleLayerLink: endHandleLayerLink,
       toolbarLayerLink: _toolbarLayerLink,
@@ -812,6 +813,7 @@ class EditorTextSelectionGestureDetector extends StatefulWidget {
     this.onSingleLongTapStart,
     this.onSingleLongTapMoveUpdate,
     this.onSingleLongTapEnd,
+    this.onSingleLongTapCancel,
     this.onDoubleTapDown,
     this.onDragSelectionStart,
     this.onDragSelectionUpdate,
@@ -867,6 +869,12 @@ class EditorTextSelectionGestureDetector extends StatefulWidget {
 
   /// Called after [onSingleLongTapStart] when the pointer is lifted.
   final GestureLongPressEndCallback? onSingleLongTapEnd;
+
+  /// Called when a long press gesture that triggered [onSingleLongTapStart] is
+  /// cancelled. This happens when another gesture recognizer wins, the pointer
+  /// is lifted before the long press completes, or the gesture is otherwise
+  /// interrupted.
+  final GestureLongPressCancelCallback? onSingleLongTapCancel;
 
   /// Called after a momentary hold or a short tap that is close in space and
   /// time (within [kDoubleTapTimeout]) to a previous short tap.
@@ -1080,6 +1088,13 @@ class _EditorTextSelectionGestureDetectorState
     _isDoubleTap = false;
   }
 
+  void _handleLongPressCancel() {
+    if (!_isDoubleTap && widget.onSingleLongTapCancel != null) {
+      widget.onSingleLongTapCancel!();
+    }
+    _isDoubleTap = false;
+  }
+
   void _doubleTapTimeout() {
     _doubleTapTimer = null;
     _lastTapOffset = null;
@@ -1116,7 +1131,8 @@ class _EditorTextSelectionGestureDetectorState
 
     if (widget.onSingleLongTapStart != null ||
         widget.onSingleLongTapMoveUpdate != null ||
-        widget.onSingleLongTapEnd != null) {
+        widget.onSingleLongTapEnd != null ||
+        widget.onSingleLongTapCancel != null) {
       gestures[LongPressGestureRecognizer] =
           GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
         () => LongPressGestureRecognizer(
@@ -1126,7 +1142,8 @@ class _EditorTextSelectionGestureDetectorState
           instance
             ..onLongPressStart = _handleLongPressStart
             ..onLongPressMoveUpdate = _handleLongPressMoveUpdate
-            ..onLongPressEnd = _handleLongPressEnd;
+            ..onLongPressEnd = _handleLongPressEnd
+            ..onLongPressCancel = _handleLongPressCancel;
         },
       );
     }

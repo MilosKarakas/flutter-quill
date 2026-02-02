@@ -223,7 +223,7 @@ class EditorTextSelectionGestureDetectorBuilder {
   }
 
   /// Handler for secondary tap down (right-click start).
-  /// 
+  ///
   /// This is called when the user right-clicks on the editor. On web, this
   /// sets a flag to prevent the editor from losing focus when the native
   /// browser context menu appears, and syncs the selection to the platform
@@ -277,12 +277,15 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///  which triggers this callback.
   @protected
   void onSingleLongTapStart(LongPressStartDetails details) {
+    debugPrint('[LongPress] START - position: ${details.globalPosition}');
+
     // Mark long press as in progress to prevent selection overlay from being
     // disposed during the gesture (important for mobile web where focus can
     // be lost temporarily during long press)
     final editorState = editor;
     if (editorState is RawEditorState) {
       editorState.setLongPressInProgress(true);
+      debugPrint('[LongPress] Flag set to TRUE');
     }
 
     if (delegate.selectionEnabled) {
@@ -328,12 +331,15 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///  which triggers this callback.
   @protected
   void onSingleLongTapEnd(LongPressEndDetails details) {
+    debugPrint('[LongPress] END - position: ${details.globalPosition}');
+
     // Hide magnifier on mobile platforms when long press ends
     hideMagnifierIfSupportedByPlatform();
 
     // On mobile platforms, reopen keyboard first so toolbar is positioned correctly
     // The keyboard changes the viewport size, so we need it open before calculating toolbar position
     if (isMobileWeb() || isMobile()) {
+      debugPrint('[LongPress] Mobile platform - requesting keyboard');
       editor!.requestKeyboard();
 
       // Wait for keyboard to open before showing toolbar
@@ -345,9 +351,11 @@ class EditorTextSelectionGestureDetectorBuilder {
         // This allows the overlay to be properly disposed when needed
         if (editorState is RawEditorState && editorState.mounted) {
           editorState.setLongPressInProgress(false);
+          debugPrint('[LongPress] Flag set to FALSE (after delay)');
         }
         if (shouldShowSelectionToolbar) {
           editor!.showToolbar();
+          debugPrint('[LongPress] Toolbar shown');
         }
       });
     } else {
@@ -357,11 +365,36 @@ class EditorTextSelectionGestureDetectorBuilder {
         // Clear long press flag
         if (editorState is RawEditorState && editorState.mounted) {
           editorState.setLongPressInProgress(false);
+          debugPrint('[LongPress] Flag set to FALSE (desktop)');
         }
         if (shouldShowSelectionToolbar) {
           editor!.showToolbar();
+          debugPrint('[LongPress] Toolbar shown (desktop)');
         }
       });
+    }
+  }
+
+  /// Handler for [EditorTextSelectionGestureDetector.onSingleLongTapCancel].
+  ///
+  /// By default, it clears the long press tracking state.
+  ///
+  /// See also:
+  ///
+  ///  * [EditorTextSelectionGestureDetector.onSingleLongTapCancel],
+  ///  which triggers this callback.
+  @protected
+  void onSingleLongTapCancel() {
+    debugPrint('[LongPress] CANCELLED');
+
+    // Hide magnifier on mobile platforms when long press is cancelled
+    hideMagnifierIfSupportedByPlatform();
+
+    // Clear long press flag
+    final editorState = editor;
+    if (editorState is RawEditorState) {
+      editorState.setLongPressInProgress(false);
+      debugPrint('[LongPress] Flag set to FALSE (cancelled)');
     }
   }
 
@@ -420,40 +453,40 @@ class EditorTextSelectionGestureDetectorBuilder {
       DragUpdateDetails updateDetails) {
     renderEditor!.extendSelection(updateDetails.globalPosition,
         cause: SelectionChangedCause.drag);
-    
+
     // Implement edge scrolling for desktop/web drag selection
     // When dragging near the top or bottom edge, scroll the viewport
     if (kIsWeb || isDesktop()) {
       _handleEdgeScrolling(updateDetails.globalPosition);
     }
   }
-  
+
   /// Handles auto-scrolling when dragging near the edges of the viewport.
   void _handleEdgeScrolling(Offset globalPosition) {
     final editorState = editor;
     if (editorState == null || editorState is! RawEditorState) return;
-    
+
     final scrollController = editorState.scrollController;
     if (!scrollController.hasClients) return;
-    
+
     // Get the editor's render box to convert global position to local
     final renderBox = editorState.context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
-    
+
     final localPosition = renderBox.globalToLocal(globalPosition);
     final viewportHeight = renderBox.size.height;
-    
+
     // Edge threshold - start scrolling when within this distance from edge
     const edgeThreshold = 50.0;
     // Scroll speed in pixels
     const scrollSpeed = 10.0;
-    
+
     final currentOffset = scrollController.offset;
     final maxOffset = scrollController.position.maxScrollExtent;
     final minOffset = scrollController.position.minScrollExtent;
-    
+
     double? newOffset;
-    
+
     if (localPosition.dy < edgeThreshold) {
       // Near top edge - scroll up
       final scrollAmount = scrollSpeed * (1 - localPosition.dy / edgeThreshold);
@@ -461,10 +494,11 @@ class EditorTextSelectionGestureDetectorBuilder {
     } else if (localPosition.dy > viewportHeight - edgeThreshold) {
       // Near bottom edge - scroll down
       final distanceFromBottom = viewportHeight - localPosition.dy;
-      final scrollAmount = scrollSpeed * (1 - distanceFromBottom / edgeThreshold);
+      final scrollAmount =
+          scrollSpeed * (1 - distanceFromBottom / edgeThreshold);
       newOffset = (currentOffset + scrollAmount).clamp(minOffset, maxOffset);
     }
-    
+
     if (newOffset != null && newOffset != currentOffset) {
       scrollController.jumpTo(newOffset);
     }
@@ -509,6 +543,7 @@ class EditorTextSelectionGestureDetectorBuilder {
         onSingleLongTapStart: onSingleLongTapStart,
         onSingleLongTapMoveUpdate: onSingleLongTapMoveUpdate,
         onSingleLongTapEnd: onSingleLongTapEnd,
+        onSingleLongTapCancel: onSingleLongTapCancel,
         onDoubleTapDown: onDoubleTapDown,
         onSecondaryTapDown: onSecondaryTapDown,
         onSecondarySingleTapUp: onSecondarySingleTapUp,

@@ -72,18 +72,33 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     if (widget.focusNode.hasFocus && widget.focusNode.consumeKeyboardToken()) {
       openConnectionIfNeeded();
     } else if (!widget.focusNode.hasFocus) {
+      debugPrint('[Connection] Focus lost - checking guards...');
       // On web, don't close connection during secondary tap (right-click).
       // The native context menu needs the connection to remain open so that
       // the hidden HTML textarea has the correct selection for copy/paste.
       if (kIsWeb && isSecondaryTapInProgress) {
+        debugPrint(
+            '[Connection] Keeping connection open (secondary tap in progress)');
         return;
       }
+      // On mobile platforms (web and native), don't close connection during
+      // long press. This prevents the keyboard from closing when the user
+      // long-presses to show the copy/paste toolbar.
+      if ((kIsWeb || isMobile()) && isLongPressInProgress) {
+        debugPrint(
+            '[Connection] Keeping connection open (long press in progress)');
+        return;
+      }
+      debugPrint('[Connection] Closing connection');
       closeConnectionIfNeeded();
     }
   }
 
   /// Whether a secondary tap (right-click) is in progress.
   bool get isSecondaryTapInProgress;
+
+  /// Whether a long press gesture is in progress.
+  bool get isLongPressInProgress;
 
   void openConnectionIfNeeded() {
     if (!shouldCreateInputConnection) {

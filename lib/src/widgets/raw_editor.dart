@@ -345,7 +345,7 @@ class RawEditorState extends EditorState
   // Secondary tap (right-click) tracking
   // Used to keep connection open for native context menu copy/paste
   bool _isSecondaryTapInProgress = false;
-  
+
   @override
   bool get isSecondaryTapInProgress => _isSecondaryTapInProgress;
 
@@ -356,7 +356,7 @@ class RawEditorState extends EditorState
       // On web, sync selection to platform before native context menu appears
       // This ensures copy/cut/paste operate on the correct text
       updateRemoteValueIfNeeded();
-      
+
       // Proactively reset the gesture detector to prevent stuck state.
       // When browser's context menu opens, it steals the PointerUpEvent, leaving
       // the gesture recognizer stuck. By resetting now, the rebuild happens while
@@ -370,8 +370,12 @@ class RawEditorState extends EditorState
   // Used to keep the selection overlay alive during long press gestures on mobile web
   bool _isLongPressInProgress = false;
 
+  @override
+  bool get isLongPressInProgress => _isLongPressInProgress;
+
   /// Called by the gesture detector when a long press gesture starts/ends.
-  /// This prevents the selection overlay from being disposed during long press.
+  /// This prevents the selection overlay from being disposed during long press
+  /// and the keyboard from closing.
   void setLongPressInProgress(bool value) {
     _isLongPressInProgress = value;
   }
@@ -391,9 +395,8 @@ class RawEditorState extends EditorState
   // Use web-specific notifier on web to avoid triggering clipboard permission
   // prompts on app resume. The standard ClipboardStatusNotifier registers as a
   // WidgetsBindingObserver and calls Clipboard.hasStrings() on every resume.
-  final ValueNotifier<ClipboardStatus> _clipboardStatus = kIsWeb
-      ? _WebClipboardStatusNotifier()
-      : ClipboardStatusNotifier();
+  final ValueNotifier<ClipboardStatus> _clipboardStatus =
+      kIsWeb ? _WebClipboardStatusNotifier() : ClipboardStatusNotifier();
   final LayerLink _toolbarLayerLink = LayerLink();
   final LayerLink _startHandleLayerLink = LayerLink();
   final LayerLink _endHandleLayerLink = LayerLink();
@@ -708,12 +711,12 @@ class RawEditorState extends EditorState
         // clear the flag and request gesture detector reset
         if (_isSecondaryTapInProgress && event.buttons == 1) {
           _isSecondaryTapInProgress = false;
-          
+
           // Request focus if not focused
           if (!_hasFocus) {
             widget.focusNode.requestFocus();
           }
-          
+
           // Request gesture detector reset to clear stuck recognizer state
           // This changes the gesture detector's key, forcing Flutter to dispose
           // the old recognizer and create a fresh one
@@ -725,156 +728,156 @@ class RawEditorState extends EditorState
         enabled: widget.enableUnfocusOnTapOutside,
         onTapOutside: _defaultOnTapOutside,
         child: QuillStyles(
-        data: _styles!,
-        child: Shortcuts(
-          shortcuts: mergeMaps<ShortcutActivator, Intent>({
-            // shortcuts added for Desktop platforms.
-            const SingleActivator(
-              LogicalKeyboardKey.escape,
-            ): const HideSelectionToolbarIntent(),
-            SingleActivator(
-              LogicalKeyboardKey.keyZ,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const UndoTextIntent(SelectionChangedCause.keyboard),
-            SingleActivator(
-              LogicalKeyboardKey.keyY,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const RedoTextIntent(SelectionChangedCause.keyboard),
+          data: _styles!,
+          child: Shortcuts(
+            shortcuts: mergeMaps<ShortcutActivator, Intent>({
+              // shortcuts added for Desktop platforms.
+              const SingleActivator(
+                LogicalKeyboardKey.escape,
+              ): const HideSelectionToolbarIntent(),
+              SingleActivator(
+                LogicalKeyboardKey.keyZ,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const UndoTextIntent(SelectionChangedCause.keyboard),
+              SingleActivator(
+                LogicalKeyboardKey.keyY,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const RedoTextIntent(SelectionChangedCause.keyboard),
 
-            // Selection formatting.
-            SingleActivator(
-              LogicalKeyboardKey.keyB,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const ToggleTextStyleIntent(Attribute.bold),
-            SingleActivator(
-              LogicalKeyboardKey.keyU,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const ToggleTextStyleIntent(Attribute.underline),
-            SingleActivator(
-              LogicalKeyboardKey.keyI,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const ToggleTextStyleIntent(Attribute.italic),
-            SingleActivator(
-              LogicalKeyboardKey.keyS,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-              shift: true,
-            ): const ToggleTextStyleIntent(Attribute.strikeThrough),
-            SingleActivator(
-              LogicalKeyboardKey.backquote,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const ToggleTextStyleIntent(Attribute.inlineCode),
-            SingleActivator(
-              LogicalKeyboardKey.tilde,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-              shift: true,
-            ): const ToggleTextStyleIntent(Attribute.codeBlock),
-            SingleActivator(
-              LogicalKeyboardKey.keyB,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-              shift: true,
-            ): const ToggleTextStyleIntent(Attribute.blockQuote),
-            SingleActivator(
-              LogicalKeyboardKey.keyK,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const ApplyLinkIntent(),
+              // Selection formatting.
+              SingleActivator(
+                LogicalKeyboardKey.keyB,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const ToggleTextStyleIntent(Attribute.bold),
+              SingleActivator(
+                LogicalKeyboardKey.keyU,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const ToggleTextStyleIntent(Attribute.underline),
+              SingleActivator(
+                LogicalKeyboardKey.keyI,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const ToggleTextStyleIntent(Attribute.italic),
+              SingleActivator(
+                LogicalKeyboardKey.keyS,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+                shift: true,
+              ): const ToggleTextStyleIntent(Attribute.strikeThrough),
+              SingleActivator(
+                LogicalKeyboardKey.backquote,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const ToggleTextStyleIntent(Attribute.inlineCode),
+              SingleActivator(
+                LogicalKeyboardKey.tilde,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+                shift: true,
+              ): const ToggleTextStyleIntent(Attribute.codeBlock),
+              SingleActivator(
+                LogicalKeyboardKey.keyB,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+                shift: true,
+              ): const ToggleTextStyleIntent(Attribute.blockQuote),
+              SingleActivator(
+                LogicalKeyboardKey.keyK,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const ApplyLinkIntent(),
 
-            // Lists
-            SingleActivator(
-              LogicalKeyboardKey.keyL,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-              shift: true,
-            ): const ToggleTextStyleIntent(Attribute.ul),
-            SingleActivator(
-              LogicalKeyboardKey.keyO,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-              shift: true,
-            ): const ToggleTextStyleIntent(Attribute.ol),
-            SingleActivator(
-              LogicalKeyboardKey.keyC,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-              shift: true,
-            ): const ApplyCheckListIntent(),
+              // Lists
+              SingleActivator(
+                LogicalKeyboardKey.keyL,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+                shift: true,
+              ): const ToggleTextStyleIntent(Attribute.ul),
+              SingleActivator(
+                LogicalKeyboardKey.keyO,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+                shift: true,
+              ): const ToggleTextStyleIntent(Attribute.ol),
+              SingleActivator(
+                LogicalKeyboardKey.keyC,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+                shift: true,
+              ): const ApplyCheckListIntent(),
 
-            // Indents
-            SingleActivator(
-              LogicalKeyboardKey.keyM,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const IndentSelectionIntent(true),
-            SingleActivator(
-              LogicalKeyboardKey.keyM,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-              shift: true,
-            ): const IndentSelectionIntent(false),
+              // Indents
+              SingleActivator(
+                LogicalKeyboardKey.keyM,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const IndentSelectionIntent(true),
+              SingleActivator(
+                LogicalKeyboardKey.keyM,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+                shift: true,
+              ): const IndentSelectionIntent(false),
 
-            // Headers
-            SingleActivator(
-              LogicalKeyboardKey.digit1,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const ApplyHeaderIntent(Attribute.h1),
-            SingleActivator(
-              LogicalKeyboardKey.digit2,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const ApplyHeaderIntent(Attribute.h2),
-            SingleActivator(
-              LogicalKeyboardKey.digit3,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const ApplyHeaderIntent(Attribute.h3),
-            SingleActivator(
-              LogicalKeyboardKey.digit0,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const ApplyHeaderIntent(Attribute.header),
+              // Headers
+              SingleActivator(
+                LogicalKeyboardKey.digit1,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const ApplyHeaderIntent(Attribute.h1),
+              SingleActivator(
+                LogicalKeyboardKey.digit2,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const ApplyHeaderIntent(Attribute.h2),
+              SingleActivator(
+                LogicalKeyboardKey.digit3,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const ApplyHeaderIntent(Attribute.h3),
+              SingleActivator(
+                LogicalKeyboardKey.digit0,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const ApplyHeaderIntent(Attribute.header),
 
-            SingleActivator(
-              LogicalKeyboardKey.keyG,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const InsertEmbedIntent(Attribute.image),
+              SingleActivator(
+                LogicalKeyboardKey.keyG,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const InsertEmbedIntent(Attribute.image),
 
-            SingleActivator(
-              LogicalKeyboardKey.keyF,
-              control: !isDesktopMacOS,
-              meta: isDesktopMacOS,
-            ): const OpenSearchIntent(),
-          }, {
-            ...?widget.customShortcuts
-          }),
-          child: Actions(
-            actions: mergeMaps<Type, Action<Intent>>(_actions, {
-              ...?widget.customActions,
+              SingleActivator(
+                LogicalKeyboardKey.keyF,
+                control: !isDesktopMacOS,
+                meta: isDesktopMacOS,
+              ): const OpenSearchIntent(),
+            }, {
+              ...?widget.customShortcuts
             }),
-            child: Focus(
-              focusNode: widget.focusNode,
-              onKey: _onKey,
-              child: QuillKeyboardListener(
-                child: Container(
-                  constraints: constraints,
-                  child: child,
+            child: Actions(
+              actions: mergeMaps<Type, Action<Intent>>(_actions, {
+                ...?widget.customActions,
+              }),
+              child: Focus(
+                focusNode: widget.focusNode,
+                onKey: _onKey,
+                child: QuillKeyboardListener(
+                  child: Container(
+                    constraints: constraints,
+                    child: child,
+                  ),
                 ),
               ),
             ),
           ),
         ),
       ),
-    ),
     );
   }
 
