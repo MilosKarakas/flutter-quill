@@ -488,6 +488,7 @@ class EditorTextSelectionOverlay {
   }
 
   /// Builds the magnifier info for the given position.
+  /// This matches Flutter's TextSelectionOverlay._buildMagnifier implementation.
   MagnifierInfo _buildMagnifier({
     required Offset globalGesturePosition,
     required TextPosition currentTextPosition,
@@ -515,10 +516,22 @@ class EditorTextSelectionOverlay {
       localLineBoundaries,
     );
 
+    // Transform caret rect to overlay coordinates
+    final Rect localCaretRect =
+        renderObject.getLocalRectForCaret(currentTextPosition);
+    final Rect overlayCaretRect =
+        MatrixUtils.transformRect(transformToOverlay, localCaretRect);
+
+    // Convert gesture position to overlay coordinates
+    final Offset overlayGesturePosition =
+        overlay?.globalToLocal(globalGesturePosition) ?? globalGesturePosition;
+
     return MagnifierInfo(
-      fieldBounds: overlayLineBoundaries,
-      globalGesturePosition: globalGesturePosition,
-      caretRect: renderObject.getLocalRectForCaret(currentTextPosition),
+      // fieldBounds should be the entire editor bounds, not just line boundaries
+      fieldBounds: MatrixUtils.transformRect(
+          transformToOverlay, renderObject.paintBounds),
+      globalGesturePosition: overlayGesturePosition,
+      caretRect: overlayCaretRect,
       currentLineBoundaries: overlayLineBoundaries,
     );
   }

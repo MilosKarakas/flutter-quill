@@ -1715,22 +1715,23 @@ class RawEditorState extends EditorState
       return;
     }
 
-    if (_selectionOverlay!.magnifierIsVisible) {
-      _selectionOverlay!.updateMagnifier(positionToShow);
-    } else {
-      _selectionOverlay!.showMagnifier(positionToShow);
-    }
+    // showMagnifier in EditorTextSelectionOverlay handles both initial show
+    // and position updates via the ValueNotifier
+    _selectionOverlay!.showMagnifier(positionToShow);
   }
 
   /// Hides the magnifier if it's currently visible.
   void hideMagnifier() {
+    debugPrint(
+        '[RawEditor] hideMagnifier called, overlay: ${_selectionOverlay != null}, magnifierIsVisible: ${_selectionOverlay?.magnifierIsVisible}');
     if (_selectionOverlay == null) {
+      debugPrint('[RawEditor] hideMagnifier - no selection overlay');
       return;
     }
 
-    if (_selectionOverlay!.magnifierIsVisible) {
-      _selectionOverlay!.hideMagnifier();
-    }
+    // Always try to hide the magnifier if there might be one
+    _selectionOverlay!.hideMagnifier();
+    debugPrint('[RawEditor] hideMagnifier - called hideMagnifier on overlay');
   }
 
   /// Shows the selection toolbar at the location of the current cursor.
