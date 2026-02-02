@@ -201,8 +201,10 @@ class EditorTextSelectionOverlay {
   /// magnifier management.
   final MagnifierController _magnifierController = MagnifierController();
 
-  /// The current magnifier info, updated during drag gestures.
-  MagnifierInfo _currentMagnifierInfo = MagnifierInfo.empty;
+  /// Notifier for magnifier position updates.
+  /// The magnifier widget listens to this to track position changes.
+  final ValueNotifier<MagnifierInfo> _magnifierInfo =
+      ValueNotifier<MagnifierInfo>(MagnifierInfo.empty);
 
   /// Layer link for the toolbar, used by SelectionOverlay.
   final LayerLink _toolbarLayerLink = LayerLink();
@@ -405,15 +407,15 @@ class EditorTextSelectionOverlay {
       }
     }
 
-    // Build the magnifier info
+    // Build the magnifier info and update the notifier
     final position = renderObject.getPositionForOffset(positionToShow);
     debugPrint('[Magnifier] Creating magnifier info at position: $position');
-    _currentMagnifierInfo = _buildMagnifier(
+    _magnifierInfo.value = _buildMagnifier(
       currentTextPosition: position,
       globalGesturePosition: positionToShow,
     );
 
-    // Show or update the magnifier
+    // Show the magnifier if not already shown
     if (!_magnifierController.shown) {
       debugPrint('[Magnifier] Showing magnifier via MagnifierController');
 
@@ -423,10 +425,12 @@ class EditorTextSelectionOverlay {
         context: context,
         debugRequiredFor: debugRequiredFor,
         builder: (context) {
+          // Pass the persistent _magnifierInfo notifier so the magnifier
+          // can listen for position updates
           final widget = builder(
             context,
             _magnifierController,
-            ValueNotifier<MagnifierInfo>(_currentMagnifierInfo),
+            _magnifierInfo,
           );
           // Return empty SizedBox if builder returns null
           return widget ?? const SizedBox.shrink();
@@ -435,9 +439,9 @@ class EditorTextSelectionOverlay {
       debugPrint(
           '[Magnifier] Magnifier shown, controller.shown = ${_magnifierController.shown}');
     } else {
-      // Magnifier already shown, just update it by rebuilding
-      _magnifierController.overlayEntry?.markNeedsBuild();
-      debugPrint('[Magnifier] Magnifier updated');
+      // Magnifier already shown - the ValueNotifier update will automatically
+      // trigger a rebuild of the magnifier widget
+      debugPrint('[Magnifier] Magnifier position updated via notifier');
     }
   }
 
@@ -449,11 +453,11 @@ class EditorTextSelectionOverlay {
     }
 
     final position = renderObject.getPositionForOffset(positionToShow);
-    _currentMagnifierInfo = _buildMagnifier(
+    // Update the notifier - the magnifier widget listens to this
+    _magnifierInfo.value = _buildMagnifier(
       currentTextPosition: position,
       globalGesturePosition: positionToShow,
     );
-    _magnifierController.overlayEntry?.markNeedsBuild();
   }
 
   /// Hides the magnifier.
@@ -525,6 +529,8 @@ class EditorTextSelectionOverlay {
     if (_magnifierController.shown) {
       _magnifierController.hide();
     }
+    // Dispose the magnifier info notifier
+    _magnifierInfo.dispose();
     // Clean up any saved handles
     _savedHandles = null;
     hide();
