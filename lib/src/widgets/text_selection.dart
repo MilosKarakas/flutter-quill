@@ -426,11 +426,16 @@ class EditorTextSelectionOverlay {
     );
 
     final position = renderObject.getPositionForOffset(positionToShow);
-    _magnifierOverlay!.showMagnifier(_buildMagnifier(
+    debugPrint('[Magnifier] Creating magnifier info at position: $position');
+    final magnifierInfo = _buildMagnifier(
       currentTextPosition: position,
       globalGesturePosition: positionToShow,
-    ));
+    );
+    debugPrint('[Magnifier] Calling _magnifierOverlay.showMagnifier');
+    _magnifierOverlay!.showMagnifier(magnifierInfo);
     _magnifierVisible = true;
+    debugPrint(
+        '[Magnifier] Magnifier shown, _magnifierVisible = $_magnifierVisible');
   }
 
   /// Updates the magnifier to the given position.
@@ -454,6 +459,7 @@ class EditorTextSelectionOverlay {
   /// visible before the magnifier was shown.
   void hideMagnifier() {
     debugPrint('[Magnifier] hideMagnifier called');
+    debugPrint('[Magnifier] Stack trace: ${StackTrace.current}');
 
     if (_magnifierOverlay != null && _magnifierVisible) {
       _magnifierOverlay!.hideMagnifier();
