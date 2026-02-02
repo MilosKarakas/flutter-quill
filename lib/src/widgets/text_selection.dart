@@ -840,6 +840,7 @@ class EditorTextSelectionGestureDetector extends StatefulWidget {
     this.onSingleLongTapEnd,
     this.onSingleLongTapCancel,
     this.onDoubleTapDown,
+    this.onTripleTapDown,
     this.onDragSelectionStart,
     this.onDragSelectionUpdate,
     this.onDragSelectionEnd,
@@ -905,6 +906,10 @@ class EditorTextSelectionGestureDetector extends StatefulWidget {
   /// time (within [kDoubleTapTimeout]) to a previous short tap.
   final GestureTapDownCallback? onDoubleTapDown;
 
+  /// Called after a momentary hold or a short tap that is close in space and
+  /// time (within [kDoubleTapTimeout]) to a previous double tap.
+  final GestureTapDownCallback? onTripleTapDown;
+
   /// Called when a mouse starts dragging to select text.
   final GestureDragStartCallback? onDragSelectionStart;
 
@@ -939,11 +944,11 @@ class _EditorTextSelectionGestureDetectorState
   Timer? _doubleTapTimer;
   Offset? _lastTapOffset;
 
-  // True if a second tap down of a double tap is detected. Used to discard
-  // subsequent tap up / tap hold of the same tap.
-  bool _isDoubleTap = false;
+  // Tracks the number of consecutive taps for multi-tap detection.
+  // 1 = first tap, 2 = double tap, 3 = triple tap
+  int _consecutiveTapCount = 0;
 
-  // _isDoubleTap for mouse right click
+  // Tracks consecutive taps for mouse right click
   bool _isSecondaryDoubleTap = false;
 
   @override
@@ -959,33 +964,37 @@ class _EditorTextSelectionGestureDetectorState
     if (widget.onTapDown != null) {
       widget.onTapDown!(details);
     }
-    // This isn't detected as a double tap gesture in the gesture recognizer
-    // because it's 2 single taps, each of which may do different things
-    // depending on whether it's a single tap, the first tap of a double tap,
-    // the second tap held down, a clean double tap etc.
+    // This isn't detected as a double/triple tap gesture in the gesture recognizer
+    // because it's multiple single taps, each of which may do different things
+    // depending on whether it's a single tap, double tap, triple tap, etc.
     if (_doubleTapTimer != null &&
         _isWithinDoubleTapTolerance(details.globalPosition)) {
-      // If there was already a previous tap, the second down hold/tap is a
-      // double tap down.
-      if (widget.onDoubleTapDown != null) {
-        widget.onDoubleTapDown!(details);
-      }
-
+      _consecutiveTapCount++;
       _doubleTapTimer!.cancel();
-      _doubleTapTimeout();
-      _isDoubleTap = true;
+      _doubleTapTimer = null;
+
+      if (_consecutiveTapCount == 2) {
+        widget.onDoubleTapDown?.call(details);
+      } else if (_consecutiveTapCount >= 3) {
+        widget.onTripleTapDown?.call(details);
+        // Reset after triple tap to start fresh
+        _consecutiveTapCount = 0;
+      }
+    } else {
+      // First tap or tap outside tolerance - start fresh count
+      _consecutiveTapCount = 1;
     }
   }
 
   void _handleTapUp(TapUpDetails details) {
-    if (!_isDoubleTap) {
-      if (widget.onSingleTapUp != null) {
-        widget.onSingleTapUp!(details);
-      }
-      _lastTapOffset = details.globalPosition;
-      _doubleTapTimer = Timer(kDoubleTapTimeout, _doubleTapTimeout);
+    // Only trigger single tap up for the first tap in a sequence
+    if (_consecutiveTapCount <= 1) {
+      widget.onSingleTapUp?.call(details);
     }
-    _isDoubleTap = false;
+    // Always update last tap offset and start timer for potential follow-up taps
+    _lastTapOffset = details.globalPosition;
+    _doubleTapTimer?.cancel();
+    _doubleTapTimer = Timer(kDoubleTapTimeout, _doubleTapTimeout);
   }
 
   void _handleTapCancel() {
@@ -1007,7 +1016,7 @@ class _EditorTextSelectionGestureDetectorState
 
       _doubleTapTimer!.cancel();
       _doubleTapTimeout();
-      _isDoubleTap = true;
+      _isSecondaryDoubleTap = true;
     }
   }
 
@@ -1095,34 +1104,34 @@ class _EditorTextSelectionGestureDetectorState
   }
 
   void _handleLongPressStart(LongPressStartDetails details) {
-    if (!_isDoubleTap && widget.onSingleLongTapStart != null) {
+    // Don't trigger long press during multi-tap sequence
+    if (_consecutiveTapCount < 2 && widget.onSingleLongTapStart != null) {
       widget.onSingleLongTapStart!(details);
     }
   }
 
   void _handleLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
-    if (!_isDoubleTap && widget.onSingleLongTapMoveUpdate != null) {
+    if (_consecutiveTapCount < 2 && widget.onSingleLongTapMoveUpdate != null) {
       widget.onSingleLongTapMoveUpdate!(details);
     }
   }
 
   void _handleLongPressEnd(LongPressEndDetails details) {
-    if (!_isDoubleTap && widget.onSingleLongTapEnd != null) {
+    if (_consecutiveTapCount < 2 && widget.onSingleLongTapEnd != null) {
       widget.onSingleLongTapEnd!(details);
     }
-    _isDoubleTap = false;
   }
 
   void _handleLongPressCancel() {
-    if (!_isDoubleTap && widget.onSingleLongTapCancel != null) {
+    if (_consecutiveTapCount < 2 && widget.onSingleLongTapCancel != null) {
       widget.onSingleLongTapCancel!();
     }
-    _isDoubleTap = false;
   }
 
   void _doubleTapTimeout() {
     _doubleTapTimer = null;
     _lastTapOffset = null;
+    _consecutiveTapCount = 0;
   }
 
   bool _isWithinDoubleTapTolerance(Offset secondTapOffset) {

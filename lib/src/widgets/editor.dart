@@ -15,6 +15,7 @@ import 'package:i18n_extension/i18n_extension.dart';
 import '../models/documents/document.dart';
 import '../models/documents/nodes/container.dart' as container_node;
 import '../models/documents/nodes/leaf.dart';
+import '../models/documents/nodes/line.dart';
 import '../models/structs/offset_value.dart';
 import '../models/structs/paste_data.dart';
 import '../models/themes/quill_dialog_theme.dart';
@@ -74,6 +75,13 @@ abstract class RenderAbstractEditor implements TextLayoutMetrics {
   TextSelection selectWordAtPosition(TextPosition position);
 
   TextSelection selectLineAtPosition(TextPosition position);
+
+  /// Returns a [TextSelection] covering the entire paragraph at [position].
+  /// A paragraph in Quill is defined by a Line node (content up to a newline).
+  TextSelection selectParagraphAtPosition(TextPosition position);
+
+  /// Selects the entire paragraph at the current tap position.
+  void selectParagraph(SelectionChangedCause cause);
 
   /// Returns preferred line height at specified `position` in text.
   double preferredLineHeight(TextPosition position);
@@ -1407,6 +1415,41 @@ class RenderEditor extends RenderEditableContainerBox
       return TextSelection.fromPosition(position);
     }
     return TextSelection(baseOffset: line.start, extentOffset: line.end);
+  }
+
+  @override
+  TextSelection selectParagraphAtPosition(TextPosition position) {
+    // Query the document to find the Line node at this offset
+    final childQuery = _container.queryChild(position.offset, false);
+    final node = childQuery.node;
+
+    if (node == null) {
+      return TextSelection.collapsed(offset: position.offset);
+    }
+
+    // Get the Line node (paragraph boundaries)
+    // In Quill, a Line represents a paragraph ending with \n
+    final line = node is Line
+        ? node
+        : (node.parent is Line ? node.parent as Line : null);
+    if (line == null) {
+      return TextSelection.collapsed(offset: position.offset);
+    }
+
+    // Select from start of line to end (excluding the trailing newline for cleaner UX)
+    final start = line.documentOffset;
+    final end = line.documentOffset + line.length - 1; // -1 to exclude \n
+
+    return TextSelection(baseOffset: start, extentOffset: end);
+  }
+
+  @override
+  void selectParagraph(SelectionChangedCause cause) {
+    if (_lastTapDownPosition == null) return;
+
+    final position = getPositionForOffset(_lastTapDownPosition!);
+    final selection = selectParagraphAtPosition(position);
+    onSelectionChanged(selection, cause);
   }
 
   @override

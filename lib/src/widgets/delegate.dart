@@ -412,6 +412,28 @@ class EditorTextSelectionGestureDetectorBuilder {
     }
   }
 
+  /// Handler for [EditorTextSelectionGestureDetector.onTripleTapDown].
+  ///
+  /// By default, it selects the entire paragraph (Line node) at the tap
+  /// position and shows the toolbar if necessary.
+  ///
+  /// See also:
+  ///
+  ///  * [EditorTextSelectionGestureDetector.onTripleTapDown],
+  ///  which triggers this callback.
+  @protected
+  void onTripleTapDown(TapDownDetails details) {
+    if (delegate.selectionEnabled) {
+      renderEditor!.selectParagraph(SelectionChangedCause.tap);
+      // Allow the selection to get updated before trying to bring up toolbars.
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (shouldShowSelectionToolbar) {
+          editor!.showToolbar();
+        }
+      });
+    }
+  }
+
   /// Handler for [EditorTextSelectionGestureDetector.onDragSelectionStart].
   ///
   /// By default, it selects a text position specified in [details].
@@ -532,6 +554,7 @@ class EditorTextSelectionGestureDetectorBuilder {
         onSingleLongTapEnd: onSingleLongTapEnd,
         onSingleLongTapCancel: onSingleLongTapCancel,
         onDoubleTapDown: onDoubleTapDown,
+        onTripleTapDown: onTripleTapDown,
         onSecondaryTapDown: onSecondaryTapDown,
         onSecondarySingleTapUp: onSecondarySingleTapUp,
         onDragSelectionStart: onDragSelectionStart,
