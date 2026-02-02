@@ -795,9 +795,6 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   @override
   void onSingleTapUp(TapUpDetails details) {
-    debugPrint(
-        '[Tap] onSingleTapUp - kind: ${details.kind}, position: ${details.globalPosition}');
-
     if (_state.widget.onTapUp != null &&
         renderEditor != null &&
         _state.widget.onTapUp!(details, renderEditor!.getPositionForOffset)) {
@@ -805,13 +802,10 @@ class _QuillEditorSelectionGestureDetectorBuilder
     }
 
     editor!.hideToolbar();
-    debugPrint('[Tap] Toolbar hidden');
 
     try {
       if (delegate.selectionEnabled && !_isPositionSelected(details)) {
         final _platform = Theme.of(_state.context).platform;
-        debugPrint(
-            '[Tap] Platform: $_platform, isApple: ${isAppleOS(_platform)}, isDesktop: ${isDesktop()}, detectWordBoundary: $_detectWordBoundary');
 
         if (isAppleOS(_platform) || isDesktop()) {
           // added isDesktop() to enable extend selection in Windows platform
@@ -823,15 +817,11 @@ class _QuillEditorSelectionGestureDetectorBuilder
               // If `Shift` key is pressed then
               // extend current selection instead.
               if (isShiftClick(details.kind)) {
-                debugPrint(
-                    '[Tap] Mouse/stylus with shift - extending selection');
                 renderEditor!
                   ..extendSelection(details.globalPosition,
                       cause: SelectionChangedCause.tap)
                   ..onSelectionCompleted();
               } else {
-                debugPrint(
-                    '[Tap] Mouse/stylus - selectPositionAt (exact position)');
                 // Match Flutter's pattern: use _lastTapDownPosition for consistency
                 // Flutter's selectPosition() uses _lastTapDownPosition
                 if (_lastTapDownPosition != null) {
@@ -861,15 +851,11 @@ class _QuillEditorSelectionGestureDetectorBuilder
               // instead of details.globalPosition from TapUpDetails
               // Flutter's selectWordEdge() and selectPosition() both use _lastTapDownPosition
               if (_detectWordBoundary) {
-                debugPrint(
-                    '[Tap] Touch/unknown - selectWordEdge (word boundary)');
                 // selectWordEdge uses _lastTapDownPosition internally
                 renderEditor!
                   ..selectWordEdge(SelectionChangedCause.tap)
                   ..onSelectionCompleted();
               } else {
-                debugPrint(
-                    '[Tap] Touch/unknown - selectPositionAt (exact, detectWordBoundary=false)');
                 // Use stored tap down position (matches Flutter's selectPosition pattern)
                 if (_lastTapDownPosition != null) {
                   renderEditor!
@@ -894,8 +880,6 @@ class _QuillEditorSelectionGestureDetectorBuilder
               break;
           }
         } else {
-          debugPrint(
-              '[Tap] Non-Apple platform - selectPositionAt (exact position)');
           // Match Flutter's pattern: use _lastTapDownPosition for consistency
           if (_lastTapDownPosition != null) {
             renderEditor!
@@ -926,15 +910,12 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   @override
   void onSingleLongTapStart(LongPressStartDetails details) {
-    debugPrint('[LongPress] START - position: ${details.globalPosition}');
-
     // Mark long press as in progress to prevent selection overlay from being
     // disposed during the gesture (important for mobile where focus can
     // be lost temporarily during long press)
     final editorState = editor;
     if (editorState is RawEditorState) {
       editorState.setLongPressInProgress(true);
-      debugPrint('[LongPress] Flag set to TRUE');
     }
 
     if (_state.widget.onSingleLongTapStart != null) {

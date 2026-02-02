@@ -277,15 +277,12 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///  which triggers this callback.
   @protected
   void onSingleLongTapStart(LongPressStartDetails details) {
-    debugPrint('[LongPress] START - position: ${details.globalPosition}');
-
     // Mark long press as in progress to prevent selection overlay from being
     // disposed during the gesture (important for mobile web where focus can
     // be lost temporarily during long press)
     final editorState = editor;
     if (editorState is RawEditorState) {
       editorState.setLongPressInProgress(true);
-      debugPrint('[LongPress] Flag set to TRUE');
     }
 
     if (delegate.selectionEnabled) {
@@ -331,15 +328,12 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///  which triggers this callback.
   @protected
   void onSingleLongTapEnd(LongPressEndDetails details) {
-    debugPrint('[LongPress] END - position: ${details.globalPosition}');
-
     // Hide magnifier on mobile platforms when long press ends
     hideMagnifierIfSupportedByPlatform();
 
     // On mobile platforms, reopen keyboard first so toolbar is positioned correctly
     // The keyboard changes the viewport size, so we need it open before calculating toolbar position
     if (isMobileWeb() || isMobile()) {
-      debugPrint('[LongPress] Mobile platform - requesting keyboard');
       editor!.requestKeyboard();
 
       // Wait for keyboard to open before showing toolbar
@@ -351,11 +345,9 @@ class EditorTextSelectionGestureDetectorBuilder {
         // This allows the overlay to be properly disposed when needed
         if (editorState is RawEditorState && editorState.mounted) {
           editorState.setLongPressInProgress(false);
-          debugPrint('[LongPress] Flag set to FALSE (after delay)');
         }
         if (shouldShowSelectionToolbar) {
           editor!.showToolbar();
-          debugPrint('[LongPress] Toolbar shown');
         }
       });
     } else {
@@ -365,11 +357,9 @@ class EditorTextSelectionGestureDetectorBuilder {
         // Clear long press flag
         if (editorState is RawEditorState && editorState.mounted) {
           editorState.setLongPressInProgress(false);
-          debugPrint('[LongPress] Flag set to FALSE (desktop)');
         }
         if (shouldShowSelectionToolbar) {
           editor!.showToolbar();
-          debugPrint('[LongPress] Toolbar shown (desktop)');
         }
       });
     }
@@ -385,8 +375,6 @@ class EditorTextSelectionGestureDetectorBuilder {
   ///  which triggers this callback.
   @protected
   void onSingleLongTapCancel() {
-    debugPrint('[LongPress] CANCELLED');
-
     // Hide magnifier on mobile platforms when long press is cancelled
     hideMagnifierIfSupportedByPlatform();
 
@@ -394,7 +382,6 @@ class EditorTextSelectionGestureDetectorBuilder {
     final editorState = editor;
     if (editorState is RawEditorState) {
       editorState.setLongPressInProgress(false);
-      debugPrint('[LongPress] Flag set to FALSE (cancelled)');
     }
   }
 
