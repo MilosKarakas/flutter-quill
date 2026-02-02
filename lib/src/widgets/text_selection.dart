@@ -977,8 +977,6 @@ class _EditorTextSelectionGestureDetectorState
         widget.onDoubleTapDown?.call(details);
       } else if (_consecutiveTapCount >= 3) {
         widget.onTripleTapDown?.call(details);
-        // Reset after triple tap to start fresh
-        _consecutiveTapCount = 0;
       }
     } else {
       // First tap or tap outside tolerance - start fresh count
@@ -990,6 +988,10 @@ class _EditorTextSelectionGestureDetectorState
     // Only trigger single tap up for the first tap in a sequence
     if (_consecutiveTapCount <= 1) {
       widget.onSingleTapUp?.call(details);
+    }
+    // Reset after triple tap to start fresh for next sequence
+    if (_consecutiveTapCount >= 3) {
+      _consecutiveTapCount = 0;
     }
     // Always update last tap offset and start timer for potential follow-up taps
     _lastTapOffset = details.globalPosition;
