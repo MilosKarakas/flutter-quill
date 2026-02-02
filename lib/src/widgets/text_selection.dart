@@ -196,9 +196,6 @@ class EditorTextSelectionOverlay {
   OverlayEntry? toolbar;
 
   /// Controller for the magnifier overlay.
-  ///
-  /// Uses Flutter's MagnifierController directly for simpler, more reliable
-  /// magnifier management.
   final MagnifierController _magnifierController = MagnifierController();
 
   /// Notifier for magnifier position updates.
@@ -377,38 +374,43 @@ class EditorTextSelectionOverlay {
   /// the magnifier is visible. They will be restored when the magnifier is hidden.
   void showMagnifier(Offset positionToShow) {
     debugPrint(
-        '[Magnifier] showMagnifier called at $positionToShow (overlay: ${identityHashCode(this)}, controller.shown: ${_magnifierController.shown})');
+        '[Magnifier] showMagnifier called at $positionToShow (overlay: ${identityHashCode(this)}, overlayEntry: ${_magnifierController.overlayEntry != null})');
 
     if (_magnifierConfiguration == TextMagnifierConfiguration.disabled) {
       debugPrint('[Magnifier] Magnifier is disabled');
       return;
     }
 
-    // Only hide handles/toolbar if magnifier is about to become visible for the first time
-    if (!_magnifierController.shown) {
-      debugPrint('[Magnifier] First show - hiding handles and toolbar');
-
-      // Hide handles if they exist
-      if (_handles != null) {
-        _savedHandles = _handles;
-        _handlesVisibleBeforeMagnifier = handlesVisible;
-
-        // Temporarily hide handles by setting visibility to false
-        // Don't remove them from overlay - just hide them
-        handlesVisible = false;
-        markNeedsBuild();
-        debugPrint('[Magnifier] Handles hidden');
-      }
-
-      // Hide toolbar if it's visible - toolbar will be shown again by the
-      // gesture handler when appropriate (e.g., onSingleLongTapEnd)
-      if (toolbar != null) {
-        hideToolbar();
-        debugPrint('[Magnifier] Toolbar hidden');
-      }
+    // Do not show the magnifier if one already exists (matches Flutter's pattern)
+    if (_magnifierController.overlayEntry != null) {
+      // Magnifier already exists, just update position
+      final position = renderObject.getPositionForOffset(positionToShow);
+      _magnifierInfo.value = _buildMagnifier(
+        currentTextPosition: position,
+        globalGesturePosition: positionToShow,
+      );
+      debugPrint('[Magnifier] Magnifier already exists, updated position');
+      return;
     }
 
-    // Build the magnifier info and update the notifier
+    debugPrint('[Magnifier] First show - hiding handles and toolbar');
+
+    // Hide toolbar if visible
+    if (toolbar != null) {
+      hideToolbar();
+      debugPrint('[Magnifier] Toolbar hidden');
+    }
+
+    // Hide handles if they exist
+    if (_handles != null) {
+      _savedHandles = _handles;
+      _handlesVisibleBeforeMagnifier = handlesVisible;
+      handlesVisible = false;
+      markNeedsBuild();
+      debugPrint('[Magnifier] Handles hidden');
+    }
+
+    // Build the magnifier info (start from empty, then set)
     final position = renderObject.getPositionForOffset(positionToShow);
     debugPrint('[Magnifier] Creating magnifier info at position: $position');
     _magnifierInfo.value = _buildMagnifier(
@@ -416,40 +418,32 @@ class EditorTextSelectionOverlay {
       globalGesturePosition: positionToShow,
     );
 
-    // Show the magnifier if not already shown
-    if (!_magnifierController.shown) {
-      debugPrint('[Magnifier] Showing magnifier via MagnifierController');
+    // Pre-build the magnifier widget BEFORE calling show (matches Flutter's pattern)
+    final builtMagnifier = _magnifierConfiguration.magnifierBuilder(
+      context,
+      _magnifierController,
+      _magnifierInfo,
+    );
 
-      final builder = _magnifierConfiguration.magnifierBuilder;
-
-      _magnifierController.show(
-        context: context,
-        debugRequiredFor: debugRequiredFor,
-        builder: (context) {
-          // Pass the persistent _magnifierInfo notifier so the magnifier
-          // can listen for position updates
-          final widget = builder(
-            context,
-            _magnifierController,
-            _magnifierInfo,
-          );
-          // Return empty SizedBox if builder returns null
-          return widget ?? const SizedBox.shrink();
-        },
-      );
-      debugPrint(
-          '[Magnifier] Magnifier shown, controller.shown = ${_magnifierController.shown}');
-    } else {
-      // Magnifier already shown - the ValueNotifier update will automatically
-      // trigger a rebuild of the magnifier widget
-      debugPrint('[Magnifier] Magnifier position updated via notifier');
+    if (builtMagnifier == null) {
+      debugPrint('[Magnifier] magnifierBuilder returned null');
+      return;
     }
+
+    debugPrint('[Magnifier] Showing magnifier via MagnifierController');
+    _magnifierController.show(
+      context: context,
+      debugRequiredFor: debugRequiredFor,
+      builder: (_) => builtMagnifier,
+    );
+    debugPrint(
+        '[Magnifier] Magnifier shown, overlayEntry: ${_magnifierController.overlayEntry != null}');
   }
 
   /// Updates the magnifier to the given position.
   void updateMagnifier(Offset positionToShow) {
-    if (_magnifierConfiguration == TextMagnifierConfiguration.disabled ||
-        !_magnifierController.shown) {
+    // Check overlayEntry instead of shown (matches Flutter's pattern)
+    if (_magnifierController.overlayEntry == null) {
       return;
     }
 
@@ -467,25 +461,30 @@ class EditorTextSelectionOverlay {
   /// visible before the magnifier was shown.
   void hideMagnifier() {
     debugPrint('[Magnifier] hideMagnifier called');
-    debugPrint('[Magnifier] Stack trace: ${StackTrace.current}');
 
-    if (_magnifierController.shown) {
-      _magnifierController.hide();
-      debugPrint('[Magnifier] Magnifier hidden');
-
-      // Restore handles visibility if they were visible before magnifier
-      if (_savedHandles != null) {
-        // Handles still exist in the overlay, just restore visibility
-        handlesVisible = _handlesVisibleBeforeMagnifier;
-        markNeedsBuild();
-        _savedHandles = null;
-        _handlesVisibleBeforeMagnifier = false;
-        debugPrint('[Magnifier] Handles restored');
-      }
-
-      // Note: Don't restore toolbar here - let the gesture handler decide
-      // whether to show it (e.g., onSingleLongTapEnd shows toolbar if needed)
+    // Check overlayEntry instead of shown (matches Flutter's pattern)
+    // This is because the magnifier might hide itself, so shown could be false
+    // even when overlayEntry exists
+    if (_magnifierController.overlayEntry == null) {
+      debugPrint('[Magnifier] No magnifier to hide');
+      return;
     }
+
+    _magnifierController.hide();
+    debugPrint('[Magnifier] Magnifier hidden');
+
+    // Restore handles visibility if they were visible before magnifier
+    if (_savedHandles != null) {
+      // Handles still exist in the overlay, just restore visibility
+      handlesVisible = _handlesVisibleBeforeMagnifier;
+      markNeedsBuild();
+      _savedHandles = null;
+      _handlesVisibleBeforeMagnifier = false;
+      debugPrint('[Magnifier] Handles restored');
+    }
+
+    // Note: Don't restore toolbar here - let the gesture handler decide
+    // whether to show it (e.g., onSingleLongTapEnd shows toolbar if needed)
   }
 
   /// Builds the magnifier info for the given position.
@@ -527,7 +526,7 @@ class EditorTextSelectionOverlay {
   void dispose() {
     // Critical: Hide magnifier BEFORE disposing to ensure cleanup
     // This prevents the "magnifier won't hide" bug if overlay is recreated
-    if (_magnifierController.shown) {
+    if (_magnifierController.overlayEntry != null) {
       _magnifierController.hide();
     }
     // Dispose the magnifier info notifier
