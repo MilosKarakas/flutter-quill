@@ -195,14 +195,14 @@ class EditorTextSelectionOverlay {
   /// A copy/paste toolbar.
   OverlayEntry? toolbar;
 
-  /// The Flutter's SelectionOverlay instance used for magnifier management.
+  /// Controller for the magnifier overlay.
   ///
-  /// This is created lazily when magnifier is first shown, and disposed when
-  /// EditorTextSelectionOverlay is disposed.
-  SelectionOverlay? _magnifierOverlay;
+  /// Uses Flutter's MagnifierController directly for simpler, more reliable
+  /// magnifier management.
+  final MagnifierController _magnifierController = MagnifierController();
 
-  /// Whether the magnifier is currently visible.
-  bool _magnifierVisible = false;
+  /// The current magnifier info, updated during drag gestures.
+  MagnifierInfo _currentMagnifierInfo = MagnifierInfo.empty;
 
   /// Layer link for the toolbar, used by SelectionOverlay.
   final LayerLink _toolbarLayerLink = LayerLink();
@@ -367,7 +367,7 @@ class EditorTextSelectionOverlay {
 
   /// Final cleanup.
   /// Whether the magnifier is currently visible.
-  bool get magnifierIsVisible => _magnifierVisible;
+  bool get magnifierIsVisible => _magnifierController.shown;
 
   /// Shows the magnifier at the given position.
   ///
@@ -382,7 +382,7 @@ class EditorTextSelectionOverlay {
     }
 
     // Only hide handles/toolbar if magnifier is about to become visible for the first time
-    if (!_magnifierVisible) {
+    if (!_magnifierController.shown) {
       debugPrint('[Magnifier] First show - hiding handles and toolbar');
 
       // Hide handles if they exist
@@ -405,65 +405,67 @@ class EditorTextSelectionOverlay {
       }
     }
 
-    // Create the magnifier overlay if it doesn't exist
-    _magnifierOverlay ??= SelectionOverlay(
-      context: context,
-      debugRequiredFor: debugRequiredFor,
-      startHandleType: TextSelectionHandleType.left,
-      endHandleType: TextSelectionHandleType.right,
-      lineHeightAtStart: renderObject.preferredLineHeight(value.selection.base),
-      lineHeightAtEnd: renderObject.preferredLineHeight(value.selection.extent),
-      selectionEndpoints:
-          renderObject.getEndpointsForSelection(value.selection),
-      selectionControls: null,
-      selectionDelegate: selectionDelegate,
-      clipboardStatus:
-          kIsWeb ? null : clipboardStatus as ClipboardStatusNotifier,
-      startHandleLayerLink: startHandleLayerLink,
-      endHandleLayerLink: endHandleLayerLink,
-      toolbarLayerLink: _toolbarLayerLink,
-      magnifierConfiguration: _magnifierConfiguration,
-    );
-
+    // Build the magnifier info
     final position = renderObject.getPositionForOffset(positionToShow);
     debugPrint('[Magnifier] Creating magnifier info at position: $position');
-    final magnifierInfo = _buildMagnifier(
+    _currentMagnifierInfo = _buildMagnifier(
       currentTextPosition: position,
       globalGesturePosition: positionToShow,
     );
-    debugPrint('[Magnifier] Calling _magnifierOverlay.showMagnifier');
-    _magnifierOverlay!.showMagnifier(magnifierInfo);
-    _magnifierVisible = true;
-    debugPrint(
-        '[Magnifier] Magnifier shown, _magnifierVisible = $_magnifierVisible');
+
+    // Show or update the magnifier
+    if (!_magnifierController.shown) {
+      debugPrint('[Magnifier] Showing magnifier via MagnifierController');
+
+      final builder = _magnifierConfiguration.magnifierBuilder;
+
+      _magnifierController.show(
+        context: context,
+        debugRequiredFor: debugRequiredFor,
+        builder: (context) {
+          final widget = builder(
+            context,
+            _magnifierController,
+            ValueNotifier<MagnifierInfo>(_currentMagnifierInfo),
+          );
+          // Return empty SizedBox if builder returns null
+          return widget ?? const SizedBox.shrink();
+        },
+      );
+      debugPrint(
+          '[Magnifier] Magnifier shown, controller.shown = ${_magnifierController.shown}');
+    } else {
+      // Magnifier already shown, just update it by rebuilding
+      _magnifierController.overlayEntry?.markNeedsBuild();
+      debugPrint('[Magnifier] Magnifier updated');
+    }
   }
 
   /// Updates the magnifier to the given position.
   void updateMagnifier(Offset positionToShow) {
     if (_magnifierConfiguration == TextMagnifierConfiguration.disabled ||
-        _magnifierOverlay == null) {
+        !_magnifierController.shown) {
       return;
     }
 
-    final TextPosition position =
-        renderObject.getPositionForOffset(positionToShow);
-    _magnifierOverlay!.updateMagnifier(_buildMagnifier(
+    final position = renderObject.getPositionForOffset(positionToShow);
+    _currentMagnifierInfo = _buildMagnifier(
       currentTextPosition: position,
       globalGesturePosition: positionToShow,
-    ));
+    );
+    _magnifierController.overlayEntry?.markNeedsBuild();
   }
 
   /// Hides the magnifier.
   ///
-  /// This also restores selection handles and toolbar visibility if they were
+  /// This also restores selection handles visibility if they were
   /// visible before the magnifier was shown.
   void hideMagnifier() {
     debugPrint('[Magnifier] hideMagnifier called');
     debugPrint('[Magnifier] Stack trace: ${StackTrace.current}');
 
-    if (_magnifierOverlay != null && _magnifierVisible) {
-      _magnifierOverlay!.hideMagnifier();
-      _magnifierVisible = false;
+    if (_magnifierController.shown) {
+      _magnifierController.hide();
       debugPrint('[Magnifier] Magnifier hidden');
 
       // Restore handles visibility if they were visible before magnifier
@@ -520,14 +522,12 @@ class EditorTextSelectionOverlay {
   void dispose() {
     // Critical: Hide magnifier BEFORE disposing to ensure cleanup
     // This prevents the "magnifier won't hide" bug if overlay is recreated
-    if (_magnifierVisible) {
-      hideMagnifier();
+    if (_magnifierController.shown) {
+      _magnifierController.hide();
     }
     // Clean up any saved handles
     _savedHandles = null;
     hide();
-    _magnifierOverlay?.dispose();
-    _magnifierOverlay = null;
   }
 
   /// Builds the handles by inserting them into the [context]'s overlay.
