@@ -178,15 +178,23 @@ mixin RawEditorStateSelectionDelegateMixin on EditorState
   }
 
   @override
-  bool get cutEnabled => widget.contextMenuBuilder != null && !widget.readOnly;
+  bool get cutEnabled =>
+      widget.contextMenuBuilder != null &&
+      !widget.readOnly &&
+      !textEditingValue.selection.isCollapsed;
 
   @override
-  bool get copyEnabled => widget.contextMenuBuilder != null;
+  bool get copyEnabled =>
+      widget.contextMenuBuilder != null &&
+      !textEditingValue.selection.isCollapsed;
 
   @override
   bool get pasteEnabled =>
       widget.contextMenuBuilder != null && !widget.readOnly;
 
   @override
-  bool get selectAllEnabled => widget.contextMenuBuilder != null;
+  bool get selectAllEnabled =>
+      widget.contextMenuBuilder != null &&
+      textEditingValue.text.isNotEmpty &&
+      textEditingValue.selection.isCollapsed;
 }

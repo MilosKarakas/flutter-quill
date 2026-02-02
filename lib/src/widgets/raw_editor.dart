@@ -2412,14 +2412,53 @@ class RawEditorState extends EditorState
   @override
   bool get liveTextInputEnabled => false;
 
+  /// Whether the "Look Up" action is enabled (iOS only).
+  /// Shows dictionary definition for selected text.
   @override
-  bool get lookUpEnabled => false;
+  bool get lookUpEnabled {
+    if (defaultTargetPlatform != TargetPlatform.iOS) {
+      return false;
+    }
+    return !textEditingValue.selection.isCollapsed &&
+        textEditingValue.selection
+            .textInside(textEditingValue.text)
+            .trim()
+            .isNotEmpty;
+  }
 
+  /// Whether the "Search Web" action is enabled (iOS only).
+  /// Searches the web for selected text.
   @override
-  bool get searchWebEnabled => false;
+  bool get searchWebEnabled {
+    if (defaultTargetPlatform != TargetPlatform.iOS) {
+      return false;
+    }
+    return !textEditingValue.selection.isCollapsed &&
+        textEditingValue.selection
+            .textInside(textEditingValue.text)
+            .trim()
+            .isNotEmpty;
+  }
 
+  /// Whether the "Share" action is enabled (iOS and Android).
+  /// Shares the selected text.
   @override
-  bool get shareEnabled => false;
+  bool get shareEnabled {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+      case TargetPlatform.iOS:
+        return !textEditingValue.selection.isCollapsed &&
+            textEditingValue.selection
+                .textInside(textEditingValue.text)
+                .trim()
+                .isNotEmpty;
+      case TargetPlatform.macOS:
+      case TargetPlatform.fuchsia:
+      case TargetPlatform.linux:
+      case TargetPlatform.windows:
+        return false;
+    }
+  }
 }
 
 class _Editor extends MultiChildRenderObjectWidget {
