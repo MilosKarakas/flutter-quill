@@ -26,8 +26,8 @@ class QuillController extends ChangeNotifier {
     required TextSelection selection,
     @Deprecated(
       'This parameter no longer affects behavior. '
-      'The toggledStyle now always reflects formatting at the cursor position, '
-      'which is the standard behavior for rich text editors.',
+      'The toggledStyle always reflects formatting at the current cursor position, '
+      'matching Gmail/Google Docs/Microsoft Word behavior.',
     )
     bool keepStyleOnNewLine = false,
     this.onReplaceText,
@@ -497,14 +497,10 @@ class QuillController extends ChangeNotifier {
 
     // Update toggledStyle based on the formatting at the current cursor position.
     //
-    // Behavior (matches Slack and other modern rich text editors):
-    // - If cursor is on FORMATTED text → update toggledStyle to reflect that formatting
-    // - If cursor is on UNFORMATTED text → preserve existing toggledStyle (sticky toolbar)
-    //
-    // This "sticky toolbar" behavior means:
-    // 1. User selects Bold from toolbar
-    // 2. User taps at end of unformatted text
-    // 3. Bold stays selected - user can start typing bold text
+    // Behavior (matches Gmail, Google Docs, Microsoft Word):
+    // - Toolbar always reflects the formatting at the current cursor position
+    // - If cursor is on FORMATTED text → toggledStyle reflects that formatting
+    // - If cursor is on UNFORMATTED text → toggledStyle is cleared
     //
     // Only inline styles are considered (not block styles like headers, lists).
     // Link styles are excluded as they should not be automatically inherited.
@@ -515,15 +511,12 @@ class QuillController extends ChangeNotifier {
     final inlineStyles = styleAtPosition.attributes.values.where(
       (attr) => attr.isInline && attr.key != Attribute.link.key,
     );
-    
-    // Only update toggledStyle if we found actual formatting at the cursor position.
-    // If no formatting is found, preserve the existing toggledStyle (sticky behavior).
-    if (inlineStyles.isNotEmpty) {
-      toggledStyle = Style.attr(Map.fromEntries(
-        inlineStyles.map((attr) => MapEntry(attr.key, attr)),
-      ));
-    }
-    // else: preserve existing toggledStyle for unformatted text positions
+
+    // Always update toggledStyle to reflect current position.
+    // This ensures the toolbar accurately shows what formatting exists at the cursor.
+    toggledStyle = Style.attr(Map.fromEntries(
+      inlineStyles.map((attr) => MapEntry(attr.key, attr)),
+    ));
 
     onSelectionChanged?.call(textSelection);
   }
