@@ -353,8 +353,9 @@ class Line extends Container<Leaf?> {
 
     void _handle(Style style) {
       for (final attr in result.values) {
+        // Exclude attribute if it doesn't exist or has a different value.
         if (!style.containsKey(attr.key) ||
-            (style.attributes[attr.key] != attr.value)) {
+            style.attributes[attr.key]?.value != attr.value) {
           excluded.add(attr);
         }
       }
