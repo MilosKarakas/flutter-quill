@@ -1590,9 +1590,10 @@ class RawEditorState extends EditorState
       WidgetsBinding.instance.addObserver(this);
       _showCaretOnScreen();
 
-      // On mobile platforms, ensure cursor is visible immediately by setting opacity to 1
-      // before starting the blink timer. This prevents the "invisible cursor" issue.
-      if ((isMobileWeb() || isMobile()) && controller.selection.isCollapsed) {
+      // Ensure cursor is visible immediately by setting opacity to 1
+      // before starting the blink timer. This prevents the "invisible cursor"
+      // where focus is gained but the cursor doesn't appear until user types.
+      if (controller.selection.isCollapsed) {
         _cursorCont.color.value = _cursorCont.style.color;
         _cursorCont.blink.value = true;
       }
