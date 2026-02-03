@@ -1120,10 +1120,19 @@ class RenderEditableTextLine extends RenderEditableBox {
         }
       }
 
+      // Debug logging for cursor paint conditions
+      final _containsCursorVal = containsCursor();
+      if (_containsCursorVal) {
+        debugPrint('[CURSOR PAINT] Line ${line.documentOffset}: hasFocus=$hasFocus, show=${cursorCont.show.value}, containsCursor=$_containsCursorVal');
+        debugPrint('[CURSOR PAINT] cursorCont.color=${cursorCont.color.value}, blink=${cursorCont.blink.value}');
+        debugPrint('[CURSOR PAINT] paintAboveText=${cursorCont.style.paintAboveText}');
+      }
+      
       if (hasFocus &&
           cursorCont.show.value &&
-          containsCursor() &&
+          _containsCursorVal &&
           !cursorCont.style.paintAboveText) {
+        debugPrint('[CURSOR PAINT] Painting cursor BELOW text');
         _paintCursor(context, effectiveOffset, line.hasEmbed);
       }
 
@@ -1131,8 +1140,9 @@ class RenderEditableTextLine extends RenderEditableBox {
 
       if (hasFocus &&
           cursorCont.show.value &&
-          containsCursor() &&
+          _containsCursorVal &&
           cursorCont.style.paintAboveText) {
+        debugPrint('[CURSOR PAINT] Painting cursor ABOVE text');
         _paintCursor(context, effectiveOffset, line.hasEmbed);
       }
 
