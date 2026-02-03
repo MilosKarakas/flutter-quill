@@ -1578,12 +1578,7 @@ class RawEditorState extends EditorState
   }
 
   void _handleFocusChanged() {
-    debugPrint('[CURSOR DEBUG] _handleFocusChanged called - dirty: $dirty, _hasFocus: $_hasFocus');
-    debugPrint('[CURSOR DEBUG] selection: ${controller.selection}, isCollapsed: ${controller.selection.isCollapsed}');
-    debugPrint('[CURSOR DEBUG] _cursorCont.show.value: ${_cursorCont.show.value}');
-    
     if (dirty) {
-      debugPrint('[CURSOR DEBUG] Dirty! Deferring to post-frame callback');
       SchedulerBinding.instance
           .addPostFrameCallback((_) => _handleFocusChanged());
       return;
@@ -1597,29 +1592,24 @@ class RawEditorState extends EditorState
 
       // Ensure cursor is visible immediately by setting opacity to 1
       // before starting the blink timer. This prevents the "invisible cursor"
-      // where focus is gained but the cursor doesn't appear until user types.
-      debugPrint('[CURSOR DEBUG] Has focus, checking if should show cursor...');
-      debugPrint('[CURSOR DEBUG] selection.isCollapsed: ${controller.selection.isCollapsed}');
+      // issue where focus is gained but the cursor doesn't appear until user types.
       if (controller.selection.isCollapsed) {
-        debugPrint('[CURSOR DEBUG] Setting cursor visible immediately!');
-        debugPrint('[CURSOR DEBUG] Before - color: ${_cursorCont.color.value}, blink: ${_cursorCont.blink.value}');
         _cursorCont.color.value = _cursorCont.style.color;
         _cursorCont.blink.value = true;
-        debugPrint('[CURSOR DEBUG] After - color: ${_cursorCont.color.value}, blink: ${_cursorCont.blink.value}');
-      } else {
-        debugPrint('[CURSOR DEBUG] Selection not collapsed, skipping immediate cursor show');
       }
     } else {
-      debugPrint('[CURSOR DEBUG] Lost focus');
       WidgetsBinding.instance.removeObserver(this);
     }
 
-    // Start or stop cursor timer after setting initial visibility
-    debugPrint('[CURSOR DEBUG] Calling startOrStopCursorTimerIfNeeded...');
     _cursorCont.startOrStopCursorTimerIfNeeded(_hasFocus, controller.selection);
     _updateOrDisposeSelectionOverlayIfNeeded();
     updateKeepAlive();
-    debugPrint('[CURSOR DEBUG] _handleFocusChanged completed');
+
+    // Trigger rebuild to update hasFocus on render objects.
+    // Without this, desktop platforms won't show the cursor because the render
+    // objects retain stale hasFocus=false. Mobile platforms get this rebuild
+    // as a side effect of keyboard appearance, but desktop has no such trigger.
+    _markNeedsBuild();
   }
 
   void _onChangedClipboardStatus() {
@@ -1714,21 +1704,12 @@ class RawEditorState extends EditorState
   /// This is called during long press gestures to provide visual feedback
   /// for precise cursor positioning.
   void showMagnifier(Offset positionToShow) {
-    if (_selectionOverlay == null) {
-      return;
-    }
-
-    // showMagnifier in EditorTextSelectionOverlay handles both initial show
-    // and position updates via the ValueNotifier
-    _selectionOverlay!.showMagnifier(positionToShow);
+    _selectionOverlay?.showMagnifier(positionToShow);
   }
 
   /// Hides the magnifier if it's currently visible.
   void hideMagnifier() {
-    if (_selectionOverlay == null) {
-      return;
-    }
-    _selectionOverlay!.hideMagnifier();
+    _selectionOverlay?.hideMagnifier();
   }
 
   /// Shows the selection toolbar at the location of the current cursor.

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../utils/platform.dart';
@@ -194,32 +193,25 @@ class CursorCont extends ChangeNotifier {
   }
 
   void startCursorTimer() {
-    debugPrint('[CURSOR DEBUG] startCursorTimer called, _isDisposed: $_isDisposed');
     if (_isDisposed) {
-      debugPrint('[CURSOR DEBUG] Disposed! Returning early');
       return;
     }
 
     _targetCursorVisibility = true;
     _blinkOpacityController.value = 1.0;
-    debugPrint('[CURSOR DEBUG] Set _blinkOpacityController.value = 1.0');
 
     if (style.opacityAnimates) {
-      debugPrint('[CURSOR DEBUG] opacityAnimates=true, starting with wait period');
       _cursorTimer = Timer.periodic(_blinkWaitForStart, _waitForStart);
     } else {
-      debugPrint('[CURSOR DEBUG] opacityAnimates=false, starting blink immediately');
       _cursorTimer = Timer.periodic(_blinkHalfPeriod, _cursorTick);
     }
   }
 
   void stopCursorTimer({bool resetCharTicks = true}) {
-    debugPrint('[CURSOR DEBUG] stopCursorTimer called');
     _cursorTimer?.cancel();
     _cursorTimer = null;
     _targetCursorVisibility = false;
     _blinkOpacityController.value = 0.0;
-    debugPrint('[CURSOR DEBUG] Set _blinkOpacityController.value = 0.0');
 
     if (style.opacityAnimates) {
       _blinkOpacityController
@@ -229,29 +221,19 @@ class CursorCont extends ChangeNotifier {
   }
 
   void startOrStopCursorTimerIfNeeded(bool hasFocus, TextSelection selection) {
-    debugPrint('[CURSOR DEBUG] startOrStopCursorTimerIfNeeded - hasFocus: $hasFocus, selection.isCollapsed: ${selection.isCollapsed}');
-    debugPrint('[CURSOR DEBUG] show.value: ${show.value}, _cursorTimer: $_cursorTimer');
-    
     if (show.value &&
         _cursorTimer == null &&
         hasFocus &&
         selection.isCollapsed) {
-      debugPrint('[CURSOR DEBUG] Conditions met! Starting cursor timer');
       startCursorTimer();
     } else if (_cursorTimer != null && (!hasFocus || !selection.isCollapsed)) {
-      debugPrint('[CURSOR DEBUG] Stopping cursor timer');
       stopCursorTimer();
-    } else {
-      debugPrint('[CURSOR DEBUG] No action taken - conditions not met');
-      debugPrint('[CURSOR DEBUG] Would start: ${show.value && _cursorTimer == null && hasFocus && selection.isCollapsed}');
-      debugPrint('[CURSOR DEBUG] Would stop: ${_cursorTimer != null && (!hasFocus || !selection.isCollapsed)}');
     }
   }
 
   void _onColorTick() {
     color.value = _style.color.withOpacity(_blinkOpacityController.value);
     blink.value = show.value && _blinkOpacityController.value > 0;
-    debugPrint('[CURSOR DEBUG] _onColorTick - opacity: ${_blinkOpacityController.value}, color: ${color.value}, blink: ${blink.value}');
   }
 }
 
