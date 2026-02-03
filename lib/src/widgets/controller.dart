@@ -94,10 +94,23 @@ class QuillController extends ChangeNotifier {
 
   /// Only attributes applied to all characters within this range are
   /// included in the result.
+  ///
+  /// For collapsed selections (cursor), this includes [toggledStyle] which
+  /// allows pre-selecting formatting before typing.
+  ///
+  /// For expanded selections (text selected), this returns only the styles
+  /// that are actually present in the document for all selected characters.
   Style getSelectionStyle() {
-    return document
-        .collectStyle(selection.start, selection.end - selection.start)
-        .mergeAll(toggledStyle);
+    final documentStyle = document.collectStyle(
+      selection.start,
+      selection.end - selection.start,
+    );
+    // Only merge toggledStyle for collapsed selections.
+    // For expanded selections, show only what's actually in the document.
+    if (selection.isCollapsed) {
+      return documentStyle.mergeAll(toggledStyle);
+    }
+    return documentStyle;
   }
 
   // Increases or decreases the indent of the current selection by 1.
