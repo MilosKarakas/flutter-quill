@@ -322,7 +322,7 @@ class Document {
       );
     }
 
-    if (Document.fromDelta(_delta).toPlainText() != _root.toPlainText()) {
+    if (Document.plainTextFromDelta(_delta) != _root.toPlainText()) {
       throw DocumentComposeException(
         'Compose failed: delta and document plain text mismatch',
         delta: delta,
@@ -406,6 +406,27 @@ class Document {
       _root.children
           .map((e) => e.toPlainText(embedBuilders, unknownEmbedBuilder))
           .join();
+
+  /// Returns plain text extracted from [delta] without building the document tree.
+  ///
+  /// Matches the result of `Document.fromDelta(delta).toPlainText()` for
+  /// insert-only document deltas.
+  ///
+  /// Use this instead of building a document when only the plain text is needed,
+  /// to avoid the cost of building the full tree.
+  static String plainTextFromDelta(Delta delta) {
+    if (delta.isEmpty) return '';
+    final buffer = StringBuffer();
+    for (final op in delta.toList()) {
+      if (!op.isInsert) continue;
+      if (op.data is String) {
+        buffer.write(op.data as String);
+      } else {
+        buffer.write(Embed.kObjectReplacementCharacter);
+      }
+    }
+    return buffer.toString();
+  }
 
   void _loadDocument(Delta doc) {
     if (doc.isEmpty) {

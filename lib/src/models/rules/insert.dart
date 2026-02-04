@@ -391,8 +391,8 @@ class AutoFormatMultipleLinksRule extends InsertRule {
     // Only format when inserting text.
     if (data is! String) return null;
 
-    // Get current text.
-    final entireText = Document.fromDelta(document).toPlainText();
+    // Get current text (without building the document tree).
+    final entireText = Document.plainTextFromDelta(document);
 
     // Get word before insertion.
     final leftWordPart = entireText

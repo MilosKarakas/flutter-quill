@@ -302,4 +302,21 @@ void main() {
           Delta()..insert('test $originalContents'));
     });
   });
+
+  group('Document.plainTextFromDelta', () {
+    test('matches Document.fromDelta(delta).toPlainText()', () {
+      final deltas = [
+        Delta()..insert('hello\n'),
+        Delta()..insert('line one\n')..insert('line two\n'),
+        Delta()..insert('a\n')..insert('\n'), // trailing empty line
+      ];
+      for (final delta in deltas) {
+        expect(
+          Document.plainTextFromDelta(delta),
+          Document.fromDelta(delta).toPlainText(),
+          reason: 'plainTextFromDelta should match fromDelta().toPlainText()',
+        );
+      }
+    });
+  });
 }
