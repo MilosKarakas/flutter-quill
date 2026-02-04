@@ -966,7 +966,9 @@ class _QuillEditorSelectionGestureDetectorBuilder
           }
         } else {
           // Match Flutter's pattern: use _lastTapDownPosition for consistency
+          debugPrint('onSingleTapUp: else branch (not Apple/Desktop), _lastTapDownPosition=$_lastTapDownPosition');
           if (_lastTapDownPosition != null) {
+            debugPrint('onSingleTapUp: calling selectPositionAt from else branch');
             renderEditor!
               ..selectPositionAt(
                 from: _lastTapDownPosition!,
@@ -975,6 +977,7 @@ class _QuillEditorSelectionGestureDetectorBuilder
               ..onSelectionCompleted();
           } else {
             // Fallback to TapUpDetails if _lastTapDownPosition wasn't set
+            debugPrint('onSingleTapUp: calling selectPositionAt with globalPosition from else branch');
             renderEditor!
               ..selectPositionAt(
                 from: details.globalPosition,
