@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'package:i18n_extension/i18n_extension.dart';
 
 import '../models/documents/document.dart';
+import '../models/documents/nodes/block.dart';
 import '../models/documents/nodes/container.dart' as container_node;
 import '../models/documents/nodes/leaf.dart';
 import '../models/documents/nodes/line.dart';
@@ -1484,12 +1485,21 @@ class RenderEditor extends RenderEditableContainerBox
 
   @override
   TextSelection selectParagraphAtPosition(TextPosition position) {
-    // Query the document to find the Line node at this offset
+    // Query the document to find the node at this offset
     final childQuery = _container.queryChild(position.offset, false);
-    final node = childQuery.node;
+    var node = childQuery.node;
 
     if (node == null) {
       return TextSelection.collapsed(offset: position.offset);
+    }
+
+    // If we got a Block (e.g., list block), recurse into it to find the Line
+    if (node is Block) {
+      final blockQuery = node.queryChild(childQuery.offset, false);
+      node = blockQuery.node;
+      if (node == null) {
+        return TextSelection.collapsed(offset: position.offset);
+      }
     }
 
     // Get the Line node (paragraph boundaries)
