@@ -1078,14 +1078,6 @@ class RenderEditableTextLine extends RenderEditableBox {
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    // DEBUG: Visualize line bounds - remove after debugging
-    context.canvas.drawRect(
-      offset & size,
-      Paint()
-        ..color = const Color(0x20FF0000)
-        ..style = PaintingStyle.fill,
-    );
-
     if (_leading != null) {
       if (textDirection == TextDirection.ltr) {
         final parentData = _leading!.parentData as BoxParentData;
@@ -1192,10 +1184,7 @@ class RenderEditableTextLine extends RenderEditableBox {
   }
 
   @override
-  bool hitTestSelf(Offset position) {
-    debugPrint('RenderEditableTextLine.hitTestSelf: position=$position, size=$size, contains=${size.contains(position)}');
-    return true;
-  }
+  bool hitTestSelf(Offset position) => true;
 
   @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {

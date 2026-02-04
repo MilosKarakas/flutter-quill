@@ -846,7 +846,6 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   @override
   void onTapDown(TapDownDetails details) {
-    debugPrint('onTapDown: globalPosition=${details.globalPosition}');
     // Store tap down position for reliable cursor positioning on mobile web
     // This matches Flutter's pattern where handleTapDown sets _lastTapDownPosition
     _lastTapDownPosition = details.globalPosition;
@@ -870,7 +869,6 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   @override
   void onSingleTapUp(TapUpDetails details) {
-    debugPrint('onSingleTapUp: globalPosition=${details.globalPosition}');
     if (_state.widget.onTapUp != null &&
         renderEditor != null &&
         _state.widget.onTapUp!(details, renderEditor!.getPositionForOffset)) {
@@ -889,6 +887,7 @@ class _QuillEditorSelectionGestureDetectorBuilder
             case PointerDeviceKind.mouse:
             case PointerDeviceKind.stylus:
             case PointerDeviceKind.invertedStylus:
+            case PointerDeviceKind.trackpad:
               // Precise devices should place the cursor at a precise position.
               // If `Shift` key is pressed then
               // extend current selection instead.
@@ -950,8 +949,6 @@ class _QuillEditorSelectionGestureDetectorBuilder
                     ..onSelectionCompleted();
                 }
               }
-              break;
-            case PointerDeviceKind.trackpad:
               break;
           }
         } else {
@@ -1602,21 +1599,10 @@ class RenderEditor extends RenderEditableContainerBox
   }
 
   @override
-  bool hitTestSelf(Offset position) {
-    debugPrint('RenderEditor.hitTestSelf: position=$position, size=$size');
-    return true;
-  }
+  bool hitTestSelf(Offset position) => true;
 
   @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
-    // Debug: Log child sizes
-    var child = firstChild;
-    while (child != null) {
-      final childParentData = child.parentData as EditableContainerParentData;
-      final childLocalPos = position - childParentData.offset;
-      debugPrint('hitTestChildren: child.size=${child.size}, offset=${childParentData.offset}, localPos=$childLocalPos, contains=${child.size.contains(childLocalPos)}');
-      child = childParentData.nextSibling;
-    }
     return defaultHitTestChildren(result, position: position);
   }
 
