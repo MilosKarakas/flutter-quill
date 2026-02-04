@@ -659,18 +659,16 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    return I18n(
-      initialLocale: locale,
-      child: multiRowsDisplay
-          ? Wrap(
-              direction: axis,
-              alignment: toolbarIconAlignment,
-              crossAxisAlignment: toolbarIconCrossAlignment,
-              runSpacing: 4,
-              spacing: toolbarSectionSpacing,
-              children: children,
-            )
-          : Container(
+    final toolbar = multiRowsDisplay
+        ? Wrap(
+            direction: axis,
+            alignment: toolbarIconAlignment,
+            crossAxisAlignment: toolbarIconCrossAlignment,
+            runSpacing: 4,
+            spacing: toolbarSectionSpacing,
+            children: children,
+          )
+        : Container(
               decoration: decoration ??
                   BoxDecoration(
                     color: color ?? Theme.of(context).canvasColor,
@@ -683,8 +681,19 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
                 axis: axis,
                 buttons: children,
               ),
-            ),
-    );
+            );
+
+    // Only wrap with I18n if there's no I18n ancestor already in the tree.
+    // This avoids GlobalKey conflicts when multiple I18n widgets exist.
+    final hasI18nAncestor =
+        context.findAncestorWidgetOfExactType<I18n>() != null;
+    if (!hasI18nAncestor) {
+      return I18n(
+        initialLocale: locale,
+        child: toolbar,
+      );
+    }
+    return toolbar;
   }
 }
 
