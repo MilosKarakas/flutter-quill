@@ -1078,6 +1078,14 @@ class RenderEditableTextLine extends RenderEditableBox {
 
   @override
   void paint(PaintingContext context, Offset offset) {
+    // DEBUG: Visualize line bounds - remove after debugging
+    context.canvas.drawRect(
+      offset & size,
+      Paint()
+        ..color = const Color(0x20FF0000)
+        ..style = PaintingStyle.fill,
+    );
+
     if (_leading != null) {
       if (textDirection == TextDirection.ltr) {
         final parentData = _leading!.parentData as BoxParentData;
