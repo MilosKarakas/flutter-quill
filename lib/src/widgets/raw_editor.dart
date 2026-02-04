@@ -27,6 +27,8 @@ import '../utils/cast.dart';
 import '../utils/delta.dart';
 import '../utils/embeds.dart';
 import '../utils/platform.dart';
+import '../utils/web_clipboard.dart';
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'controller.dart';
 import 'cursor.dart';
 import 'default_styles.dart';
@@ -100,6 +102,7 @@ class RawEditor extends StatefulWidget {
     this.dialogTheme,
     this.contentInsertionConfiguration,
     this.onPaste,
+    this.onPasteInterceptor,
     this.onResetGestureDetector,
   })  : assert(maxHeight == null || maxHeight > 0, 'maxHeight cannot be null'),
         assert(minHeight == null || minHeight >= 0, 'minHeight cannot be null'),
@@ -303,8 +306,19 @@ class RawEditor extends StatefulWidget {
   /// See [https://api.flutter.dev/flutter/widgets/EditableText/contentInsertionConfiguration.html]
   final ContentInsertionConfiguration? contentInsertionConfiguration;
 
-  /// Clipboard data retriever
+  /// Callback for handling paste on mobile platforms.
+  ///
+  /// Use this with packages like `rich_clipboard` to get HTML content on mobile.
+  /// For web paste with HTML formatting, use [onPasteInterceptor] instead.
   final Future<PasteData> Function()? onPaste;
+
+  /// Intercepts paste operations on web, providing both plain text and HTML content.
+  ///
+  /// **Web only**: HTML is automatically captured from the browser's paste event.
+  /// On mobile platforms, the HTML parameter will always be `null`.
+  ///
+  /// Return a [Delta] to apply formatted content, or `null` to fall back to plain text.
+  final Delta? Function(String? plainText, String? html)? onPasteInterceptor;
 
   /// Callback to request gesture detector reset.
   /// Called when recovering from a stuck gesture state (e.g., after right-click on web).
@@ -391,6 +405,21 @@ class RawEditorState extends EditorState
   @override
   String get pastePlainText => _pastePlainText;
   String _pastePlainText = '';
+
+  // Web paste event handling
+  WebClipboardListener? _webClipboardListener;
+
+  /// Queue of captured web paste events, ordered oldest to newest.
+  /// Using a queue allows handling rapid successive pastes correctly.
+  final List<WebPasteEventData> _webPasteDataQueue = [];
+
+  /// Maximum number of paste events to keep in queue.
+  /// Prevents unbounded growth if updateEditingValue calls are delayed.
+  static const int _webPasteQueueMaxSize = 10;
+
+  /// Maximum age of captured web paste data before it's considered stale (in milliseconds).
+  /// This prevents using old captured HTML with new paste operations.
+  static const int _webPasteDataMaxAgeMs = 2000;
 
   // Use web-specific notifier on web to avoid triggering clipboard permission
   // prompts on app resume. The standard ClipboardStatusNotifier registers as a
@@ -1336,6 +1365,78 @@ class RawEditorState extends EditorState
 
     // Focus
     widget.focusNode.addListener(_handleFocusChanged);
+
+    // Set up web paste listener to capture HTML from clipboard
+    _setupWebPasteListener();
+  }
+
+  /// Sets up the web clipboard listener to capture HTML during paste events.
+  /// Only active on web platforms when onPasteInterceptor is provided.
+  void _setupWebPasteListener() {
+    // Only set up on web and when we have an interceptor
+    if (kIsWeb && widget.onPasteInterceptor != null) {
+      _webClipboardListener = WebClipboardListener(_handleWebPasteEvent)
+        ..startListening();
+    }
+  }
+
+  /// Handles paste events captured from the web browser.
+  /// Adds to queue for later matching in updateEditingValue.
+  void _handleWebPasteEvent(WebPasteEventData data) {
+    // Remove stale entries before adding new one
+    _pruneStaleWebPasteData();
+
+    // Enforce max queue size
+    while (_webPasteDataQueue.length >= _webPasteQueueMaxSize) {
+      _webPasteDataQueue.removeAt(0);
+    }
+
+    _webPasteDataQueue.add(data);
+  }
+
+  /// Removes stale entries from the paste data queue.
+  void _pruneStaleWebPasteData() {
+    final now = DateTime.now();
+    _webPasteDataQueue.removeWhere((data) {
+      final age = now.difference(data.timestamp);
+      return age.inMilliseconds > _webPasteDataMaxAgeMs;
+    });
+  }
+
+  /// Clears all stored web paste data.
+  void _clearWebPasteData() {
+    _webPasteDataQueue.clear();
+  }
+
+  /// Checks if we have any valid (non-stale) web paste data in the queue.
+  bool _hasValidWebPasteData() {
+    _pruneStaleWebPasteData();
+    return _webPasteDataQueue.isNotEmpty;
+  }
+
+  /// Finds and removes paste data matching the given plain text.
+  /// Returns the matching entry, or null if not found.
+  WebPasteEventData? _consumeMatchingWebPasteData(String? plainText) {
+    _pruneStaleWebPasteData();
+
+    if (plainText == null || plainText.isEmpty) {
+      // No text to match - return first available entry
+      if (_webPasteDataQueue.isNotEmpty) {
+        return _webPasteDataQueue.removeAt(0);
+      }
+      return null;
+    }
+
+    // Find entry with matching plain text
+    for (var i = 0; i < _webPasteDataQueue.length; i++) {
+      final data = _webPasteDataQueue[i];
+      if (data.plainText == plainText) {
+        _webPasteDataQueue.removeAt(i);
+        return data;
+      }
+    }
+
+    return null;
   }
 
   // Watch for hardware keyboards that don't alter the screen size
@@ -1418,6 +1519,13 @@ class RawEditorState extends EditorState
     if (widget.customStyles != null) {
       _styles = _styles!.merge(widget.customStyles!);
     }
+
+    // Update web paste listener if onPasteInterceptor changed
+    if (widget.onPasteInterceptor != oldWidget.onPasteInterceptor) {
+      _webClipboardListener?.dispose();
+      _webClipboardListener = null;
+      _setupWebPasteListener();
+    }
   }
 
   bool _shouldShowSelectionHandles() {
@@ -1431,6 +1539,11 @@ class RawEditorState extends EditorState
     if (!kIsWeb) {
       HardwareKeyboard.instance.removeHandler(_hardwareKeyboardEvent);
     }
+    // Clean up web paste listener
+    _webClipboardListener?.dispose();
+    _webClipboardListener = null;
+    _clearWebPasteData();
+
     assert(!hasConnection);
     _selectionOverlay?.dispose();
     _selectionOverlay = null;
@@ -1736,6 +1849,39 @@ class RawEditorState extends EditorState
 
     _selectionOverlay!.showToolbar();
     return true;
+  }
+
+  // Web paste handling implementations
+
+  @override
+  bool hasValidWebPasteData() => _hasValidWebPasteData();
+
+  @override
+  WebPasteEventData? getWebPasteData() {
+    _pruneStaleWebPasteData();
+    return _webPasteDataQueue.isNotEmpty ? _webPasteDataQueue.first : null;
+  }
+
+  @override
+  void clearWebPasteData() => _clearWebPasteData();
+
+  @override
+  WebPasteEventData? consumeMatchingWebPasteData(String? plainText) =>
+      _consumeMatchingWebPasteData(plainText);
+
+  @override
+  Delta? tryApplyPasteInterceptor(String? pastedPlainText, String? html) {
+    final interceptor = widget.onPasteInterceptor;
+    if (interceptor == null) return null;
+    if (html == null || html.isEmpty) return null;
+
+    // Call the interceptor to convert HTML to Delta
+    try {
+      return interceptor(pastedPlainText, html);
+    } catch (e) {
+      debugPrint('[QuillEditor] onPasteInterceptor threw an exception: $e');
+      return null;
+    }
   }
 
   void _replaceText(ReplaceTextIntent intent) {

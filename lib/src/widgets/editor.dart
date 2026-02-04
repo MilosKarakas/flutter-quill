@@ -18,6 +18,8 @@ import '../models/documents/nodes/leaf.dart';
 import '../models/documents/nodes/line.dart';
 import '../models/structs/offset_value.dart';
 import '../models/structs/paste_data.dart';
+import '../utils/web_clipboard.dart';
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 import '../models/themes/quill_dialog_theme.dart';
 import '../utils/platform.dart';
 import 'box.dart';
@@ -68,6 +70,33 @@ abstract class EditorState extends State<RawEditor>
   bool showToolbar();
 
   void requestKeyboard();
+
+  /// Returns true if there is valid, recent web paste data available.
+  /// Used by the text input mixin to detect paste operations on web.
+  bool hasValidWebPasteData();
+
+  /// Gets the stored web paste event data, if available and recent.
+  /// Returns null if no paste data is available or it has expired.
+  WebPasteEventData? getWebPasteData();
+
+  /// Clears any stored web paste data.
+  /// Should be called after the paste data has been used.
+  void clearWebPasteData();
+
+  /// Finds and consumes paste data matching the given plain text from the queue.
+  /// Returns the matching entry and removes it from the queue, or null if not found.
+  /// This allows handling rapid successive paste operations correctly.
+  WebPasteEventData? consumeMatchingWebPasteData(String? plainText);
+
+  /// Tries to apply a paste with HTML formatting using the onPasteInterceptor.
+  /// Returns the resulting Delta if successful, or null if:
+  /// - No onPasteInterceptor is configured
+  /// - The interceptor returns null
+  /// - The plain text doesn't match (safety check)
+  ///
+  /// [pastedPlainText] is the plain text that was pasted (from the browser)
+  /// [html] is the HTML captured from the paste event
+  Delta? tryApplyPasteInterceptor(String? pastedPlainText, String? html);
 }
 
 /// Base interface for editable render objects.
@@ -169,6 +198,14 @@ abstract class RenderAbstractEditor implements TextLayoutMetrics {
   void selectPosition({required SelectionChangedCause cause});
 }
 
+/// Callback to intercept and process pasted content.
+///
+/// [plainText] - Plain text from clipboard (always available)
+/// [html] - HTML from clipboard (available on web, may be null on mobile)
+///
+/// Return a [Delta] to apply formatted content, or null to fall back to plain text.
+typedef PasteInterceptor = Delta? Function(String? plainText, String? html);
+
 class QuillEditor extends StatefulWidget {
   const QuillEditor({
     required this.controller,
@@ -220,6 +257,7 @@ class QuillEditor extends StatefulWidget {
     this.contextMenuBuilder,
     this.editorKey,
     this.onPaste,
+    this.onPasteInterceptor,
     Key? key,
   }) : super(key: key);
 
@@ -508,8 +546,34 @@ class QuillEditor extends StatefulWidget {
   /// to change it please pass a different value
   final TextSelectionThemeData? textSelectionThemeData;
 
-  /// Clipboard data retriever
+  /// Callback for handling paste on mobile platforms.
+  ///
+  /// Use this with packages like `rich_clipboard` to get HTML content on mobile.
+  /// This callback is triggered from the toolbar paste button and keyboard shortcuts
+  /// that go through [pasteText].
+  ///
+  /// For web paste with HTML formatting, use [onPasteInterceptor] instead.
   final Future<PasteData> Function()? onPaste;
+
+  /// Intercepts paste operations on web, providing both plain text and HTML content.
+  ///
+  /// **Web only**: HTML is automatically captured from the browser's paste event.
+  /// On mobile platforms, the HTML parameter will always be `null` - use [onPaste]
+  /// with a package like `rich_clipboard` for mobile HTML paste support.
+  ///
+  /// Return a [Delta] to apply formatted content, or `null` to fall back to plain text.
+  ///
+  /// Example:
+  /// ```dart
+  /// onPasteInterceptor: (plainText, html) {
+  ///   if (html != null) {
+  ///     // Process HTML and convert to Delta
+  ///     return myHtmlToDeltaConverter(html);
+  ///   }
+  ///   return null; // Fall back to plain text
+  /// },
+  /// ```
+  final PasteInterceptor? onPasteInterceptor;
 
   @override
   QuillEditorState createState() => QuillEditorState();
@@ -631,6 +695,7 @@ class QuillEditorState extends State<QuillEditor>
       dialogTheme: widget.dialogTheme,
       contentInsertionConfiguration: widget.contentInsertionConfiguration,
       onPaste: widget.onPaste,
+      onPasteInterceptor: widget.onPasteInterceptor,
       onResetGestureDetector: _handleResetGestureDetector,
     );
 

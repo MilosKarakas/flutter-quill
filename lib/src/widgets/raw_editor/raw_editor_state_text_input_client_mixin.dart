@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'package:flutter/animation.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
+import '../../models/documents/attribute.dart';
 import '../../models/documents/document.dart';
 import '../../utils/delta.dart';
 import '../../utils/platform.dart';
@@ -410,9 +412,98 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     if (diff.deleted.isEmpty && diff.inserted.isEmpty) {
       widget.controller.updateSelection(selectionToUse, ChangeSource.LOCAL);
     } else {
+      // Check if this is a paste operation on web with HTML available.
+      // Use consumeMatchingWebPasteData to find the paste event that matches
+      // the inserted text, supporting rapid successive pastes.
+      if (kIsWeb && hasValidWebPasteData()) {
+        final webPasteData = consumeMatchingWebPasteData(diff.inserted);
+        if (webPasteData != null && webPasteData.html != null) {
+          // Try to apply paste with formatting using the interceptor
+          final delta = tryApplyPasteInterceptor(
+            diff.inserted,
+            webPasteData.html,
+          );
+
+          if (delta != null) {
+            // Successfully got a Delta with formatting - apply it
+            _applyPasteDelta(
+                delta, diff.start, diff.deleted.length, selectionToUse);
+            return;
+          }
+        }
+      }
+
+      // Fall back to plain text paste
       widget.controller.replaceText(
           diff.start, diff.deleted.length, diff.inserted, selectionToUse);
     }
+  }
+
+  /// Applies a Delta with formatting at the specified position.
+  /// This is used for rich paste operations where HTML was converted to Delta.
+  void _applyPasteDelta(
+    Delta delta,
+    int insertPosition,
+    int deleteLength,
+    TextSelection selection,
+  ) {
+    // First, delete any selected content
+    if (deleteLength > 0) {
+      widget.controller.replaceText(insertPosition, deleteLength, '', null);
+    }
+
+    // Calculate the total length of text being inserted
+    var insertedLength = 0;
+    for (final op in delta.toList()) {
+      if (op.isInsert) {
+        final data = op.data;
+        if (data is String) {
+          insertedLength += data.length;
+        } else {
+          // Embed - count as 1 character
+          insertedLength += 1;
+        }
+      }
+    }
+
+    // Insert the formatted content
+    // We need to iterate through the delta and apply each operation
+    var currentPosition = insertPosition;
+    for (final op in delta.toList()) {
+      if (op.isInsert) {
+        final data = op.data;
+        final attributes = op.attributes;
+
+        if (data is String) {
+          // Insert the text
+          widget.controller.replaceText(currentPosition, 0, data, null);
+
+          // Apply attributes if any
+          if (attributes != null && attributes.isNotEmpty) {
+            for (final entry in attributes.entries) {
+              final attribute = Attribute.fromKeyValue(entry.key, entry.value);
+              if (attribute != null) {
+                widget.controller.formatText(
+                  currentPosition,
+                  data.length,
+                  attribute,
+                );
+              }
+            }
+          }
+
+          currentPosition += data.length;
+        }
+        // Note: We don't handle embeds here as they require special handling
+        // and most paste operations don't include embeds
+      }
+    }
+
+    // Update selection to end of pasted content
+    final newSelection = TextSelection.collapsed(
+      offset: insertPosition + insertedLength,
+    );
+    widget.controller.updateSelection(newSelection, ChangeSource.LOCAL);
   }
 
   @override
