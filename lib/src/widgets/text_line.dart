@@ -1059,7 +1059,7 @@ class RenderEditableTextLine extends RenderEditableBox {
     }
 
     size = constraints.constrain(Size(
-      _resolvedPadding!.left + _body!.size.width + _resolvedPadding!.right,
+      constraints.maxWidth,
       _resolvedPadding!.top + _body!.size.height + _resolvedPadding!.bottom,
     ));
 

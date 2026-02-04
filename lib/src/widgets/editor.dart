@@ -1600,6 +1600,9 @@ class RenderEditor extends RenderEditableContainerBox
   }
 
   @override
+  bool hitTestSelf(Offset position) => true;
+
+  @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
     return defaultHitTestChildren(result, position: position);
   }
