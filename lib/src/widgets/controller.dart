@@ -24,18 +24,14 @@ class QuillController extends ChangeNotifier {
   QuillController({
     required Document document,
     required TextSelection selection,
-    @Deprecated(
-      'This parameter no longer affects behavior. '
-      'The toggledStyle always reflects formatting at the current cursor position, '
-      'matching Gmail/Google Docs/Microsoft Word behavior.',
-    )
-    bool keepStyleOnNewLine = false,
+    bool keepStyleOnNewLine = true,
     this.onReplaceText,
     this.onDelete,
     this.onSelectionCompleted,
     this.onSelectionChanged,
   })  : _document = document,
-        _selection = selection;
+        _selection = selection,
+        _keepStyleOnNewLine = keepStyleOnNewLine;
 
   factory QuillController.basic() {
     return QuillController(
@@ -48,6 +44,10 @@ class QuillController extends ChangeNotifier {
   Document _document;
 
   Document get document => _document;
+
+  /// Whether to keep inline styles when inserting a new line.
+  /// When true (default), pressing Enter while typing bold text will continue
+  final bool _keepStyleOnNewLine;
 
   set document(doc) {
     _document = doc;
@@ -344,6 +344,22 @@ class QuillController extends ChangeNotifier {
       return;
     }
 
+    // Capture current inline styles before the operation if we need to preserve
+    // them on newline insertion.
+    final isNewlineInsert = data is String && data.contains('\n');
+    Style? styleToPreserve;
+    if (_keepStyleOnNewLine && isNewlineInsert) {
+      // Get current inline styles (excluding links and block styles)
+      final inlineStyles = toggledStyle.attributes.values.where(
+        (attr) => attr.isInline && attr.key != Attribute.link.key,
+      );
+      if (inlineStyles.isNotEmpty) {
+        styleToPreserve = Style.attr(Map.fromEntries(
+          inlineStyles.map((attr) => MapEntry(attr.key, attr)),
+        ));
+      }
+    }
+
     Delta? delta;
     if (len > 0 || data is! String || data.isNotEmpty) {
       delta = document.replace(index, len, data);
@@ -387,6 +403,14 @@ class QuillController extends ChangeNotifier {
           ChangeSource.LOCAL,
         );
       }
+    }
+
+    // Restore inline styles after newline insertion.
+    // _updateSelection updates toggledStyle based on cursor position, but for
+    // newline insertion we want to preserve the previous inline styles so the
+    // user can continue typing with the same formatting (Gmail behavior).
+    if (styleToPreserve != null) {
+      toggledStyle = styleToPreserve;
     }
 
     if (ignoreFocus) {
