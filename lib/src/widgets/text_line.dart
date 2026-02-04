@@ -1184,6 +1184,9 @@ class RenderEditableTextLine extends RenderEditableBox {
   }
 
   @override
+  bool hitTestSelf(Offset position) => true;
+
+  @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
     if (_leading != null) {
       final childParentData = _leading!.parentData as BoxParentData;
