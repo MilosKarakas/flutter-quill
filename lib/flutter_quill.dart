@@ -4,6 +4,7 @@ export 'package:dart_quill_delta/dart_quill_delta.dart';
 
 export 'src/models/documents/attribute.dart';
 export 'src/models/documents/document.dart';
+export 'src/models/documents/document_exception.dart';
 export 'src/models/documents/nodes/block.dart';
 export 'src/models/documents/nodes/embeddable.dart';
 export 'src/models/documents/nodes/leaf.dart';

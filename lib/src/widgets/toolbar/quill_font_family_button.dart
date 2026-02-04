@@ -12,7 +12,6 @@ class QuillFontFamilyButton extends StatefulWidget {
     required this.rawItemsMap,
     required this.attribute,
     required this.controller,
-    @Deprecated('It is not required because of `rawItemsMap`') this.items,
     this.onSelected,
     this.iconSize = 40,
     this.fillColor,
@@ -40,8 +39,6 @@ class QuillFontFamilyButton extends StatefulWidget {
   final Color? fillColor;
   final double hoverElevation;
   final double highlightElevation;
-  @Deprecated('It is not required because of `rawItemsMap`')
-  final List<PopupMenuEntry<String>>? items;
   final Map<String, String> rawItemsMap;
   final ValueChanged<String>? onSelected;
   final QuillIconTheme? iconTheme;

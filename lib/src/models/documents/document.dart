@@ -8,6 +8,7 @@ import '../structs/history_changed.dart';
 import '../structs/offset_value.dart';
 import '../structs/segment_leaf_node.dart';
 import 'attribute.dart';
+import 'document_exception.dart';
 import 'history.dart';
 import 'nodes/block.dart';
 import 'nodes/container.dart';
@@ -312,12 +313,20 @@ class Document {
     }
     try {
       _delta = _delta.compose(delta);
-    } catch (e) {
-      throw '_delta compose failed';
+    } catch (e, stackTrace) {
+      throw DocumentComposeException(
+        'Delta compose failed',
+        delta: delta,
+        originalError: e,
+        stackTrace: stackTrace,
+      );
     }
 
     if (Document.fromDelta(_delta).toPlainText() != _root.toPlainText()) {
-      throw 'Compose failed';
+      throw DocumentComposeException(
+        'Compose failed: delta and document plain text mismatch',
+        delta: delta,
+      );
     }
 
     final change = DocChange(originalDelta, delta, changeSource);

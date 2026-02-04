@@ -203,9 +203,6 @@ class EditorTextSelectionOverlay {
   final ValueNotifier<MagnifierInfo> _magnifierInfo =
       ValueNotifier<MagnifierInfo>(MagnifierInfo.empty);
 
-  /// Layer link for the toolbar, used by SelectionOverlay.
-  final LayerLink _toolbarLayerLink = LayerLink();
-
   /// Saved handles state before showing magnifier (for restoration).
   List<OverlayEntry>? _savedHandles;
 
@@ -600,9 +597,6 @@ class _TextSelectionHandleOverlay extends StatefulWidget {
 class _TextSelectionHandleOverlayState
     extends State<_TextSelectionHandleOverlay>
     with SingleTickerProviderStateMixin {
-  // ignore: unused_field
-  late Offset _dragPosition;
-
   late AnimationController _controller;
 
   Animation<double> get _opacity => _controller.view;
@@ -641,17 +635,11 @@ class _TextSelectionHandleOverlayState
     super.dispose();
   }
 
-  void _handleDragStart(DragStartDetails details) {
-    final textPosition = widget.position == _TextSelectionHandlePosition.START
-        ? widget.selection.base
-        : widget.selection.extent;
-    final lineHeight = widget.renderObject.preferredLineHeight(textPosition);
-    final handleSize = widget.selectionControls.getHandleSize(lineHeight);
-    _dragPosition = details.globalPosition + Offset(0, -handleSize.height);
-  }
+  /// Called when the user starts dragging a selection handle.
+  /// Selection is updated in [_handleDragUpdate] from the current pointer position.
+  void _handleDragStart(DragStartDetails details) {}
 
   void _handleDragUpdate(DragUpdateDetails details) {
-    _dragPosition += details.delta;
     final position =
         widget.renderObject.getPositionForOffset(details.globalPosition);
     if (widget.selection.isCollapsed) {
