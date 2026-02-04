@@ -1192,7 +1192,10 @@ class RenderEditableTextLine extends RenderEditableBox {
   }
 
   @override
-  bool hitTestSelf(Offset position) => true;
+  bool hitTestSelf(Offset position) {
+    debugPrint('RenderEditableTextLine.hitTestSelf: position=$position, size=$size, contains=${size.contains(position)}');
+    return true;
+  }
 
   @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {

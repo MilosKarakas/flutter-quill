@@ -846,6 +846,7 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   @override
   void onTapDown(TapDownDetails details) {
+    debugPrint('onTapDown: globalPosition=${details.globalPosition}');
     // Store tap down position for reliable cursor positioning on mobile web
     // This matches Flutter's pattern where handleTapDown sets _lastTapDownPosition
     _lastTapDownPosition = details.globalPosition;
@@ -869,6 +870,7 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   @override
   void onSingleTapUp(TapUpDetails details) {
+    debugPrint('onSingleTapUp: globalPosition=${details.globalPosition}');
     if (_state.widget.onTapUp != null &&
         renderEditor != null &&
         _state.widget.onTapUp!(details, renderEditor!.getPositionForOffset)) {
@@ -1600,7 +1602,10 @@ class RenderEditor extends RenderEditableContainerBox
   }
 
   @override
-  bool hitTestSelf(Offset position) => true;
+  bool hitTestSelf(Offset position) {
+    debugPrint('RenderEditor.hitTestSelf: position=$position, size=$size');
+    return true;
+  }
 
   @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
