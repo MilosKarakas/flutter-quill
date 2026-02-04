@@ -988,11 +988,9 @@ class _QuillEditorSelectionGestureDetectorBuilder
         }
       }
     } finally {
-      // Request keyboard if selection wasn't changed (e.g., tap on already selected position)
-      // If selection was changed, _handleSelectionChanged already called requestKeyboard()
-      if (_isPositionSelected(details) || !delegate.selectionEnabled) {
-        _state._requestKeyboard();
-      }
+      // Always request keyboard on tap - this ensures keyboard stays visible
+      // even when tapping the same position twice
+      _state._requestKeyboard();
     }
   }
 
