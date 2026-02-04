@@ -8,7 +8,6 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
-import '../../models/documents/attribute.dart';
 import '../../models/documents/document.dart';
 import '../../utils/delta.dart';
 import '../../utils/platform.dart';
@@ -442,68 +441,48 @@ mixin RawEditorStateTextInputClientMixin on EditorState
   /// Applies a Delta with formatting at the specified position.
   /// This is used for rich paste operations where HTML was converted to Delta.
   void _applyPasteDelta(
-    Delta delta,
+    Delta pasteDelta,
     int insertPosition,
     int deleteLength,
     TextSelection selection,
   ) {
-    // First, delete any selected content
-    if (deleteLength > 0) {
-      widget.controller.replaceText(insertPosition, deleteLength, '', null);
+    // Build a document Delta that:
+    // 1. Retains content before insertion point
+    // 2. Deletes selected content (if any)
+    // 3. Inserts the paste content with formatting
+    final documentDelta = Delta();
+
+    // Retain content before the insertion point
+    if (insertPosition > 0) {
+      documentDelta.retain(insertPosition);
     }
 
-    // Calculate the total length of text being inserted
+    // Delete selected content if any
+    if (deleteLength > 0) {
+      documentDelta.delete(deleteLength);
+    }
+
+    // Add all insert operations from the paste Delta
     var insertedLength = 0;
-    for (final op in delta.toList()) {
+    for (final op in pasteDelta.toList()) {
       if (op.isInsert) {
         final data = op.data;
         if (data is String) {
+          documentDelta.insert(data, op.attributes);
           insertedLength += data.length;
         } else {
-          // Embed - count as 1 character
+          // Embed
+          documentDelta.insert(data, op.attributes);
           insertedLength += 1;
         }
       }
     }
 
-    // Insert the formatted content
-    // We need to iterate through the delta and apply each operation
-    var currentPosition = insertPosition;
-    for (final op in delta.toList()) {
-      if (op.isInsert) {
-        final data = op.data;
-        final attributes = op.attributes;
-
-        if (data is String) {
-          // Insert the text
-          widget.controller.replaceText(currentPosition, 0, data, null);
-
-          // Apply attributes if any
-          if (attributes != null && attributes.isNotEmpty) {
-            for (final entry in attributes.entries) {
-              final attribute = Attribute.fromKeyValue(entry.key, entry.value);
-              if (attribute != null) {
-                widget.controller.formatText(
-                  currentPosition,
-                  data.length,
-                  attribute,
-                );
-              }
-            }
-          }
-
-          currentPosition += data.length;
-        }
-        // Note: We don't handle embeds here as they require special handling
-        // and most paste operations don't include embeds
-      }
-    }
-
-    // Update selection to end of pasted content
+    // Apply the composed delta to the document
     final newSelection = TextSelection.collapsed(
       offset: insertPosition + insertedLength,
     );
-    widget.controller.updateSelection(newSelection, ChangeSource.LOCAL);
+    widget.controller.compose(documentDelta, newSelection, ChangeSource.LOCAL);
   }
 
   @override
