@@ -1609,6 +1609,14 @@ class RenderEditor extends RenderEditableContainerBox
 
   @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    // Debug: Log child sizes
+    var child = firstChild;
+    while (child != null) {
+      final childParentData = child.parentData as EditableContainerParentData;
+      final childLocalPos = position - childParentData.offset;
+      debugPrint('hitTestChildren: child.size=${child.size}, offset=${childParentData.offset}, localPos=$childLocalPos, contains=${child.size.contains(childLocalPos)}');
+      child = childParentData.nextSibling;
+    }
     return defaultHitTestChildren(result, position: position);
   }
 
