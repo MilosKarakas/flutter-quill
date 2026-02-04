@@ -826,27 +826,21 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   bool _isPositionSelected(TapUpDetails details) {
     if (_state.widget.controller.document.isEmpty()) {
-      debugPrint('_isPositionSelected: document is empty, returning false');
       return false;
     }
     final pos = renderEditor!.getPositionForOffset(details.globalPosition);
     final result =
         editor!.widget.controller.document.querySegmentLeafNode(pos.offset);
     final line = result.line;
-    debugPrint('_isPositionSelected: pos=$pos, line=${line?.toPlainText()}, lineLength=${line?.length}');
     if (line == null) {
-      debugPrint('_isPositionSelected: line is null, returning false');
       return false;
     }
     final segmentLeaf = result.leaf;
-    debugPrint('_isPositionSelected: segmentLeaf=$segmentLeaf');
     if (segmentLeaf == null && line.length == 1) {
-      debugPrint('_isPositionSelected: empty line, updating selection and returning true');
       editor!.widget.controller.updateSelection(
           TextSelection.collapsed(offset: pos.offset), ChangeSource.LOCAL);
       return true;
     }
-    debugPrint('_isPositionSelected: returning false');
     return false;
   }
 
@@ -875,33 +869,26 @@ class _QuillEditorSelectionGestureDetectorBuilder
 
   @override
   void onSingleTapUp(TapUpDetails details) {
-    debugPrint('onSingleTapUp: kind=${details.kind}, globalPos=${details.globalPosition}');
     if (_state.widget.onTapUp != null &&
         renderEditor != null &&
         _state.widget.onTapUp!(details, renderEditor!.getPositionForOffset)) {
-      debugPrint('onSingleTapUp: returned early from onTapUp callback');
       return;
     }
 
     editor!.hideToolbar();
 
     try {
-      final isPositionSelected = _isPositionSelected(details);
-      debugPrint('onSingleTapUp: selectionEnabled=${delegate.selectionEnabled}, isPositionSelected=$isPositionSelected');
-      if (delegate.selectionEnabled && !isPositionSelected) {
+      if (delegate.selectionEnabled && !_isPositionSelected(details)) {
         final _platform = Theme.of(_state.context).platform;
-        debugPrint('onSingleTapUp: platform=$_platform, isAppleOS=${isAppleOS(_platform)}, isDesktop=${isDesktop()}');
 
         if (isAppleOS(_platform) || isDesktop()) {
           // added isDesktop() to enable extend selection in Windows platform
-          debugPrint('onSingleTapUp: entering Apple/Desktop switch, kind=${details.kind}');
           switch (details.kind) {
             case PointerDeviceKind.mouse:
             case PointerDeviceKind.stylus:
             case PointerDeviceKind.invertedStylus:
             case PointerDeviceKind.trackpad:
               // Precise devices should place the cursor at a precise position.
-              debugPrint('onSingleTapUp: precise device case, calling selectPositionAt');
               // If `Shift` key is pressed then
               // extend current selection instead.
               if (isShiftClick(details.kind)) {
@@ -966,9 +953,7 @@ class _QuillEditorSelectionGestureDetectorBuilder
           }
         } else {
           // Match Flutter's pattern: use _lastTapDownPosition for consistency
-          debugPrint('onSingleTapUp: else branch (not Apple/Desktop), _lastTapDownPosition=$_lastTapDownPosition');
           if (_lastTapDownPosition != null) {
-            debugPrint('onSingleTapUp: calling selectPositionAt from else branch');
             renderEditor!
               ..selectPositionAt(
                 from: _lastTapDownPosition!,
@@ -977,7 +962,6 @@ class _QuillEditorSelectionGestureDetectorBuilder
               ..onSelectionCompleted();
           } else {
             // Fallback to TapUpDetails if _lastTapDownPosition wasn't set
-            debugPrint('onSingleTapUp: calling selectPositionAt with globalPosition from else branch');
             renderEditor!
               ..selectPositionAt(
                 from: details.globalPosition,
@@ -988,9 +972,12 @@ class _QuillEditorSelectionGestureDetectorBuilder
         }
       }
     } finally {
-      // Always request keyboard on tap - this ensures keyboard stays visible
-      // even when tapping the same position twice
-      _state._requestKeyboard();
+      // Always request keyboard on tap when editor is editable - this ensures
+      // keyboard appears even when tapping the same position twice or tapping
+      // to the right of text (where segmentLeaf is null)
+      if (delegate.selectionEnabled) {
+        _state._requestKeyboard();
+      }
     }
   }
 
