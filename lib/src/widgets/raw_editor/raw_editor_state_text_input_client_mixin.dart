@@ -479,10 +479,15 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     }
 
     // Apply the composed delta to the document
+    // Note: compose() ignores the textSelection parameter and transforms
+    // the current selection instead, so we need to update selection manually
+    widget.controller.document.compose(documentDelta, ChangeSource.LOCAL);
+
+    // Manually set the cursor to the end of pasted content
     final newSelection = TextSelection.collapsed(
       offset: insertPosition + insertedLength,
     );
-    widget.controller.compose(documentDelta, newSelection, ChangeSource.LOCAL);
+    widget.controller.updateSelection(newSelection, ChangeSource.LOCAL);
   }
 
   @override
