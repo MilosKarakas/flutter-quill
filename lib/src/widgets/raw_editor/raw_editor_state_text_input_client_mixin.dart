@@ -409,7 +409,16 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     final cursorPosition = value.selection.extentOffset;
     final diff = getDiff(oldText, text, cursorPosition);
 
+    // DEBUG: Log the diff to understand what operation is being performed
+    debugPrint('[updateEditingValue] diff: start=${diff.start}, '
+        'deleted="${diff.deleted.replaceAll('\n', '⏎')}" (len=${diff.deleted.length}), '
+        'inserted="${diff.inserted.replaceAll('\n', '⏎')}" (len=${diff.inserted.length})');
+    debugPrint('[updateEditingValue] oldText: "${oldText.replaceAll('\n', '⏎')}"');
+    debugPrint('[updateEditingValue] newText: "${text.replaceAll('\n', '⏎')}"');
+    debugPrint('[updateEditingValue] selection: $selectionToUse');
+
     if (diff.deleted.isEmpty && diff.inserted.isEmpty) {
+      debugPrint('[updateEditingValue] No changes - just updating selection');
       widget.controller.updateSelection(selectionToUse, ChangeSource.LOCAL);
     } else {
       // Check if this is a paste operation on web with HTML available.
@@ -417,17 +426,25 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       // the inserted text, supporting rapid successive pastes.
       // Only check for paste data when something is actually being inserted,
       // to avoid interfering with delete operations.
-      if (kIsWeb && diff.inserted.isNotEmpty && hasValidWebPasteData()) {
+      final shouldCheckPaste = kIsWeb && diff.inserted.isNotEmpty && hasValidWebPasteData();
+      debugPrint('[updateEditingValue] shouldCheckPaste=$shouldCheckPaste '
+          '(kIsWeb=$kIsWeb, inserted.isNotEmpty=${diff.inserted.isNotEmpty}, '
+          'hasValidWebPasteData=${hasValidWebPasteData()})');
+      
+      if (shouldCheckPaste) {
         final webPasteData = consumeMatchingWebPasteData(diff.inserted);
+        debugPrint('[updateEditingValue] webPasteData: $webPasteData');
         if (webPasteData != null && webPasteData.html != null) {
           // Try to apply paste with formatting using the interceptor
           final delta = tryApplyPasteInterceptor(
             diff.inserted,
             webPasteData.html,
           );
+          debugPrint('[updateEditingValue] pasteInterceptor returned: $delta');
 
           if (delta != null) {
             // Successfully got a Delta with formatting - apply it
+            debugPrint('[updateEditingValue] Applying paste delta');
             _applyPasteDelta(
                 delta, diff.start, diff.deleted.length, selectionToUse);
             return;
@@ -437,6 +454,9 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
       // Fall back to plain text paste - apply stored styles if this is a paste
       // of content that was copied within the editor
+      debugPrint('[updateEditingValue] Calling replaceText: '
+          'start=${diff.start}, deleteLen=${diff.deleted.length}, '
+          'insert="${diff.inserted.replaceAll('\n', '⏎')}"');
       widget.controller.replaceText(
           diff.start, diff.deleted.length, diff.inserted, selectionToUse);
 

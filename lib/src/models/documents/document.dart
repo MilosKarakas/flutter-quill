@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import '../../widgets/embeds.dart';
 import 'package:dart_quill_delta/dart_quill_delta.dart';
 import '../rules/rule.dart';
@@ -94,9 +96,14 @@ class Document {
   /// Returns an instance of [Delta] actually composed into this document.
   Delta delete(int index, int len) {
     assert(index >= 0 && len > 0);
+    debugPrint('[Document.delete] index=$index, len=$len');
     final delta = _rules.apply(RuleType.DELETE, this, index, len: len);
+    debugPrint('[Document.delete] rules returned delta: $delta (isEmpty=${delta.isEmpty})');
     if (delta.isNotEmpty) {
+      debugPrint('[Document.delete] Calling compose with delta');
       compose(delta, ChangeSource.LOCAL);
+    } else {
+      debugPrint('[Document.delete] SKIPPED compose - delta is empty');
     }
     return delta;
   }
@@ -111,7 +118,11 @@ class Document {
     assert(index >= 0);
     assert(data is String || data is Embeddable);
 
+    debugPrint('[Document.replace] index=$index, len=$len, '
+        'data="${data is String ? data.replaceAll('\n', '⏎') : data}"');
+
     final dataIsNotEmpty = (data is String) ? data.isNotEmpty : true;
+    debugPrint('[Document.replace] dataIsNotEmpty=$dataIsNotEmpty');
 
     assert(dataIsNotEmpty || len > 0);
 
@@ -120,12 +131,19 @@ class Document {
     // We have to insert before applying delete rules
     // Otherwise delete would be operating on stale document snapshot.
     if (dataIsNotEmpty) {
+      debugPrint('[Document.replace] Calling insert');
       delta = insert(index, data, replaceLength: len);
+      debugPrint('[Document.replace] insert returned: $delta');
     }
 
     if (len > 0) {
+      debugPrint('[Document.replace] Calling delete');
       final deleteDelta = delete(index, len);
+      debugPrint('[Document.replace] delete returned: $deleteDelta');
       delta = delta.compose(deleteDelta);
+      debugPrint('[Document.replace] composed delta: $delta');
+    } else {
+      debugPrint('[Document.replace] SKIPPED delete - len is 0');
     }
 
     return delta;
@@ -288,11 +306,15 @@ class Document {
   /// In case the [change] is invalid, behavior of this method is unspecified.
   void compose(Delta delta, ChangeSource changeSource, {int offset = 0}) {
     assert(!_observer.isClosed);
+    debugPrint('[Document.compose] BEFORE trim: $delta');
     delta.trim();
+    debugPrint('[Document.compose] AFTER trim: $delta (isEmpty=${delta.isEmpty})');
     assert(delta.isNotEmpty);
 
     delta = _transform(delta);
+    debugPrint('[Document.compose] AFTER transform: $delta');
     final originalDelta = toDelta();
+    debugPrint('[Document.compose] Processing ${delta.toList().length} operations');
     for (final op in delta.toList()) {
       final style =
           op.attributes != null ? Style.fromJson(op.attributes) : null;
@@ -300,10 +322,13 @@ class Document {
       if (op.isInsert) {
         // Must normalize data before inserting into the document, makes sure
         // that any embedded objects are converted into EmbeddableObject type.
+        debugPrint('[Document.compose] INSERT at offset=$offset: ${op.data}');
         _root.insert(offset, _normalize(op.data), style);
       } else if (op.isDelete) {
+        debugPrint('[Document.compose] DELETE at offset=$offset, length=${op.length}');
         _root.delete(offset, op.length);
       } else if (op.attributes != null) {
+        debugPrint('[Document.compose] RETAIN at offset=$offset, length=${op.length}');
         _root.retain(offset, op.length, style);
       }
 

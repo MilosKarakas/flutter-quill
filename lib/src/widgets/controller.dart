@@ -340,7 +340,12 @@ class QuillController extends ChangeNotifier {
   }) {
     assert(data is String || data is Embeddable);
 
+    debugPrint('[replaceText] index=$index, len=$len, '
+        'data="${data is String ? data.replaceAll('\n', '⏎') : data}", '
+        'textSelection=$textSelection');
+
     if (onReplaceText != null && !onReplaceText!(index, len, data)) {
+      debugPrint('[replaceText] Blocked by onReplaceText callback');
       return;
     }
 
@@ -361,8 +366,12 @@ class QuillController extends ChangeNotifier {
     }
 
     Delta? delta;
+    debugPrint('[replaceText] Condition check: len=$len > 0? ${len > 0}, '
+        'data is String? ${data is String}, data.isNotEmpty? ${data is String ? data.isNotEmpty : "N/A"}');
     if (len > 0 || data is! String || data.isNotEmpty) {
+      debugPrint('[replaceText] Calling document.replace');
       delta = document.replace(index, len, data);
+      debugPrint('[replaceText] document.replace returned delta: $delta');
       var shouldRetainDelta = toggledStyle.isNotEmpty &&
           delta.isNotEmpty &&
           delta.length <= 2 &&
@@ -384,6 +393,8 @@ class QuillController extends ChangeNotifier {
           ..retain(data is String ? data.length : 1, toggledStyle.toJson());
         document.compose(retainDelta, ChangeSource.LOCAL);
       }
+    } else {
+      debugPrint('[replaceText] SKIPPED document.replace - condition not met');
     }
 
     if (textSelection != null) {
