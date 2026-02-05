@@ -37,14 +37,22 @@ mixin RawEditorStateSelectionDelegateMixin on EditorState
     widget.controller.replaceText(
         diff.start, diff.deleted.length, insertedText, value.selection);
 
+    // Check if this is a paste operation that will apply styles
+    final isPasteWithStyles =
+        (insertedText == pastePlainText && pastePlainText != '') ||
+            containsEmbed;
+
     applyPasteStyleAndEmbed(insertedText, diff.start, containsEmbed);
 
-    // Refresh toggledStyle to reflect any formatting that was applied to the
-    // pasted content. Without this, the next character typed would lose formatting.
-    widget.controller.updateSelection(
-      widget.controller.selection,
-      ChangeSource.LOCAL,
-    );
+    // Only refresh toggledStyle if paste styles were actually applied.
+    // Don't refresh for regular typing or newlines, as replaceText already
+    // handles toggledStyle preservation for those cases.
+    if (isPasteWithStyles) {
+      widget.controller.updateSelection(
+        widget.controller.selection,
+        ChangeSource.LOCAL,
+      );
+    }
   }
 
   /// Applies stored paste styles and embeds to the inserted text.

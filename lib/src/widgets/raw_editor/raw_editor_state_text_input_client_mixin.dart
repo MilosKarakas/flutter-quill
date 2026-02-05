@@ -442,15 +442,23 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       final containsEmbed =
           diff.inserted.codeUnits.contains(Embed.kObjectReplacementInt);
 
+      // Check if this is a paste operation that will apply styles
+      final isPasteWithStyles =
+          (diff.inserted == pastePlainText && pastePlainText != '') ||
+              containsEmbed;
+
       // Apply paste styles and embeds (preserves formatting for copy/paste within editor)
       applyPasteStyleAndEmbed(diff.inserted, diff.start, containsEmbed);
 
-      // Refresh toggledStyle to reflect any formatting that was applied to the
-      // pasted content. Without this, the next character typed would lose formatting.
-      widget.controller.updateSelection(
-        widget.controller.selection,
-        ChangeSource.LOCAL,
-      );
+      // Only refresh toggledStyle if paste styles were actually applied.
+      // Don't refresh for regular typing or newlines, as replaceText already
+      // handles toggledStyle preservation for those cases.
+      if (isPasteWithStyles) {
+        widget.controller.updateSelection(
+          widget.controller.selection,
+          ChangeSource.LOCAL,
+        );
+      }
     }
   }
 
