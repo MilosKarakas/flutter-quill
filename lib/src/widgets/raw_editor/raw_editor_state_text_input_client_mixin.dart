@@ -444,6 +444,13 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
       // Apply paste styles and embeds (preserves formatting for copy/paste within editor)
       applyPasteStyleAndEmbed(diff.inserted, diff.start, containsEmbed);
+
+      // Refresh toggledStyle to reflect any formatting that was applied to the
+      // pasted content. Without this, the next character typed would lose formatting.
+      widget.controller.updateSelection(
+        widget.controller.selection,
+        ChangeSource.LOCAL,
+      );
     }
   }
 

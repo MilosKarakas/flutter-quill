@@ -38,6 +38,13 @@ mixin RawEditorStateSelectionDelegateMixin on EditorState
         diff.start, diff.deleted.length, insertedText, value.selection);
 
     applyPasteStyleAndEmbed(insertedText, diff.start, containsEmbed);
+
+    // Refresh toggledStyle to reflect any formatting that was applied to the
+    // pasted content. Without this, the next character typed would lose formatting.
+    widget.controller.updateSelection(
+      widget.controller.selection,
+      ChangeSource.LOCAL,
+    );
   }
 
   /// Applies stored paste styles and embeds to the inserted text.
