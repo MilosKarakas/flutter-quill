@@ -1,6 +1,8 @@
 // Stub implementation for non-web platforms
 // This file is used when dart:html is not available
 
+import '../models/structs/copy_data.dart';
+
 /// Data captured from a web paste event
 class WebPasteEventData {
   const WebPasteEventData({
@@ -21,6 +23,31 @@ typedef WebPasteCallback = void Function(WebPasteEventData data);
 class WebClipboardListener {
   // ignore: avoid_unused_constructor_parameters
   WebClipboardListener(WebPasteCallback onPaste);
+
+  /// Start listening - no-op on non-web platforms
+  void startListening() {
+    // No-op on non-web platforms
+  }
+
+  /// Stop listening - no-op on non-web platforms
+  void stopListening() {
+    // No-op on non-web platforms
+  }
+
+  /// Dispose resources - no-op on non-web platforms
+  void dispose() {
+    // No-op on non-web platforms
+  }
+}
+
+/// Callback type for copy/cut event handling.
+typedef WebCopyCallback = CopyClipboardData? Function();
+
+/// Stub implementation that does nothing on non-web platforms.
+/// On web, this listens to both copy and cut events.
+class WebClipboardCopyListener {
+  // ignore: avoid_unused_constructor_parameters
+  WebClipboardCopyListener(WebCopyCallback onCopy);
 
   /// Start listening - no-op on non-web platforms
   void startListening() {

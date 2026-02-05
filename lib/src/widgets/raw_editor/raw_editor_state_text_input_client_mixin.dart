@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
 import '../../models/documents/document.dart';
+import '../../models/documents/nodes/leaf.dart';
 import '../../utils/delta.dart';
 import '../../utils/platform.dart';
 import '../editor.dart';
@@ -432,9 +433,17 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         }
       }
 
-      // Fall back to plain text paste
+      // Fall back to plain text paste - apply stored styles if this is a paste
+      // of content that was copied within the editor
       widget.controller.replaceText(
           diff.start, diff.deleted.length, diff.inserted, selectionToUse);
+
+      // Check if inserted text contains embeds (object replacement character)
+      final containsEmbed =
+          diff.inserted.codeUnits.contains(Embed.kObjectReplacementInt);
+
+      // Apply paste styles and embeds (preserves formatting for copy/paste within editor)
+      applyPasteStyleAndEmbed(diff.inserted, diff.start, containsEmbed);
     }
   }
 

@@ -103,6 +103,7 @@ class RawEditor extends StatefulWidget {
     this.contentInsertionConfiguration,
     this.onPaste,
     this.onPasteInterceptor,
+    this.onCopyInterceptor,
     this.onResetGestureDetector,
   })  : assert(maxHeight == null || maxHeight > 0, 'maxHeight cannot be null'),
         assert(minHeight == null || minHeight >= 0, 'minHeight cannot be null'),
@@ -320,6 +321,11 @@ class RawEditor extends StatefulWidget {
   /// Return a [Delta] to apply formatted content, or `null` to fall back to plain text.
   final Delta? Function(String? plainText, String? html)? onPasteInterceptor;
 
+  /// Intercepts copy operations to enable rich text clipboard support.
+  ///
+  /// See [CopyInterceptor] for detailed documentation.
+  final CopyInterceptor? onCopyInterceptor;
+
   /// Callback to request gesture detector reset.
   /// Called when recovering from a stuck gesture state (e.g., after right-click on web).
   final VoidCallback? onResetGestureDetector;
@@ -412,6 +418,9 @@ class RawEditorState extends EditorState
   /// Queue of captured web paste events, ordered oldest to newest.
   /// Using a queue allows handling rapid successive pastes correctly.
   final List<WebPasteEventData> _webPasteDataQueue = [];
+
+  // Web copy event handling
+  WebClipboardCopyListener? _webClipboardCopyListener;
 
   /// Maximum number of paste events to keep in queue.
   /// Prevents unbounded growth if updateEditingValue calls are delayed.
@@ -1368,6 +1377,9 @@ class RawEditorState extends EditorState
 
     // Set up web paste listener to capture HTML from clipboard
     _setupWebPasteListener();
+
+    // Set up web copy listener to write HTML to clipboard
+    _setupWebCopyListener();
   }
 
   /// Sets up the web clipboard listener to capture HTML during paste events.
@@ -1378,6 +1390,39 @@ class RawEditorState extends EditorState
       _webClipboardListener = WebClipboardListener(_handleWebPasteEvent)
         ..startListening();
     }
+  }
+
+  /// Sets up the web clipboard copy listener to write HTML during copy events.
+  /// Only active on web platforms when onCopyInterceptor is provided.
+  void _setupWebCopyListener() {
+    // Only set up on web and when we have an interceptor
+    if (kIsWeb && widget.onCopyInterceptor != null) {
+      _webClipboardCopyListener = WebClipboardCopyListener(_handleWebCopyEvent)
+        ..startListening();
+    }
+  }
+
+  /// Handles copy events from the web browser.
+  /// Called synchronously when browser copy event fires (before copySelection).
+  /// Returns data to write to clipboard, or null for default browser behavior.
+  CopyClipboardData? _handleWebCopyEvent() {
+    final interceptor = widget.onCopyInterceptor;
+    if (interceptor == null) return null;
+
+    final selection = textEditingValue.selection;
+    final text = textEditingValue.text;
+    if (selection.isCollapsed) return null;
+
+    final plainText = selection.textInside(text);
+
+    // Get the Delta for the selection
+    final delta = controller.document.toDelta().slice(
+          selection.start,
+          selection.end,
+        );
+
+    // Call the interceptor
+    return interceptor(plainText, delta);
   }
 
   /// Handles paste events captured from the web browser.
@@ -1526,6 +1571,13 @@ class RawEditorState extends EditorState
       _webClipboardListener = null;
       _setupWebPasteListener();
     }
+
+    // Update web copy listener if onCopyInterceptor changed
+    if (widget.onCopyInterceptor != oldWidget.onCopyInterceptor) {
+      _webClipboardCopyListener?.dispose();
+      _webClipboardCopyListener = null;
+      _setupWebCopyListener();
+    }
   }
 
   bool _shouldShowSelectionHandles() {
@@ -1543,6 +1595,10 @@ class RawEditorState extends EditorState
     _webClipboardListener?.dispose();
     _webClipboardListener = null;
     _clearWebPasteData();
+
+    // Clean up web copy listener
+    _webClipboardCopyListener?.dispose();
+    _webClipboardCopyListener = null;
 
     assert(!hasConnection);
     _selectionOverlay?.dispose();
@@ -1908,7 +1964,33 @@ class RawEditorState extends EditorState
     if (selection.isCollapsed) {
       return;
     }
-    Clipboard.setData(ClipboardData(text: selection.textInside(text)));
+
+    final plainText = selection.textInside(text);
+
+    // Handle clipboard writing based on platform and interceptor
+    final interceptor = widget.onCopyInterceptor;
+    if (interceptor != null) {
+      if (kIsWeb) {
+        // On web, the copy event handler handles clipboard writing.
+        // We don't call Clipboard.setData to avoid duplicate writes.
+      } else {
+        // On mobile, call the interceptor to let app handle clipboard writing
+        final delta = controller.document.toDelta().slice(
+              selection.start,
+              selection.end,
+            );
+        final result = interceptor(plainText, delta);
+        // If result is null, the app handled clipboard writing.
+        // If result is non-null on mobile, the app expected us to handle it,
+        // but we can only write plain text without additional packages.
+        if (result != null) {
+          Clipboard.setData(ClipboardData(text: result.plainText));
+        }
+      }
+    } else {
+      // No interceptor, use default behavior
+      Clipboard.setData(ClipboardData(text: plainText));
+    }
 
     if (cause == SelectionChangedCause.toolbar) {
       bringIntoView(textEditingValue.selection.extent);
@@ -1941,7 +2023,34 @@ class RawEditorState extends EditorState
     if (selection.isCollapsed) {
       return;
     }
-    Clipboard.setData(ClipboardData(text: selection.textInside(text)));
+
+    final plainText = selection.textInside(text);
+
+    // Handle clipboard writing based on platform and interceptor
+    final interceptor = widget.onCopyInterceptor;
+    if (interceptor != null) {
+      if (kIsWeb) {
+        // On web, the cut event handler handles clipboard writing.
+        // We don't call Clipboard.setData to avoid duplicate writes.
+      } else {
+        // On mobile, call the interceptor to let app handle clipboard writing
+        final delta = controller.document.toDelta().slice(
+              selection.start,
+              selection.end,
+            );
+        final result = interceptor(plainText, delta);
+        // If result is null, the app handled clipboard writing.
+        // If result is non-null on mobile, the app expected us to handle it,
+        // but we can only write plain text without additional packages.
+        if (result != null) {
+          Clipboard.setData(ClipboardData(text: result.plainText));
+        }
+      }
+    } else {
+      // No interceptor, use default behavior
+      Clipboard.setData(ClipboardData(text: plainText));
+    }
+
     _replaceText(ReplaceTextIntent(textEditingValue, '', selection, cause));
 
     if (cause == SelectionChangedCause.toolbar) {

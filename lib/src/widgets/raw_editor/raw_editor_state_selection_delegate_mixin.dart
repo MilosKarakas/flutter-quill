@@ -37,10 +37,13 @@ mixin RawEditorStateSelectionDelegateMixin on EditorState
     widget.controller.replaceText(
         diff.start, diff.deleted.length, insertedText, value.selection);
 
-    _applyPasteStyleAndEmbed(insertedText, diff.start, containsEmbed);
+    applyPasteStyleAndEmbed(insertedText, diff.start, containsEmbed);
   }
 
-  void _applyPasteStyleAndEmbed(
+  /// Applies stored paste styles and embeds to the inserted text.
+  /// This preserves formatting when content is copied and pasted within the editor.
+  @override
+  void applyPasteStyleAndEmbed(
       String insertedText, int start, bool containsEmbed) {
     if (insertedText == pastePlainText && pastePlainText != '' ||
         containsEmbed) {

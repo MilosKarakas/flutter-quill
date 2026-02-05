@@ -17,6 +17,7 @@ import '../models/documents/nodes/block.dart';
 import '../models/documents/nodes/container.dart' as container_node;
 import '../models/documents/nodes/leaf.dart';
 import '../models/documents/nodes/line.dart';
+import '../models/structs/copy_data.dart';
 import '../models/structs/offset_value.dart';
 import '../models/structs/paste_data.dart';
 import '../utils/web_clipboard.dart';
@@ -47,6 +48,11 @@ abstract class EditorState extends State<RawEditor>
   List<OffsetValue> get pasteStyleAndEmbed;
 
   String get pastePlainText;
+
+  /// Applies stored paste styles and embeds to the inserted text.
+  /// This preserves formatting when content is copied and pasted within the editor.
+  void applyPasteStyleAndEmbed(
+      String insertedText, int start, bool containsEmbed);
 
   /// Shows the magnifier at the given position.
   void showMagnifier(Offset positionToShow);
@@ -259,6 +265,7 @@ class QuillEditor extends StatefulWidget {
     this.editorKey,
     this.onPaste,
     this.onPasteInterceptor,
+    this.onCopyInterceptor,
     Key? key,
   }) : super(key: key);
 
@@ -576,6 +583,36 @@ class QuillEditor extends StatefulWidget {
   /// ```
   final PasteInterceptor? onPasteInterceptor;
 
+  /// Intercepts copy operations to enable rich text clipboard support.
+  ///
+  /// Called during copy with the selected content. The callback can:
+  /// - Return [CopyClipboardData] with plain text and HTML to write to clipboard
+  ///   (used on web where the copy event handler writes the data)
+  /// - Return `null` to indicate the callback handled clipboard writing itself
+  ///   (used on mobile where native clipboard APIs are used directly)
+  ///
+  /// **Web**: Return [CopyClipboardData] and the browser's copy event handler will
+  /// set both `text/plain` and `text/html` on the clipboard.
+  ///
+  /// **Mobile**: Use your own native clipboard utilities to write both formats,
+  /// then return `null` to prevent default clipboard writing.
+  ///
+  /// Example:
+  /// ```dart
+  /// onCopyInterceptor: (plainText, delta) {
+  ///   final html = convertDeltaToHtml(delta);
+  ///   if (kIsWeb) {
+  ///     // Web: return data for the copy event handler
+  ///     return CopyClipboardData(plainText: plainText, html: html);
+  ///   } else {
+  ///     // Mobile: write to clipboard using native APIs
+  ///     myNativeClipboard.setData(plainText: plainText, html: html);
+  ///     return null; // Indicates we handled it
+  ///   }
+  /// },
+  /// ```
+  final CopyInterceptor? onCopyInterceptor;
+
   @override
   QuillEditorState createState() => QuillEditorState();
 }
@@ -697,6 +734,7 @@ class QuillEditorState extends State<QuillEditor>
       contentInsertionConfiguration: widget.contentInsertionConfiguration,
       onPaste: widget.onPaste,
       onPasteInterceptor: widget.onPasteInterceptor,
+      onCopyInterceptor: widget.onCopyInterceptor,
       onResetGestureDetector: _handleResetGestureDetector,
     );
 

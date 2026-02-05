@@ -5,6 +5,8 @@ import 'dart:js_interop';
 
 import 'package:web/web.dart' as web;
 
+import '../models/structs/copy_data.dart';
+
 /// Data captured from a web paste event
 class WebPasteEventData {
   const WebPasteEventData({
@@ -65,5 +67,65 @@ class WebClipboardListener {
     );
 
     _onPaste(data);
+  }
+}
+
+/// Callback type for copy/cut event handling.
+/// Called when a copy or cut event occurs, should return the data to write
+/// to clipboard. If null is returned, the event proceeds with default
+/// browser behavior.
+typedef WebCopyCallback = CopyClipboardData? Function();
+
+/// Web implementation that intercepts browser copy and cut events
+/// to write rich content.
+class WebClipboardCopyListener {
+  WebClipboardCopyListener(this._onCopy);
+
+  final WebCopyCallback _onCopy;
+  web.EventListener? _copyListener;
+  web.EventListener? _cutListener;
+
+  /// Start listening to copy and cut events on the document
+  void startListening() {
+    stopListening();
+    _copyListener = _handleCopyOrCut.toJS;
+    _cutListener = _handleCopyOrCut.toJS;
+    web.document.addEventListener('copy', _copyListener);
+    web.document.addEventListener('cut', _cutListener);
+  }
+
+  /// Stop listening to copy and cut events
+  void stopListening() {
+    if (_copyListener != null) {
+      web.document.removeEventListener('copy', _copyListener);
+      _copyListener = null;
+    }
+    if (_cutListener != null) {
+      web.document.removeEventListener('cut', _cutListener);
+      _cutListener = null;
+    }
+  }
+
+  /// Dispose resources
+  void dispose() {
+    stopListening();
+  }
+
+  void _handleCopyOrCut(web.Event event) {
+    final data = _onCopy();
+    if (data == null) return;
+
+    final clipboardEvent = event as web.ClipboardEvent;
+    final clipboardData = clipboardEvent.clipboardData;
+    if (clipboardData == null) return;
+
+    // Prevent default to take control of clipboard content
+    event.preventDefault();
+
+    // Set both plain text and HTML on the clipboard
+    clipboardData.setData('text/plain', data.plainText);
+    if (data.html != null) {
+      clipboardData.setData('text/html', data.html!);
+    }
   }
 }

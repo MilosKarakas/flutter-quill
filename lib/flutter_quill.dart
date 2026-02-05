@@ -11,6 +11,7 @@ export 'src/models/documents/nodes/leaf.dart';
 export 'src/models/documents/nodes/line.dart';
 export 'src/models/documents/nodes/node.dart';
 export 'src/models/documents/style.dart';
+export 'src/models/structs/copy_data.dart';
 export 'src/models/structs/doc_change.dart';
 export 'src/models/structs/image_url.dart';
 export 'src/models/structs/link_dialog_action.dart';
