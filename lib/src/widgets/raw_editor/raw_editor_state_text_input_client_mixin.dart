@@ -415,7 +415,9 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       // Check if this is a paste operation on web with HTML available.
       // Use consumeMatchingWebPasteData to find the paste event that matches
       // the inserted text, supporting rapid successive pastes.
-      if (kIsWeb && hasValidWebPasteData()) {
+      // Only check for paste data when something is actually being inserted,
+      // to avoid interfering with delete operations.
+      if (kIsWeb && diff.inserted.isNotEmpty && hasValidWebPasteData()) {
         final webPasteData = consumeMatchingWebPasteData(diff.inserted);
         if (webPasteData != null && webPasteData.html != null) {
           // Try to apply paste with formatting using the interceptor
