@@ -1945,11 +1945,15 @@ class RawEditorState extends EditorState
   }
 
   void _replaceText(ReplaceTextIntent intent) {
-    userUpdateTextEditingValue(
-      intent.currentTextEditingValue
-          .replaced(intent.replacementRange, intent.replacementText),
-      intent.cause,
-    );
+    debugPrint('[_replaceText] Called with:');
+    debugPrint('[_replaceText]   replacementRange=${intent.replacementRange}');
+    debugPrint('[_replaceText]   replacementText="${intent.replacementText.replaceAll('\n', '⏎')}"');
+    debugPrint('[_replaceText]   currentText="${intent.currentTextEditingValue.text.replaceAll('\n', '⏎')}"');
+    final newValue = intent.currentTextEditingValue
+        .replaced(intent.replacementRange, intent.replacementText);
+    debugPrint('[_replaceText]   newText="${newValue.text.replaceAll('\n', '⏎')}"');
+    debugPrint('[_replaceText]   newSelection=${newValue.selection}');
+    userUpdateTextEditingValue(newValue, intent.cause);
   }
 
   /// Copy current selection to [Clipboard].
@@ -3088,9 +3092,13 @@ class _DeleteTextAction<T extends DirectionalTextEditingIntent>
   @override
   Object? invoke(T intent, [BuildContext? context]) {
     final selection = state.textEditingValue.selection;
+    debugPrint('[_DeleteTextAction] invoke called, intent=$intent');
+    debugPrint('[_DeleteTextAction] selection=$selection, isCollapsed=${selection.isCollapsed}');
+    debugPrint('[_DeleteTextAction] textEditingValue.text="${state.textEditingValue.text.replaceAll('\n', '⏎')}"');
     assert(selection.isValid);
 
     if (!selection.isCollapsed) {
+      debugPrint('[_DeleteTextAction] Selection not collapsed - deleting selected range');
       return Actions.invoke(
         context!,
         ReplaceTextIntent(
@@ -3102,10 +3110,13 @@ class _DeleteTextAction<T extends DirectionalTextEditingIntent>
     }
 
     final textBoundary = getTextBoundariesForIntent(intent);
+    debugPrint('[_DeleteTextAction] textBoundary.textEditingValue.selection=${textBoundary.textEditingValue.selection}');
     if (!textBoundary.textEditingValue.selection.isValid) {
+      debugPrint('[_DeleteTextAction] RETURNING NULL - selection not valid');
       return null;
     }
     if (!textBoundary.textEditingValue.selection.isCollapsed) {
+      debugPrint('[_DeleteTextAction] textBoundary selection not collapsed - deleting expanded range');
       return Actions.invoke(
         context!,
         ReplaceTextIntent(
@@ -3116,13 +3127,16 @@ class _DeleteTextAction<T extends DirectionalTextEditingIntent>
       );
     }
 
+    final deleteRange = textBoundary
+        .getTextBoundaryAt(textBoundary.textEditingValue.selection.base);
+    debugPrint('[_DeleteTextAction] deleteRange=$deleteRange (start=${deleteRange.start}, end=${deleteRange.end})');
+    debugPrint('[_DeleteTextAction] Invoking ReplaceTextIntent to delete');
     return Actions.invoke(
       context!,
       ReplaceTextIntent(
         textBoundary.textEditingValue,
         '',
-        textBoundary
-            .getTextBoundaryAt(textBoundary.textEditingValue.selection.base),
+        deleteRange,
         SelectionChangedCause.keyboard,
       ),
     );

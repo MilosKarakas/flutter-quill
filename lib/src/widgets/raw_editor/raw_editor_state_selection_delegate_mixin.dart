@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -18,12 +19,19 @@ mixin RawEditorStateSelectionDelegateMixin on EditorState
   }
 
   set textEditingValue(TextEditingValue value) {
+    debugPrint('[textEditingValue setter] Called');
+    debugPrint('[textEditingValue setter] new value.text="${value.text.replaceAll('\n', '⏎')}"');
+    debugPrint('[textEditingValue setter] new value.selection=${value.selection}');
     final cursorPosition = value.selection.extentOffset;
     final oldText = widget.controller.document.toPlainText();
     final newText = value.text;
+    debugPrint('[textEditingValue setter] oldText="${oldText.replaceAll('\n', '⏎')}"');
+    debugPrint('[textEditingValue setter] newText="${newText.replaceAll('\n', '⏎')}"');
     final diff = getDiff(oldText, newText, cursorPosition);
+    debugPrint('[textEditingValue setter] diff: start=${diff.start}, deleted="${diff.deleted.replaceAll('\n', '⏎')}", inserted="${diff.inserted.replaceAll('\n', '⏎')}"');
     if (diff.deleted == '' && diff.inserted == '') {
       // Only changing selection range
+      debugPrint('[textEditingValue setter] Only selection change, calling updateSelection');
       widget.controller.updateSelection(value.selection, ChangeSource.LOCAL);
       return;
     }

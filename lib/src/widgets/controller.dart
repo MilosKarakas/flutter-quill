@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/services.dart';
 
 import '../models/documents/attribute.dart';
@@ -488,6 +488,7 @@ class QuillController extends ChangeNotifier {
   }
 
   void updateSelection(TextSelection textSelection, ChangeSource source) {
+    debugPrint('[updateSelection] textSelection=$textSelection, source=$source');
     _updateSelection(textSelection, source);
     notifyListeners();
   }
