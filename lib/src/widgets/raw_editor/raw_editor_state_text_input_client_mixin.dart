@@ -395,10 +395,14 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     // a diff would fail because the document state doesn't match _lastKnownRemoteTextEditingValue.
     // This mirrors Flutter's EditableText pattern: if value == _value, return early.
     final currentDocText = widget.controller.document.toPlainText();
-    // Document always ends with '\n', but platform value may not include it
-    final normalizedDocText = currentDocText.endsWith('\n')
-        ? currentDocText.substring(0, currentDocText.length - 1)
-        : currentDocText;
+    // Document always ends with '\n', but platform value may not include it.
+    // Only normalize (strip trailing \n) if the incoming value doesn't end with \n.
+    // If both end with \n, compare directly to properly detect empty line deletions.
+    // Example: doc="1\n2\n\n" vs value="1\n2\n" should NOT match (line was deleted).
+    final normalizedDocText =
+        !value.text.endsWith('\n') && currentDocText.endsWith('\n')
+            ? currentDocText.substring(0, currentDocText.length - 1)
+            : currentDocText;
     if (normalizedDocText == value.text) {
       // Document already has the expected content - just sync selection and cache
       debugPrint('[updateEditingValue] EARLY RETURN - doc matches incoming text');
