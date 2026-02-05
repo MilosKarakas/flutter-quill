@@ -336,19 +336,20 @@ class EditorTextSelectionGestureDetectorBuilder {
     if (isMobileWeb() || isMobile()) {
       editor!.requestKeyboard();
 
-      // Wait for keyboard to open before showing toolbar
-      // Keyboard animation takes ~200-300ms, so we wait for it to mostly complete
-      // This ensures toolbar calculates position with the correct viewport size
       final editorState = editor;
+      if (shouldShowSelectionToolbar) {
+        editor!.showToolbar();
+      }
+
+      // Update toolbar position after keyboard animation completes.
+      // Keyboard animation takes ~200-300ms, so we wait for it to mostly complete.
       Future.delayed(const Duration(milliseconds: 200), () {
         // Clear long press flag after the toolbar has been shown
         // This allows the overlay to be properly disposed when needed
         if (editorState is RawEditorState && editorState.mounted) {
           editorState.setLongPressInProgress(false);
         }
-        if (shouldShowSelectionToolbar) {
-          editor!.showToolbar();
-        }
+        editorState?.selectionOverlay?.update(editorState.textEditingValue);
       });
     } else {
       // On desktop, show toolbar immediately after selection updates

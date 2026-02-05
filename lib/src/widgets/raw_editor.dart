@@ -589,6 +589,11 @@ class RawEditorState extends EditorState
   }
 
   void _defaultOnTapOutside(PointerDownEvent event) {
+    if (isMobileWeb()) {
+      // On mobile web, keep focus pinned to avoid keyboard flicker during
+      // selection, toolbar, and overlay interactions.
+      return;
+    }
     /// The focus dropping behavior is only present on desktop platforms
     /// and mobile browsers.
     switch (defaultTargetPlatform) {
@@ -1740,6 +1745,7 @@ class RawEditorState extends EditorState
             ? null
             : (context) => widget.contextMenuBuilder!(context, this),
         magnifierConfiguration: widget.magnifierConfiguration,
+        tapRegionGroupId: widget.tapRegionGroupId,
       );
     } else {
       _selectionOverlay!.update(textEditingValue);

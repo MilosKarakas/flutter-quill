@@ -78,6 +78,7 @@ class EditorTextSelectionOverlay {
     required this.clipboardStatus,
     required this.contextMenuBuilder,
     required TextMagnifierConfiguration magnifierConfiguration,
+    this.tapRegionGroupId,
     this.onSelectionHandleTapped,
     this.dragStartBehavior = DragStartBehavior.start,
     this.handlesVisible = false,
@@ -145,6 +146,9 @@ class EditorTextSelectionOverlay {
   ///
   /// If not provided, no context menu will be built.
   final WidgetBuilder? contextMenuBuilder;
+
+  /// Optional tap region group id to keep focus while interacting with overlays.
+  final Object? tapRegionGroupId;
 
   /// Configuration for the magnifier.
   final TextMagnifierConfiguration _magnifierConfiguration;
@@ -250,7 +254,14 @@ class EditorTextSelectionOverlay {
     assert(toolbar == null);
     if (contextMenuBuilder == null) return;
     toolbar = OverlayEntry(builder: (context) {
-      return contextMenuBuilder!(context);
+      final child = contextMenuBuilder!(context);
+      if (tapRegionGroupId == null) {
+        return child;
+      }
+      return TextFieldTapRegion(
+        groupId: tapRegionGroupId,
+        child: child,
+      );
     });
     Overlay.of(context, rootOverlay: true, debugRequiredFor: debugRequiredFor)
         .insert(toolbar!);
@@ -267,21 +278,29 @@ class EditorTextSelectionOverlay {
         position == _TextSelectionHandlePosition.END) {
       return Container();
     }
-    return Visibility(
-        visible: handlesVisible,
-        child: _TextSelectionHandleOverlay(
-          onSelectionHandleChanged: (newSelection) {
-            _handleSelectionHandleChanged(newSelection, position);
-          },
-          onSelectionHandleTapped: onSelectionHandleTapped,
-          startHandleLayerLink: startHandleLayerLink,
-          endHandleLayerLink: endHandleLayerLink,
-          renderObject: renderObject,
-          selection: _selection,
-          selectionControls: selectionCtrls,
-          position: position,
-          dragStartBehavior: dragStartBehavior,
-        ));
+    final handle = Visibility(
+      visible: handlesVisible,
+      child: _TextSelectionHandleOverlay(
+        onSelectionHandleChanged: (newSelection) {
+          _handleSelectionHandleChanged(newSelection, position);
+        },
+        onSelectionHandleTapped: onSelectionHandleTapped,
+        startHandleLayerLink: startHandleLayerLink,
+        endHandleLayerLink: endHandleLayerLink,
+        renderObject: renderObject,
+        selection: _selection,
+        selectionControls: selectionCtrls,
+        position: position,
+        dragStartBehavior: dragStartBehavior,
+      ),
+    );
+    if (tapRegionGroupId == null) {
+      return handle;
+    }
+    return TextFieldTapRegion(
+      groupId: tapRegionGroupId,
+      child: handle,
+    );
   }
 
   /// Updates the overlay after the selection has changed.
