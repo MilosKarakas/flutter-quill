@@ -920,6 +920,7 @@ class RawEditorState extends EditorState
   }
 
   KeyEventResult _onKey(node, RawKeyEvent event) {
+    debugPrint('[_onKey] event=${event.logicalKey.keyLabel}, isDown=${event is RawKeyDownEvent}');
     // Don't handle key if there is a meta key pressed.
     if (event.isAltPressed || event.isControlPressed || event.isMetaPressed) {
       return KeyEventResult.ignored;

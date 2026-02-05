@@ -343,12 +343,15 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
   @override
   void updateEditingValue(TextEditingValue value) {
+    debugPrint('[updateEditingValue] ENTRY - value.text="${value.text.replaceAll('\n', '⏎')}", selection=${value.selection}');
     if (!shouldCreateInputConnection) {
+      debugPrint('[updateEditingValue] EARLY RETURN - shouldCreateInputConnection is false');
       return;
     }
 
     if (_lastKnownRemoteTextEditingValue == value) {
       // There is no difference between this value and the last known value.
+      debugPrint('[updateEditingValue] EARLY RETURN - value equals lastKnownRemote');
       return;
     }
 
@@ -360,6 +363,7 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       // This check fixes an issue on Android when it sends
       // composing updates separately from regular changes for text and
       // selection.
+      debugPrint('[updateEditingValue] EARLY RETURN - only composing range changed');
       _lastKnownRemoteTextEditingValue = value;
       return;
     }
@@ -397,6 +401,11 @@ mixin RawEditorStateTextInputClientMixin on EditorState
         : currentDocText;
     if (normalizedDocText == value.text) {
       // Document already has the expected content - just sync selection and cache
+      debugPrint('[updateEditingValue] EARLY RETURN - doc matches incoming text');
+      debugPrint('[updateEditingValue] normalizedDocText="${normalizedDocText.replaceAll('\n', '⏎')}"');
+      debugPrint('[updateEditingValue] value.text="${value.text.replaceAll('\n', '⏎')}"');
+      debugPrint('[updateEditingValue] value.selection=${value.selection}');
+      debugPrint('[updateEditingValue] selectionToUse=$selectionToUse');
       _lastKnownRemoteTextEditingValue = value;
       widget.controller.updateSelection(selectionToUse, ChangeSource.LOCAL);
       return;
