@@ -470,6 +470,15 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     int deleteLength,
     TextSelection selection,
   ) {
+    // Strip trailing newline if pasting inline content.
+    // HTML paragraphs like <p>text</p> convert to Delta with trailing \n,
+    // but when pasting into the middle of a line, we don't want that extra newline.
+    final processedDelta = _stripTrailingNewlineIfInline(
+      pasteDelta,
+      insertPosition,
+      deleteLength,
+    );
+
     // Build a document Delta that:
     // 1. Retains content before insertion point
     // 2. Deletes selected content (if any)
@@ -488,7 +497,7 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
     // Add all insert operations from the paste Delta
     var insertedLength = 0;
-    for (final op in pasteDelta.toList()) {
+    for (final op in processedDelta.toList()) {
       if (op.isInsert) {
         final data = op.data;
         if (data is String) {
@@ -512,6 +521,104 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       offset: insertPosition + insertedLength,
     );
     widget.controller.updateSelection(newSelection, ChangeSource.LOCAL);
+  }
+
+  /// Strips trailing newline from paste Delta if we're pasting inline.
+  ///
+  /// When HTML like `<p>text</p>` is converted to Delta, it includes a trailing
+  /// newline because paragraphs in Quill end with \n. However, when pasting
+  /// into the middle of an existing line, this creates an unwanted line break.
+  ///
+  /// This method checks:
+  /// 1. Does the paste Delta end with exactly one newline?
+  /// 2. Are we pasting into the middle of a line (not at a line boundary)?
+  ///
+  /// If both are true, the trailing newline is stripped.
+  Delta _stripTrailingNewlineIfInline(
+    Delta pasteDelta,
+    int insertPosition,
+    int deleteLength,
+  ) {
+    final ops = pasteDelta.toList();
+    if (ops.isEmpty) return pasteDelta;
+
+    // Check if the Delta ends with a single newline
+    final lastOp = ops.last;
+    if (!lastOp.isInsert || lastOp.data is! String) {
+      return pasteDelta;
+    }
+
+    final lastText = lastOp.data as String;
+    if (!lastText.endsWith('\n')) {
+      return pasteDelta;
+    }
+
+    // Count how many newlines are at the end of the paste content
+    // Only strip if there's exactly one trailing newline (single paragraph)
+    var trailingNewlines = 0;
+    for (var i = lastText.length - 1; i >= 0 && lastText[i] == '\n'; i--) {
+      trailingNewlines++;
+    }
+
+    // If there are multiple trailing newlines, preserve them
+    // (this indicates intentional multi-paragraph structure)
+    if (trailingNewlines > 1) {
+      return pasteDelta;
+    }
+
+    // Check if we're pasting at a line boundary
+    // We're at a line boundary if:
+    // - We're at the very beginning of the document (position 0), OR
+    // - The character before insert position is a newline
+    final document = widget.controller.document;
+
+    // If pasting at position 0, we're at a line boundary
+    if (insertPosition == 0) {
+      return pasteDelta;
+    }
+
+    // Check the character right before the insert position
+    // If it's a newline, we're at a line boundary (start of a new line)
+    try {
+      final charBefore = document.getPlainText(insertPosition - 1, 1);
+      if (charBefore == '\n') {
+        // We're at the start of a line, keep the trailing newline
+        return pasteDelta;
+      }
+    } catch (e) {
+      // If we can't determine position, play it safe and don't strip
+      return pasteDelta;
+    }
+
+    // Also check if we're at the end of the document's content
+    // (right before the final mandatory newline)
+    final docLength = document.length;
+    // Account for deleted content when checking position
+    final effectivePosition = insertPosition + deleteLength;
+    if (effectivePosition >= docLength - 1) {
+      // We're at the end of the document, keep the trailing newline
+      return pasteDelta;
+    }
+
+    // We're pasting inline - strip the trailing newline
+    final newDelta = Delta();
+    for (var i = 0; i < ops.length - 1; i++) {
+      newDelta.push(ops[i]);
+    }
+
+    // Handle the last operation - strip the trailing newline
+    if (lastText == '\n') {
+      // The entire last operation is just the newline, skip it entirely
+      // (nothing to add)
+    } else {
+      // Remove just the trailing newline from the text
+      final strippedText = lastText.substring(0, lastText.length - 1);
+      if (strippedText.isNotEmpty) {
+        newDelta.insert(strippedText, lastOp.attributes);
+      }
+    }
+
+    return newDelta;
   }
 
   @override
