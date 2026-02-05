@@ -1816,11 +1816,15 @@ class RawEditorState extends EditorState
   ///
   /// This is called during long press gestures to provide visual feedback
   /// for precise cursor positioning.
+  @override
   void showMagnifier(Offset positionToShow) {
-    _selectionOverlay?.showMagnifier(positionToShow);
+    // Ensure selection overlay exists before showing magnifier
+    _ensureSelectionOverlay();
+    _selectionOverlay!.showMagnifier(positionToShow);
   }
 
   /// Hides the magnifier if it's currently visible.
+  @override
   void hideMagnifier() {
     _selectionOverlay?.hideMagnifier();
   }
