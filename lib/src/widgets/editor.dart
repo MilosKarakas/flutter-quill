@@ -677,6 +677,10 @@ class QuillEditorState extends State<QuillEditor>
       selectionColor = selectionTheme.selectionColor ??
           theme.colorScheme.primary.withOpacity(0.40);
     }
+    if (isMobileWeb()) {
+      // Native web selection UI is used on mobile web. Hide Flutter's paint.
+      selectionColor = Colors.transparent;
+    }
 
     final showSelectionToolbar =
         widget.enableInteractiveSelection && widget.enableSelectionToolbar;
