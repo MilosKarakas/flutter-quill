@@ -195,7 +195,6 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   JSFunction? _tabKeyHandlerJs;
   JSFunction? _linkClickHandlerJs;
   JSFunction? _scrollBoundaryHandlerJs;
-  JSFunction? _windowScrollFixJs;
   JSFunction? _editorFocusFixJs;
   JSFunction? _editorBlurFixJs;
 
@@ -262,9 +261,6 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     }
 
     // Remove scroll / viewport fix listeners
-    if (_windowScrollFixJs != null) {
-      web.window.removeEventListener('scroll', _windowScrollFixJs);
-    }
     final qlEditor =
         _editorDiv.querySelector('.ql-editor') as web.HTMLElement?;
     final target = qlEditor ?? _editorDiv;
@@ -274,6 +270,11 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     if (_editorBlurFixJs != null) {
       target.removeEventListener('blur', _editorBlurFixJs, true.toJS);
     }
+    // Restore overflow in case the editor is disposed while focused.
+    (web.document.documentElement as web.HTMLElement?)
+        ?.style.setProperty('overflow', _savedHtmlOverflow ?? '');
+    web.document.body?.style
+        .setProperty('overflow', _savedBodyOverflow ?? '');
 
     // Remove injected selection style
     if (_selectionStyleId != null) {
@@ -413,6 +414,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // Scroll & viewport fixes for PlatformView on mobile web
   // ------------------------------------------------------------------
 
+  // Saved original overflow values so we can restore them on blur.
+  String? _savedHtmlOverflow;
+  String? _savedBodyOverflow;
+
   /// Sets up mitigations for PlatformView scroll / viewport issues:
   ///
   /// 1. **Scroll containment** – `overscroll-behavior: contain` prevents
@@ -427,11 +432,12 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   ///    propagate to the Flutter scroll view when the editor is at its scroll
   ///    boundary (top / bottom).
   ///
-  /// 4. **Window-scroll prevention** – while the editor is focused, any
-  ///    browser-initiated page scroll (e.g. mobile Safari scrolling the page
-  ///    to keep a focused contenteditable visible, or the keyboard pushing the
-  ///    viewport) is immediately reset to (0, 0). This keeps the Flutter
-  ///    layout in charge of positioning.
+  /// 4. **Page-scroll lock while focused** – on focus, `<html>` and `<body>`
+  ///    get `overflow: hidden` to prevent the browser from scrolling the page
+  ///    when the keyboard opens (which would move the app bar off-screen).
+  ///    On blur the original overflow is restored. This does NOT interfere
+  ///    with Flutter's `viewInsets` / visual-viewport detection, so the
+  ///    Scaffold can still resize to avoid the keyboard.
   void _setupScrollAndViewportFixes() {
     // --- CSS containment ---
     _containerDiv.style.setProperty('overscroll-behavior', 'contain');
@@ -452,27 +458,30 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     }).toJS;
     _containerDiv.addEventListener('wheel', _scrollBoundaryHandlerJs);
 
-    // --- Window-scroll prevention while focused ---
-    _windowScrollFixJs = ((web.Event _) {
-      // Always reset to origin so the browser can't shift the page.
-      web.window.scrollTo(0.toJS, 0);
-      if (web.document.documentElement case final html?) {
-        html.scrollTop = 0;
-        html.scrollLeft = 0;
-      }
-      web.document.body?.scrollTop = 0;
-      web.document.body?.scrollLeft = 0;
-    }).toJS;
-
-    // Activate the window-scroll fix on editor focus, deactivate on blur.
+    // --- Page-scroll lock via overflow: hidden ---
     _editorFocusFixJs = ((web.Event _) {
-      web.window.addEventListener('scroll', _windowScrollFixJs);
-      // Also immediately reset in case the focus event already scrolled.
-      web.window.scrollTo(0.toJS, 0);
+      final html =
+          web.document.documentElement as web.HTMLElement?;
+      final body = web.document.body;
+      // Save current overflow values so we can restore them later.
+      _savedHtmlOverflow =
+          html?.style.getPropertyValue('overflow') ?? '';
+      _savedBodyOverflow =
+          body?.style.getPropertyValue('overflow') ?? '';
+      html?.style.setProperty('overflow', 'hidden');
+      body?.style.setProperty('overflow', 'hidden');
+      // Reset any scroll the browser may have already applied.
+      html?.scrollTop = 0;
+      body?.scrollTop = 0;
     }).toJS;
 
     _editorBlurFixJs = ((web.Event _) {
-      web.window.removeEventListener('scroll', _windowScrollFixJs);
+      // Restore original overflow.
+      final html =
+          web.document.documentElement as web.HTMLElement?;
+      html?.style.setProperty('overflow', _savedHtmlOverflow ?? '');
+      web.document.body?.style
+          .setProperty('overflow', _savedBodyOverflow ?? '');
     }).toJS;
 
     // The Quill.js `.ql-editor` contenteditable is inside _editorDiv.
