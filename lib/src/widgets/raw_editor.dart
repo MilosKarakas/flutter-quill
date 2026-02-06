@@ -414,7 +414,6 @@ class RawEditorState extends EditorState
 
   // Web paste event handling
   WebClipboardListener? _webClipboardListener;
-  WebNativeSelectionSuppressor? _webNativeSelectionSuppressor;
 
   /// Queue of captured web paste events, ordered oldest to newest.
   /// Using a queue allows handling rapid successive pastes correctly.
@@ -590,11 +589,6 @@ class RawEditorState extends EditorState
   }
 
   void _defaultOnTapOutside(PointerDownEvent event) {
-    if (isMobileWeb()) {
-      // On mobile web, keep focus pinned to avoid keyboard flicker during
-      // selection, toolbar, and overlay interactions.
-      return;
-    }
     /// The focus dropping behavior is only present on desktop platforms
     /// and mobile browsers.
     switch (defaultTargetPlatform) {
@@ -1387,12 +1381,6 @@ class RawEditorState extends EditorState
     // Set up web copy listener to write HTML to clipboard
     _setupWebCopyListener();
 
-    // Suppress native selection UI on mobile web to avoid conflicts
-    if (kIsWeb && isMobileWeb()) {
-      _webNativeSelectionSuppressor = WebNativeSelectionSuppressor(
-        shouldSuppress: () => _hasFocus || _isLongPressInProgress,
-      )..startListening();
-    }
   }
 
   /// Sets up the web clipboard listener to capture HTML during paste events.
@@ -1594,6 +1582,9 @@ class RawEditorState extends EditorState
   }
 
   bool _shouldShowSelectionHandles() {
+    if (isMobileWeb()) {
+      return false;
+    }
     return widget.showSelectionHandles && !controller.selection.isCollapsed;
   }
 
@@ -1604,8 +1595,6 @@ class RawEditorState extends EditorState
     if (!kIsWeb) {
       HardwareKeyboard.instance.removeHandler(_hardwareKeyboardEvent);
     }
-    _webNativeSelectionSuppressor?.dispose();
-    _webNativeSelectionSuppressor = null;
     // Clean up web paste listener
     _webClipboardListener?.dispose();
     _webClipboardListener = null;
@@ -1911,7 +1900,7 @@ class RawEditorState extends EditorState
     // toolbar: copy, paste, select, cut. It might also provide additional
     // functionality depending on the browser (such as translate). Due to this
     // we should not show a Flutter toolbar for the editable text elements.
-    if (kIsWeb && !isMobileWeb()) {
+    if (kIsWeb) {
       return false;
     }
 

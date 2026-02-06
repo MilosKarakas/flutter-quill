@@ -102,6 +102,9 @@ class EditorTextSelectionGestureDetectorBuilder {
   /// Shows the magnifier on supported platforms (iOS and Android, including mobile web).
   @protected
   void showMagnifierIfSupportedByPlatform(Offset positionToShow) {
+    if (isMobileWeb()) {
+      return;
+    }
     switch (defaultTargetPlatform) {
       case TargetPlatform.iOS:
       case TargetPlatform.android:
@@ -119,6 +122,9 @@ class EditorTextSelectionGestureDetectorBuilder {
   /// Hides the magnifier on supported platforms (iOS and Android, including mobile web).
   @protected
   void hideMagnifierIfSupportedByPlatform() {
+    if (isMobileWeb()) {
+      return;
+    }
     switch (defaultTargetPlatform) {
       case TargetPlatform.iOS:
       case TargetPlatform.android:
@@ -333,7 +339,7 @@ class EditorTextSelectionGestureDetectorBuilder {
 
     // On mobile platforms, reopen keyboard first so toolbar is positioned correctly
     // The keyboard changes the viewport size, so we need it open before calculating toolbar position
-    if (isMobileWeb() || isMobile()) {
+    if (isMobile()) {
       editor!.requestKeyboard();
 
       final editorState = editor;
@@ -351,6 +357,11 @@ class EditorTextSelectionGestureDetectorBuilder {
         }
         editorState?.selectionOverlay?.update(editorState.textEditingValue);
       });
+    } else if (isMobileWeb()) {
+      final editorState = editor;
+      if (editorState is RawEditorState && editorState.mounted) {
+        editorState.setLongPressInProgress(false);
+      }
     } else {
       // On desktop, show toolbar immediately after selection updates
       final editorState = editor;
