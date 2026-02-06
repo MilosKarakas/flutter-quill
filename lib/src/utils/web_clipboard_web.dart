@@ -18,14 +18,20 @@ class WebNativeSelectionSuppressor {
   final bool Function() _shouldSuppress;
   web.EventListener? _contextMenuListener;
   web.EventListener? _selectStartListener;
+  web.EventListener? _pointerDownListener;
+  web.EventListener? _selectionChangeListener;
 
   /// Start listening to selection-related events on the document.
   void startListening() {
     stopListening();
     _contextMenuListener = _handleEvent.toJS;
     _selectStartListener = _handleEvent.toJS;
+    _pointerDownListener = _handlePointerDown.toJS;
+    _selectionChangeListener = _handleSelectionChange.toJS;
     web.document.addEventListener('contextmenu', _contextMenuListener);
     web.document.addEventListener('selectstart', _selectStartListener);
+    web.document.addEventListener('pointerdown', _pointerDownListener);
+    web.document.addEventListener('selectionchange', _selectionChangeListener);
   }
 
   /// Stop listening to selection-related events.
@@ -38,6 +44,15 @@ class WebNativeSelectionSuppressor {
       web.document.removeEventListener('selectstart', _selectStartListener);
       _selectStartListener = null;
     }
+    if (_pointerDownListener != null) {
+      web.document.removeEventListener('pointerdown', _pointerDownListener);
+      _pointerDownListener = null;
+    }
+    if (_selectionChangeListener != null) {
+      web.document
+          .removeEventListener('selectionchange', _selectionChangeListener);
+      _selectionChangeListener = null;
+    }
   }
 
   /// Dispose resources.
@@ -49,27 +64,24 @@ class WebNativeSelectionSuppressor {
     if (!_shouldSuppress()) {
       return;
     }
-    if (!_isFlutterTextEditingElement(web.document.activeElement)) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  void _handlePointerDown(web.Event event) {
+    if (!_shouldSuppress()) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
   }
 
-  bool _isFlutterTextEditingElement(web.Element? element) {
-    if (element == null) return false;
-    if (element is! web.HTMLElement) return false;
-
-    if (element.getAttribute('data-flt-text-editing') != null) {
-      return true;
+  void _handleSelectionChange(web.Event event) {
+    if (!_shouldSuppress()) {
+      return;
     }
-
-    // Fallback for older Flutter web builds.
-    if (element.classList.contains('flt-text-editing')) {
-      return true;
-    }
-
-    return false;
+    final selection = web.window.getSelection();
+    selection?.removeAllRanges();
   }
 }
 
