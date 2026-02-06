@@ -176,28 +176,35 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
     assert(controller != null || quillJsController != null,
         'Either controller or quillJsController must be provided');
 
+    // Whether the classic QuillController is available — buttons that only
+    // work with QuillController are hidden when it is null.
+    final hasClassic = controller != null;
+
     final isButtonGroupShown = [
-      showFontFamily ||
-          showFontSize ||
+      (showFontFamily && hasClassic) ||
+          (showFontSize && hasClassic) ||
           showBoldButton ||
           showItalicButton ||
-          showSmallButton ||
+          (showSmallButton && hasClassic) ||
           showUnderLineButton ||
-          showStrikeThrough ||
-          showInlineCode ||
-          showColorButton ||
-          showBackgroundColorButton ||
-          showClearFormat ||
-          embedButtons?.isNotEmpty == true,
-      showLeftAlignment ||
-          showCenterAlignment ||
-          showRightAlignment ||
-          showJustifyAlignment ||
-          showDirection,
-      showLink || showSearchButton,
-      showHeaderStyle,
-      showListNumbers || showListBullets || showListCheck || showCodeBlock,
-      showQuote || showIndent
+          (showStrikeThrough && hasClassic) ||
+          (showInlineCode && hasClassic) ||
+          (showColorButton && hasClassic) ||
+          (showBackgroundColorButton && hasClassic) ||
+          (showClearFormat && hasClassic) ||
+          (embedButtons?.isNotEmpty == true && hasClassic),
+      (showLeftAlignment && hasClassic) ||
+          (showCenterAlignment && hasClassic) ||
+          (showRightAlignment && hasClassic) ||
+          (showJustifyAlignment && hasClassic) ||
+          (showDirection && hasClassic),
+      showLink || (showSearchButton && hasClassic),
+      showHeaderStyle && hasClassic,
+      showListNumbers ||
+          showListBullets ||
+          (showListCheck && hasClassic) ||
+          (showCodeBlock && hasClassic),
+      (showQuote && hasClassic) || (showIndent && hasClassic)
     ];
 
     //default font size values
