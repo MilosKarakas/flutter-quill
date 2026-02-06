@@ -52,9 +52,8 @@ class WebNativeSelectionSuppressor {
     if (!_isFlutterTextEditingElement(web.document.activeElement)) {
       return;
     }
-    event
-      ..preventDefault
-      ..stopPropagation();
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   bool _isFlutterTextEditingElement(web.Element? element) {
