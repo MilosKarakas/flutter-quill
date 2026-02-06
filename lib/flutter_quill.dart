@@ -31,3 +31,8 @@ export 'src/widgets/link.dart' show LinkActionPickerDelegate, LinkMenuAction;
 export 'src/widgets/style_widgets/style_widgets.dart';
 export 'src/widgets/toolbar.dart';
 export 'src/widgets/toolbar/enum.dart';
+
+// Quill.js-based web editor (PlatformView approach)
+export 'src/widgets/quill_js/quill_js_configurations.dart';
+export 'src/widgets/quill_js/quill_js_editor.dart';
+export 'src/widgets/quill_js/quill_js_toolbar.dart';
