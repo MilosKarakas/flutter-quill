@@ -12,11 +12,13 @@ import 'quill_js_configurations.dart';
 class QuillJsEditorView extends StatelessWidget {
   final QuillJsEditorConfiguration configuration;
   final QuillJsEditorController controller;
+  final FocusNode? focusNode;
 
   const QuillJsEditorView({
     super.key,
     required this.configuration,
     required this.controller,
+    this.focusNode,
   });
 
   @override

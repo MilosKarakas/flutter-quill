@@ -50,6 +50,7 @@ extension type _QuillJsInstance._(JSObject _) implements JSObject {
   external void deleteText(int index, int length);
   external void insertText(int index, String text,
       [JSAny? formatName, JSAny? formatValue]);
+  external void setSelection(int index, int length);
 }
 
 @JS('JSON.stringify')
@@ -144,10 +145,17 @@ class QuillJsEditorView extends StatefulWidget {
   final QuillJsEditorConfiguration configuration;
   final QuillJsEditorController controller;
 
+  /// Optional [FocusNode] for two-way focus bridging between Flutter and the
+  /// HTML editor. When provided:
+  /// - Gaining focus on the [focusNode] will focus the JS editor.
+  /// - Clicking into the JS editor will request focus on the [focusNode].
+  final FocusNode? focusNode;
+
   const QuillJsEditorView({
     super.key,
     required this.configuration,
     required this.controller,
+    this.focusNode,
   });
 
   @override
@@ -169,6 +177,9 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // Event listener references for cleanup
   JSFunction? _tabKeyHandlerJs;
   JSFunction? _linkClickHandlerJs;
+
+  // Focus bridging state
+  bool _isSyncingFocus = false;
 
   // ------------------------------------------------------------------
   // Lifecycle
@@ -212,6 +223,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
   @override
   void dispose() {
+    _teardownFocusBridge();
     _detachController();
 
     // Remove DOM event listeners
@@ -293,6 +305,51 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     }
 
     _attachController();
+    _setupFocusBridge();
+  }
+
+  // ------------------------------------------------------------------
+  // Focus bridging (Flutter FocusNode <-> JS editor focus)
+  // ------------------------------------------------------------------
+
+  void _setupFocusBridge() {
+    widget.focusNode?.addListener(_onFlutterFocusChanged);
+  }
+
+  void _teardownFocusBridge() {
+    widget.focusNode?.removeListener(_onFlutterFocusChanged);
+  }
+
+  /// Flutter FocusNode changed → sync to JS editor.
+  void _onFlutterFocusChanged() {
+    if (_isSyncingFocus || _quill == null) return;
+    _isSyncingFocus = true;
+    try {
+      final node = widget.focusNode!;
+      if (node.hasFocus) {
+        _quill!.focus();
+      } else {
+        _quill!.blur();
+      }
+    } finally {
+      _isSyncingFocus = false;
+    }
+  }
+
+  /// JS editor focus changed → sync to Flutter FocusNode.
+  void _onJsFocusChanged({required bool hasFocus}) {
+    final node = widget.focusNode;
+    if (node == null || _isSyncingFocus) return;
+    _isSyncingFocus = true;
+    try {
+      if (hasFocus && !node.hasFocus) {
+        node.requestFocus();
+      } else if (!hasFocus && node.hasFocus) {
+        node.unfocus();
+      }
+    } finally {
+      _isSyncingFocus = false;
+    }
   }
 
   // ------------------------------------------------------------------
@@ -326,7 +383,14 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   }
 
   void _onSelectionChanged(JSObject? range) {
-    if (range == null) return;
+    // range == null means the editor lost focus
+    if (range == null) {
+      _onJsFocusChanged(hasFocus: false);
+      return;
+    }
+
+    // range != null means the editor has focus
+    _onJsFocusChanged(hasFocus: true);
 
     final format = _getFormat();
     final state = QuillJsFormatState(
@@ -515,6 +579,14 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       getContents: () => _getContentsDelta(),
       setContents: (Delta delta) {
         _quill!.setContents(_deltaToJs(delta));
+      },
+      scrollToEnd: () {
+        final length = _quill!.getLength();
+        if (length > 0) {
+          _quill!.setSelection(length - 1, 0);
+        }
+        // Scroll the HTML container to the bottom
+        _containerDiv.scrollTop = _containerDiv.scrollHeight;
       },
       focus: () => _quill!.focus(),
       blur: () => _quill!.blur(),

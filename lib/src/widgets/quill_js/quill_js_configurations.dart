@@ -169,6 +169,10 @@ class QuillJsEditorController extends ChangeNotifier {
   /// Sets the editor content from a [Delta].
   set contents(Delta delta) => _callbacks?.setContents(delta);
 
+  /// Scrolls the editor to the end of its content and places the cursor
+  /// at the very end. Useful after setting initial content.
+  void scrollToEnd() => _callbacks?.scrollToEnd.call();
+
   /// Focuses the editor.
   void focus() => _callbacks?.focus.call();
 
@@ -197,6 +201,7 @@ class QuillJsEditorController extends ChangeNotifier {
     required VoidCallback requestLink,
     required Delta Function() getContents,
     required void Function(Delta) setContents,
+    required VoidCallback scrollToEnd,
     required VoidCallback focus,
     required VoidCallback blur,
   }) {
@@ -209,6 +214,7 @@ class QuillJsEditorController extends ChangeNotifier {
       requestLink: requestLink,
       getContents: getContents,
       setContents: setContents,
+      scrollToEnd: scrollToEnd,
       focus: focus,
       blur: blur,
     );
@@ -236,6 +242,7 @@ class _EditorCallbacks {
   final VoidCallback requestLink;
   final Delta Function() getContents;
   final void Function(Delta) setContents;
+  final VoidCallback scrollToEnd;
   final VoidCallback focus;
   final VoidCallback blur;
 
@@ -248,6 +255,7 @@ class _EditorCallbacks {
     required this.requestLink,
     required this.getContents,
     required this.setContents,
+    required this.scrollToEnd,
     required this.focus,
     required this.blur,
   });
