@@ -197,12 +197,16 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   JSFunction? _scrollBoundaryHandlerJs;
   JSFunction? _editorFocusFixJs;
   JSFunction? _editorBlurFixJs;
+  JSFunction? _viewportResizeHandlerJs;
 
   // Injected <style> element ID for ::selection styling (cleaned up on dispose)
   String? _selectionStyleId;
 
   // Focus bridging state
   bool _isSyncingFocus = false;
+
+  // The full viewport height (no keyboard). Captured once at init.
+  double _fullViewportHeight = 0;
 
   // ------------------------------------------------------------------
   // Lifecycle
@@ -275,6 +279,14 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
         ?.style.setProperty('overflow', _savedHtmlOverflow ?? '');
     web.document.body?.style
         .setProperty('overflow', _savedBodyOverflow ?? '');
+
+    // Remove Visual Viewport listener
+    if (_viewportResizeHandlerJs != null) {
+      web.window.visualViewport
+          ?.removeEventListener('resize', _viewportResizeHandlerJs);
+    }
+    // Reset keyboard height so consumers don't keep stale padding.
+    widget.controller.keyboardHeight.value = 0;
 
     // Remove injected selection style
     if (_selectionStyleId != null) {
@@ -435,9 +447,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   /// 4. **Page-scroll lock while focused** – on focus, `<html>` and `<body>`
   ///    get `overflow: hidden` to prevent the browser from scrolling the page
   ///    when the keyboard opens (which would move the app bar off-screen).
-  ///    On blur the original overflow is restored. This does NOT interfere
-  ///    with Flutter's `viewInsets` / visual-viewport detection, so the
-  ///    Scaffold can still resize to avoid the keyboard.
+  ///    On blur the original overflow is restored.
+  ///
+  /// 5. **Visual Viewport keyboard detection** – listens to the browser's
+  ///    `visualViewport.onresize` to detect the virtual keyboard height
+  ///    (since `MediaQuery.viewInsets.bottom` is always 0 on Flutter Web).
+  ///    The detected height is written to
+  ///    `widget.controller.keyboardHeight` so the host layout can react.
   void _setupScrollAndViewportFixes() {
     // --- CSS containment ---
     _containerDiv.style.setProperty('overscroll-behavior', 'contain');
@@ -490,6 +506,26 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     final target = qlEditor ?? _editorDiv;
     target.addEventListener('focus', _editorFocusFixJs, true.toJS);
     target.addEventListener('blur', _editorBlurFixJs, true.toJS);
+
+    // --- Visual Viewport keyboard height detection ---
+    // On mobile web, MediaQuery.viewInsets.bottom is always 0.
+    // The Visual Viewport API reports the actual visible area; when the
+    // keyboard opens, visualViewport.height shrinks while
+    // window.innerHeight stays the same.  The difference is the
+    // keyboard height.
+    _fullViewportHeight = web.window.innerHeight.toDouble();
+    final vv = web.window.visualViewport;
+    if (vv != null) {
+      _viewportResizeHandlerJs = ((web.Event _) {
+        final currentHeight = vv.height;
+        final kb = _fullViewportHeight - currentHeight;
+        // Ignore small differences (< 50px) caused by browser chrome
+        // toggling (e.g. address bar hide/show).
+        final keyboardHeight = kb > 50 ? kb : 0.0;
+        widget.controller.keyboardHeight.value = keyboardHeight;
+      }).toJS;
+      vv.addEventListener('resize', _viewportResizeHandlerJs);
+    }
   }
 
   // ------------------------------------------------------------------

@@ -196,6 +196,30 @@ class QuillJsEditorController extends ChangeNotifier {
   /// Whether the editor view has been mounted and the JS interop is active.
   bool get isAttached => _callbacks != null;
 
+  /// The current virtual-keyboard height in logical pixels.
+  ///
+  /// On mobile web, `MediaQuery.viewInsets.bottom` is always **zero** — it
+  /// does not reflect the on-screen keyboard.  The editor view works around
+  /// this by listening to the browser's Visual Viewport API and updating this
+  /// notifier whenever the keyboard opens or closes.
+  ///
+  /// Use this in your layout to add bottom padding or shrink the available
+  /// height exactly like you would with `viewInsets.bottom` on native:
+  ///
+  /// ```dart
+  /// ValueListenableBuilder<double>(
+  ///   valueListenable: controller.keyboardHeight,
+  ///   builder: (_, kbHeight, child) {
+  ///     return Padding(
+  ///       padding: EdgeInsets.only(bottom: kbHeight),
+  ///       child: child,
+  ///     );
+  ///   },
+  ///   child: /* ... */,
+  /// )
+  /// ```
+  final ValueNotifier<double> keyboardHeight = ValueNotifier<double>(0);
+
   // -- Internal callback set, wired by the editor view --
   _EditorCallbacks? _callbacks;
 
@@ -287,6 +311,7 @@ class QuillJsEditorController extends ChangeNotifier {
   @override
   void dispose() {
     detach();
+    keyboardHeight.dispose();
     super.dispose();
   }
 }
