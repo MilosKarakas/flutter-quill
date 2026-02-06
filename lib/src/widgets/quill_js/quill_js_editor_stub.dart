@@ -13,12 +13,16 @@ class QuillJsEditorView extends StatelessWidget {
   final QuillJsEditorConfiguration configuration;
   final QuillJsEditorController controller;
   final FocusNode? focusNode;
+  final bool autoFocus;
+  final Widget? loadingBuilder;
 
   const QuillJsEditorView({
     super.key,
     required this.configuration,
     required this.controller,
     this.focusNode,
+    this.autoFocus = false,
+    this.loadingBuilder,
   });
 
   @override

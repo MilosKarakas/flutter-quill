@@ -158,11 +158,21 @@ class QuillJsEditorView extends StatefulWidget {
   /// - Clicking into the JS editor will request focus on the [focusNode].
   final FocusNode? focusNode;
 
+  /// Whether to automatically focus the editor once Quill.js is loaded and
+  /// ready. Defaults to `false`.
+  final bool autoFocus;
+
+  /// Optional widget to display while Quill.js is loading. When null, the
+  /// area is left empty (transparent) during loading.
+  final Widget? loadingBuilder;
+
   const QuillJsEditorView({
     super.key,
     required this.configuration,
     required this.controller,
     this.focusNode,
+    this.autoFocus = false,
+    this.loadingBuilder,
   });
 
   @override
@@ -276,6 +286,15 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       _setupQuill();
 
       setState(() => _loadState = _LoadState.ready);
+
+      // Auto-focus after the build pass so the HtmlElementView is visible.
+      if (widget.autoFocus) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _quill == null) return;
+          _quill!.focus();
+          _onJsFocusChanged(hasFocus: true);
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -858,13 +877,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     return Stack(
       children: [
         HtmlElementView(viewType: _viewType),
-        if (_loadState == _LoadState.loading)
-          const Positioned.fill(
-            child: ColoredBox(
-              color: Colors.white,
-              child: Center(child: CircularProgressIndicator.adaptive()),
-            ),
-          ),
+        if (_loadState == _LoadState.loading && widget.loadingBuilder != null)
+          Positioned.fill(child: widget.loadingBuilder!),
         if (_loadState == _LoadState.error)
           Positioned.fill(
             child: ColoredBox(
