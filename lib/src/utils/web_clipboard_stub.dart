@@ -3,6 +3,27 @@
 
 import '../models/structs/copy_data.dart';
 
+/// Stub implementation for native selection suppression on non-web platforms.
+class WebNativeSelectionSuppressor {
+  // ignore: avoid_unused_constructor_parameters
+  WebNativeSelectionSuppressor({required bool Function() shouldSuppress});
+
+  /// Start listening - no-op on non-web platforms
+  void startListening() {
+    // No-op on non-web platforms
+  }
+
+  /// Stop listening - no-op on non-web platforms
+  void stopListening() {
+    // No-op on non-web platforms
+  }
+
+  /// Dispose resources - no-op on non-web platforms
+  void dispose() {
+    // No-op on non-web platforms
+  }
+}
+
 /// Data captured from a web paste event
 class WebPasteEventData {
   const WebPasteEventData({

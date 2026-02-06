@@ -7,6 +7,73 @@ import 'package:web/web.dart' as web;
 
 import '../models/structs/copy_data.dart';
 
+/// Suppresses native text selection and context menu on web.
+///
+/// Intended for mobile web to prevent the browser's native selection UI
+/// from interfering with the editor's custom selection controls.
+class WebNativeSelectionSuppressor {
+  WebNativeSelectionSuppressor({required bool Function() shouldSuppress})
+      : _shouldSuppress = shouldSuppress;
+
+  final bool Function() _shouldSuppress;
+  web.EventListener? _contextMenuListener;
+  web.EventListener? _selectStartListener;
+
+  /// Start listening to selection-related events on the document.
+  void startListening() {
+    stopListening();
+    _contextMenuListener = _handleEvent.toJS;
+    _selectStartListener = _handleEvent.toJS;
+    web.document.addEventListener('contextmenu', _contextMenuListener);
+    web.document.addEventListener('selectstart', _selectStartListener);
+  }
+
+  /// Stop listening to selection-related events.
+  void stopListening() {
+    if (_contextMenuListener != null) {
+      web.document.removeEventListener('contextmenu', _contextMenuListener);
+      _contextMenuListener = null;
+    }
+    if (_selectStartListener != null) {
+      web.document.removeEventListener('selectstart', _selectStartListener);
+      _selectStartListener = null;
+    }
+  }
+
+  /// Dispose resources.
+  void dispose() {
+    stopListening();
+  }
+
+  void _handleEvent(web.Event event) {
+    if (!_shouldSuppress()) {
+      return;
+    }
+    if (!_isFlutterTextEditingElement(web.document.activeElement)) {
+      return;
+    }
+    event
+      ..preventDefault
+      ..stopPropagation();
+  }
+
+  bool _isFlutterTextEditingElement(web.Element? element) {
+    if (element == null) return false;
+    if (element is! web.HTMLElement) return false;
+
+    if (element.getAttribute('data-flt-text-editing') != null) {
+      return true;
+    }
+
+    // Fallback for older Flutter web builds.
+    if (element.classList.contains('flt-text-editing')) {
+      return true;
+    }
+
+    return false;
+  }
+}
+
 /// Data captured from a web paste event
 class WebPasteEventData {
   const WebPasteEventData({
