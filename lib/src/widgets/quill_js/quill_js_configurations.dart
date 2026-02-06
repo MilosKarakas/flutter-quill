@@ -61,6 +61,12 @@ class QuillJsEditorStyle {
   /// ignores it and uses the system tint color instead.
   final Color? selectionHandleColor;
 
+  /// Color of the placeholder text shown when the editor is empty.
+  final Color? placeholderColor;
+
+  /// Color of hyperlinks in the editor content.
+  final Color? linkColor;
+
   const QuillJsEditorStyle({
     this.fontFamily,
     this.fontSize,
@@ -70,6 +76,8 @@ class QuillJsEditorStyle {
     this.caretColor,
     this.selectionColor,
     this.selectionHandleColor,
+    this.placeholderColor,
+    this.linkColor,
   });
 }
 

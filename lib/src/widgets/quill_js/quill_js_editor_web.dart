@@ -406,29 +406,49 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       css.setProperty('accent-color', _colorToCss(style.selectionHandleColor!));
     }
 
-    // ::selection requires a <style> tag — can't be set via inline styles.
-    if (style.selectionColor != null) {
-      _injectSelectionStyle(style.selectionColor!);
-    }
+    // Pseudo-element styles (::selection, ::before, links) require a <style>
+    // tag — they can't be set via inline styles.
+    _injectPseudoStyles(style);
   }
 
-  /// Injects a `<style>` element for `::selection` background color, scoped
-  /// to this editor instance via a unique class on `_editorDiv`.
-  void _injectSelectionStyle(Color color) {
+  /// Injects a scoped `<style>` element for pseudo-element rules (selection
+  /// highlight, placeholder text, link color), uniquely scoped via a class
+  /// on `_editorDiv`.
+  void _injectPseudoStyles(QuillJsEditorStyle style) {
+    if (style.selectionColor == null &&
+        style.placeholderColor == null &&
+        style.linkColor == null) {
+      return;
+    }
+
     final className = _viewType; // already unique per instance
     _editorDiv.classList.add(className);
 
     final id = 'sel-style-$_viewType';
     _selectionStyleId = id;
 
-    final cssColor = _colorToCss(color);
+    final buf = StringBuffer();
+
+    if (style.selectionColor != null) {
+      final c = _colorToCss(style.selectionColor!);
+      buf.writeln('.$className .ql-editor::selection { background-color: $c; }');
+      buf.writeln('.$className .ql-editor *::selection { background-color: $c; }');
+    }
+
+    if (style.placeholderColor != null) {
+      final c = _colorToCss(style.placeholderColor!);
+      buf.writeln('.$className .ql-editor.ql-blank::before { color: $c !important; }');
+    }
+
+    if (style.linkColor != null) {
+      final c = _colorToCss(style.linkColor!);
+      buf.writeln('.$className .ql-editor a { color: $c !important; }');
+    }
+
     final styleEl =
         web.document.createElement('style') as web.HTMLStyleElement;
     styleEl.id = id;
-    styleEl.textContent = '''
-.$className .ql-editor::selection { background-color: $cssColor; }
-.$className .ql-editor *::selection { background-color: $cssColor; }
-''';
+    styleEl.textContent = buf.toString();
     web.document.head?.append(styleEl);
   }
 
@@ -499,7 +519,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
           event.stopPropagation();
 
           final anchor = target as web.HTMLAnchorElement;
-          final href = anchor.href;
+          // Use getAttribute to get the raw href as stored by Quill.js,
+          // NOT anchor.href which resolves relative to the page origin
+          // (e.g. "example.com" → "http://localhost:8080/example.com").
+          final href = anchor.getAttribute('href') ?? anchor.href;
           final text = anchor.textContent ?? '';
 
           _handleLinkTapped(href, text);
