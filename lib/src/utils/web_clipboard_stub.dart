@@ -3,6 +3,29 @@
 
 import '../models/structs/copy_data.dart';
 
+/// Stub implementation for text editing style injection on non-web platforms.
+class WebTextEditingStyleInjector {
+  // ignore: avoid_unused_constructor_parameters
+  static void apply({
+    String? fontFamily,
+    double? fontSizePx,
+    double? lineHeight,
+    String? fontWeight,
+    String? fontStyle,
+    double? letterSpacingPx,
+    double? paddingTopPx,
+    double? paddingRightPx,
+    double? paddingBottomPx,
+    double? paddingLeftPx,
+  }) {
+    // No-op on non-web platforms
+  }
+
+  static void clear() {
+    // No-op on non-web platforms
+  }
+}
+
 /// Stub implementation for native selection suppression on non-web platforms.
 class WebNativeSelectionSuppressor {
   // ignore: avoid_unused_constructor_parameters

@@ -7,6 +7,79 @@ import 'package:web/web.dart' as web;
 
 import '../models/structs/copy_data.dart';
 
+/// Injects CSS to align Flutter's hidden textarea styles with editor styles.
+class WebTextEditingStyleInjector {
+  static const String _styleElementId = 'flutter-quill-text-editing-style';
+
+  static void apply({
+    String? fontFamily,
+    double? fontSizePx,
+    double? lineHeight,
+    String? fontWeight,
+    String? fontStyle,
+    double? letterSpacingPx,
+    double? paddingTopPx,
+    double? paddingRightPx,
+    double? paddingBottomPx,
+    double? paddingLeftPx,
+  }) {
+    final head = web.document.head;
+    if (head == null) {
+      return;
+    }
+
+    final cssBuffer = StringBuffer();
+    cssBuffer.write(
+        'flt-text-editing-host, flt-text-editing-host *, [data-flt-text-editing], .flt-text-editing {');
+    if (fontFamily != null && fontFamily.isNotEmpty) {
+      cssBuffer.write('font-family: ${_cssValue(fontFamily)};');
+    }
+    if (fontSizePx != null) {
+      cssBuffer.write('font-size: ${fontSizePx}px;');
+    }
+    if (lineHeight != null) {
+      cssBuffer.write('line-height: $lineHeight;');
+    }
+    if (fontWeight != null && fontWeight.isNotEmpty) {
+      cssBuffer.write('font-weight: $fontWeight;');
+    }
+    if (fontStyle != null && fontStyle.isNotEmpty) {
+      cssBuffer.write('font-style: $fontStyle;');
+    }
+    if (letterSpacingPx != null) {
+      cssBuffer.write('letter-spacing: ${letterSpacingPx}px;');
+    }
+    if (paddingTopPx != null &&
+        paddingRightPx != null &&
+        paddingBottomPx != null &&
+        paddingLeftPx != null) {
+      cssBuffer.write(
+          'padding: ${paddingTopPx}px ${paddingRightPx}px ${paddingBottomPx}px ${paddingLeftPx}px;');
+    }
+    cssBuffer.write('background: transparent;');
+    cssBuffer.write('}');
+
+    final existing = web.document.getElementById(_styleElementId);
+    final styleElement = existing is web.HTMLStyleElement
+        ? existing
+        : web.document.createElement('style') as web.HTMLStyleElement;
+    styleElement.id = _styleElementId;
+    styleElement.textContent = cssBuffer.toString();
+    if (existing == null) {
+      head.append(styleElement);
+    }
+  }
+
+  static void clear() {
+    final existing = web.document.getElementById(_styleElementId);
+    existing?.remove();
+  }
+
+  static String _cssValue(String value) {
+    return value.replaceAll('"', '\\"');
+  }
+}
+
 /// Suppresses native text selection and context menu on web.
 ///
 /// Intended for mobile web to prevent the browser's native selection UI

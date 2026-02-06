@@ -12,6 +12,7 @@ import '../../models/documents/document.dart';
 import '../../models/documents/nodes/leaf.dart';
 import '../../utils/delta.dart';
 import '../../utils/platform.dart';
+import '../../utils/web_clipboard.dart';
 import '../editor.dart';
 
 mixin RawEditorStateTextInputClientMixin on EditorState
@@ -243,7 +244,10 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     if (!kIsWeb || !hasConnection) return;
 
     final style = paragraphStyle;
-    if (style == null) return;
+    if (style == null) {
+      WebTextEditingStyleInjector.clear();
+      return;
+    }
 
     // Calculate adjusted font size to compensate for line height differences.
     // Flutter uses TextStyle.height as a multiplier for line height.
@@ -267,6 +271,24 @@ mixin RawEditorStateTextInputClientMixin on EditorState
       textDirection: textDirection,
       textAlign: TextAlign.left,
     );
+
+    if (isMobileWeb()) {
+      final resolvedPadding = widget.padding.resolve(textDirection);
+      WebTextEditingStyleInjector.apply(
+        fontFamily: style.fontFamily,
+        fontSizePx: adjustedFontSize,
+        lineHeight: style.height,
+        fontWeight: style.fontWeight?.value.toString(),
+        fontStyle: style.fontStyle == FontStyle.italic ? 'italic' : 'normal',
+        letterSpacingPx: style.letterSpacing,
+        paddingTopPx: resolvedPadding.top,
+        paddingRightPx: resolvedPadding.right,
+        paddingBottomPx: resolvedPadding.bottom,
+        paddingLeftPx: resolvedPadding.left,
+      );
+    } else {
+      WebTextEditingStyleInjector.clear();
+    }
   }
 
   /// Closes input connection if it's currently open. Otherwise does nothing.
