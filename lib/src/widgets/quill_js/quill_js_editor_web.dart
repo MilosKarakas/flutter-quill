@@ -194,6 +194,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // Event listener references for cleanup
   JSFunction? _tabKeyHandlerJs;
   JSFunction? _linkClickHandlerJs;
+  JSFunction? _scrollBoundaryHandlerJs;
+  JSFunction? _windowScrollFixJs;
+  JSFunction? _editorFocusFixJs;
+  JSFunction? _editorBlurFixJs;
 
   // Injected <style> element ID for ::selection styling (cleaned up on dispose)
   String? _selectionStyleId;
@@ -252,6 +256,23 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     }
     if (_linkClickHandlerJs != null) {
       _editorDiv.removeEventListener('click', _linkClickHandlerJs);
+    }
+    if (_scrollBoundaryHandlerJs != null) {
+      _containerDiv.removeEventListener('wheel', _scrollBoundaryHandlerJs);
+    }
+
+    // Remove scroll / viewport fix listeners
+    if (_windowScrollFixJs != null) {
+      web.window.removeEventListener('scroll', _windowScrollFixJs);
+    }
+    final qlEditor =
+        _editorDiv.querySelector('.ql-editor') as web.HTMLElement?;
+    final target = qlEditor ?? _editorDiv;
+    if (_editorFocusFixJs != null) {
+      target.removeEventListener('focus', _editorFocusFixJs, true.toJS);
+    }
+    if (_editorBlurFixJs != null) {
+      target.removeEventListener('blur', _editorBlurFixJs, true.toJS);
     }
 
     // Remove injected selection style
@@ -341,6 +362,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     _attachController();
     _setupFocusBridge();
     _applyEditorStyle();
+    _setupScrollAndViewportFixes();
   }
 
   // ------------------------------------------------------------------
@@ -385,6 +407,80 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     } finally {
       _isSyncingFocus = false;
     }
+  }
+
+  // ------------------------------------------------------------------
+  // Scroll & viewport fixes for PlatformView on mobile web
+  // ------------------------------------------------------------------
+
+  /// Sets up mitigations for PlatformView scroll / viewport issues:
+  ///
+  /// 1. **Scroll containment** – `overscroll-behavior: contain` prevents
+  ///    scroll-chaining from the editor's own scrollable area to the browser
+  ///    page, which otherwise moves the whole page on touch-drag.
+  ///
+  /// 2. **touch-action: none** – prevents the browser from interpreting touch
+  ///    gestures on the editor container as page-level pan/scroll. The Quill.js
+  ///    contenteditable still handles its own selection / scrolling internally.
+  ///
+  /// 3. **Wheel boundary passthrough** – on desktop, lets wheel events
+  ///    propagate to the Flutter scroll view when the editor is at its scroll
+  ///    boundary (top / bottom).
+  ///
+  /// 4. **Window-scroll prevention** – while the editor is focused, any
+  ///    browser-initiated page scroll (e.g. mobile Safari scrolling the page
+  ///    to keep a focused contenteditable visible, or the keyboard pushing the
+  ///    viewport) is immediately reset to (0, 0). This keeps the Flutter
+  ///    layout in charge of positioning.
+  void _setupScrollAndViewportFixes() {
+    // --- CSS containment ---
+    _containerDiv.style.setProperty('overscroll-behavior', 'contain');
+    _containerDiv.style.setProperty('touch-action', 'none');
+
+    // --- Wheel events (desktop) ---
+    _scrollBoundaryHandlerJs = ((web.Event event) {
+      final wheelEvt = event as web.WheelEvent;
+      final el = _containerDiv;
+      final atTop = el.scrollTop <= 0 && wheelEvt.deltaY < 0;
+      final atBottom =
+          el.scrollTop + el.clientHeight >= el.scrollHeight - 1 &&
+              wheelEvt.deltaY > 0;
+      if (atTop || atBottom) {
+        // At boundary — let it propagate to Flutter
+        return;
+      }
+    }).toJS;
+    _containerDiv.addEventListener('wheel', _scrollBoundaryHandlerJs);
+
+    // --- Window-scroll prevention while focused ---
+    _windowScrollFixJs = ((web.Event _) {
+      // Always reset to origin so the browser can't shift the page.
+      web.window.scrollTo(0.toJS, 0);
+      if (web.document.documentElement case final html?) {
+        html.scrollTop = 0;
+        html.scrollLeft = 0;
+      }
+      web.document.body?.scrollTop = 0;
+      web.document.body?.scrollLeft = 0;
+    }).toJS;
+
+    // Activate the window-scroll fix on editor focus, deactivate on blur.
+    _editorFocusFixJs = ((web.Event _) {
+      web.window.addEventListener('scroll', _windowScrollFixJs);
+      // Also immediately reset in case the focus event already scrolled.
+      web.window.scrollTo(0.toJS, 0);
+    }).toJS;
+
+    _editorBlurFixJs = ((web.Event _) {
+      web.window.removeEventListener('scroll', _windowScrollFixJs);
+    }).toJS;
+
+    // The Quill.js `.ql-editor` contenteditable is inside _editorDiv.
+    final qlEditor =
+        _editorDiv.querySelector('.ql-editor') as web.HTMLElement?;
+    final target = qlEditor ?? _editorDiv;
+    target.addEventListener('focus', _editorFocusFixJs, true.toJS);
+    target.addEventListener('blur', _editorBlurFixJs, true.toJS);
   }
 
   // ------------------------------------------------------------------
