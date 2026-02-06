@@ -8,11 +8,13 @@ import '../../models/themes/quill_icon_theme.dart';
 import '../../translations/toolbar.i18n.dart';
 import '../controller.dart';
 import '../link.dart';
+import '../quill_js/quill_js_configurations.dart';
 import '../toolbar.dart';
 
 class LinkStyleButton extends StatefulWidget {
   const LinkStyleButton({
-    required this.controller,
+    this.controller,
+    this.quillJsController,
     this.iconSize = kDefaultIconSize,
     this.icon,
     this.iconTheme,
@@ -23,9 +25,12 @@ class LinkStyleButton extends StatefulWidget {
     this.linkDialogAction,
     this.linkDialogBuilder,
     Key? key,
-  }) : super(key: key);
+  })  : assert(controller != null || quillJsController != null,
+            'Either controller or quillJsController must be provided'),
+        super(key: key);
 
-  final QuillController controller;
+  final QuillController? controller;
+  final QuillJsEditorController? quillJsController;
   final IconData? icon;
   final double iconSize;
   final QuillIconTheme? iconTheme;
@@ -35,6 +40,11 @@ class LinkStyleButton extends StatefulWidget {
   final RegExp? linkRegExp;
   final LinkDialogAction? linkDialogAction;
   final Widget Function(String, String)? linkDialogBuilder;
+
+  bool get _usesQuillJs => quillJsController != null;
+
+  ChangeNotifier get _listenable =>
+      (quillJsController ?? controller) as ChangeNotifier;
 
   @override
   _LinkStyleButtonState createState() => _LinkStyleButtonState();
@@ -48,29 +58,29 @@ class _LinkStyleButtonState extends State<LinkStyleButton> {
   @override
   void initState() {
     super.initState();
-    widget.controller.addListener(_didChangeSelection);
+    widget._listenable.addListener(_didChangeSelection);
   }
 
   @override
   void didUpdateWidget(covariant LinkStyleButton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_didChangeSelection);
-      widget.controller.addListener(_didChangeSelection);
+    if (oldWidget._listenable != widget._listenable) {
+      oldWidget._listenable.removeListener(_didChangeSelection);
+      widget._listenable.addListener(_didChangeSelection);
     }
   }
 
   @override
   void dispose() {
     super.dispose();
-    widget.controller.removeListener(_didChangeSelection);
+    widget._listenable.removeListener(_didChangeSelection);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isToggled = _getLinkAttributeValue() != null;
-    final pressedHandler = () => _openLinkDialog(context);
+    final isToggled = _isLinkActive();
+    final pressedHandler = () => _handlePressed(context);
     return QuillIconButton(
       tooltip: widget.tooltip,
       highlightElevation: 0,
@@ -94,26 +104,42 @@ class _LinkStyleButtonState extends State<LinkStyleButton> {
     );
   }
 
+  bool _isLinkActive() {
+    if (widget._usesQuillJs) {
+      return widget.quillJsController!.formatState.link != null;
+    }
+    return _getLinkAttributeValue() != null;
+  }
+
+  void _handlePressed(BuildContext context) {
+    if (widget._usesQuillJs) {
+      widget.quillJsController!.requestLink();
+    } else {
+      _openLinkDialog(context);
+    }
+  }
+
   void _openLinkDialog(BuildContext context) {
     showDialog<TextLink>(
       context: context,
       builder: (ctx) {
         final link = _getLinkAttributeValue();
-        final index = widget.controller.selection.start;
+        final index = widget.controller!.selection.start;
 
         var text;
         if (link != null) {
           // text should be the link's corresponding text, not selection
           final leaf =
-              widget.controller.document.querySegmentLeafNode(index).leaf;
+              widget.controller!.document.querySegmentLeafNode(index).leaf;
           if (leaf != null) {
             text = leaf.toPlainText();
           }
         }
 
-        final len = widget.controller.selection.end - index;
-        text ??=
-            len == 0 ? '' : widget.controller.document.getPlainText(index, len);
+        final len = widget.controller!.selection.end - index;
+        text ??= len == 0
+            ? ''
+            : widget.controller!.document.getPlainText(index, len);
 
         if (widget.linkDialogBuilder != null) {
           return widget.linkDialogBuilder!(text, link ?? '');
@@ -136,25 +162,25 @@ class _LinkStyleButtonState extends State<LinkStyleButton> {
 
   String? _getLinkAttributeValue() {
     return widget.controller
-        .getSelectionStyle()
+        ?.getSelectionStyle()
         .attributes[Attribute.link.key]
         ?.value;
   }
 
   void _linkSubmitted(TextLink value) {
-    var index = widget.controller.selection.start;
-    var length = widget.controller.selection.end - index;
+    var index = widget.controller!.selection.start;
+    var length = widget.controller!.selection.end - index;
     if (_getLinkAttributeValue() != null) {
       // text should be the link's corresponding text, not selection
-      final leaf = widget.controller.document.querySegmentLeafNode(index).leaf;
+      final leaf = widget.controller!.document.querySegmentLeafNode(index).leaf;
       if (leaf != null) {
         final range = getLinkRange(leaf);
         index = range.start;
         length = range.end - range.start;
       }
     }
-    widget.controller.replaceText(index, length, value.text, null);
-    widget.controller
+    widget.controller!.replaceText(index, length, value.text, null);
+    widget.controller!
         .formatText(index, value.text.length, LinkAttribute(value.link));
   }
 }

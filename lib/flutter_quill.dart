@@ -35,4 +35,3 @@ export 'src/widgets/toolbar/enum.dart';
 // Quill.js-based web editor (PlatformView approach)
 export 'src/widgets/quill_js/quill_js_configurations.dart';
 export 'src/widgets/quill_js/quill_js_editor.dart';
-export 'src/widgets/quill_js/quill_js_toolbar.dart';
