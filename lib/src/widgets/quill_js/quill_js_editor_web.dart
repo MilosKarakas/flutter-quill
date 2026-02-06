@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
+import 'dart:ui' show Color;
 import 'dart:ui_web' as ui_web;
 
 import 'package:dart_quill_delta/dart_quill_delta.dart';
@@ -65,6 +66,12 @@ external JSAny _jsonParse(JSString json);
 
 typedef _QuillSelection = ({int index, int length});
 typedef _LinkRange = ({int index, int length});
+
+/// Converts a Flutter [Color] to a CSS `rgba(...)` string.
+String _colorToCss(Color c) {
+  final a = (c.alpha / 255).toStringAsFixed(3);
+  return 'rgba(${c.red}, ${c.green}, ${c.blue}, $a)';
+}
 
 // ---------------------------------------------------------------------------
 // Script / CSS loading
@@ -178,6 +185,9 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   JSFunction? _tabKeyHandlerJs;
   JSFunction? _linkClickHandlerJs;
 
+  // Injected <style> element ID for ::selection styling (cleaned up on dispose)
+  String? _selectionStyleId;
+
   // Focus bridging state
   bool _isSyncingFocus = false;
 
@@ -232,6 +242,11 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     }
     if (_linkClickHandlerJs != null) {
       _editorDiv.removeEventListener('click', _linkClickHandlerJs);
+    }
+
+    // Remove injected selection style
+    if (_selectionStyleId != null) {
+      web.document.getElementById(_selectionStyleId!)?.remove();
     }
 
     super.dispose();
@@ -306,6 +321,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
     _attachController();
     _setupFocusBridge();
+    _applyEditorStyle();
   }
 
   // ------------------------------------------------------------------
@@ -350,6 +366,70 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     } finally {
       _isSyncingFocus = false;
     }
+  }
+
+  // ------------------------------------------------------------------
+  // Editor visual styling
+  // ------------------------------------------------------------------
+
+  void _applyEditorStyle() {
+    final style = widget.configuration.style;
+    if (style == null) return;
+
+    // Quill.js creates a `.ql-editor` contenteditable div inside _editorDiv.
+    final editorEl =
+        _editorDiv.querySelector('.ql-editor') as web.HTMLElement?;
+    if (editorEl == null) return;
+
+    final css = editorEl.style;
+
+    if (style.fontFamily != null) {
+      css.setProperty('font-family', style.fontFamily!);
+    }
+    if (style.fontSize != null) {
+      css.setProperty('font-size', '${style.fontSize}px');
+    }
+    if (style.lineHeight != null) {
+      css.setProperty('line-height', '${style.lineHeight}');
+    }
+    if (style.letterSpacing != null) {
+      css.setProperty('letter-spacing', '${style.letterSpacing}px');
+    }
+    if (style.color != null) {
+      css.setProperty('color', _colorToCss(style.color!));
+    }
+    if (style.caretColor != null) {
+      css.setProperty('caret-color', _colorToCss(style.caretColor!));
+    }
+    if (style.selectionHandleColor != null) {
+      // accent-color influences selection handles on Chrome/Android.
+      css.setProperty('accent-color', _colorToCss(style.selectionHandleColor!));
+    }
+
+    // ::selection requires a <style> tag — can't be set via inline styles.
+    if (style.selectionColor != null) {
+      _injectSelectionStyle(style.selectionColor!);
+    }
+  }
+
+  /// Injects a `<style>` element for `::selection` background color, scoped
+  /// to this editor instance via a unique class on `_editorDiv`.
+  void _injectSelectionStyle(Color color) {
+    final className = _viewType; // already unique per instance
+    _editorDiv.classList.add(className);
+
+    final id = 'sel-style-$_viewType';
+    _selectionStyleId = id;
+
+    final cssColor = _colorToCss(color);
+    final styleEl =
+        web.document.createElement('style') as web.HTMLStyleElement;
+    styleEl.id = id;
+    styleEl.textContent = '''
+.$className .ql-editor::selection { background-color: $cssColor; }
+.$className .ql-editor *::selection { background-color: $cssColor; }
+''';
+    web.document.head?.append(styleEl);
   }
 
   // ------------------------------------------------------------------

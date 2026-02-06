@@ -1,3 +1,5 @@
+import 'dart:ui' show Color;
+
 import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'package:flutter/foundation.dart';
 
@@ -26,6 +28,50 @@ typedef QuillJsLinkCreateCallback = Future<QuillJsLinkData?> Function(
 /// remove it.
 typedef QuillJsLinkTappedCallback = Future<QuillJsLinkData?> Function(
     String url, String text);
+
+/// Visual styling for the Quill.js editor content area.
+///
+/// All properties are optional — unset values fall back to the Quill.js
+/// theme defaults (Snow theme).
+class QuillJsEditorStyle {
+  /// The CSS font-family value (e.g. `'Roboto, sans-serif'`).
+  final String? fontFamily;
+
+  /// Font size in logical pixels.
+  final double? fontSize;
+
+  /// Line-height multiplier (e.g. `1.5`).
+  final double? lineHeight;
+
+  /// Letter spacing in logical pixels.
+  final double? letterSpacing;
+
+  /// Default text color.
+  final Color? color;
+
+  /// Color of the text cursor (caret).
+  final Color? caretColor;
+
+  /// Background color of the text selection highlight.
+  final Color? selectionColor;
+
+  /// Color for selection handles on mobile web (maps to CSS `accent-color`).
+  ///
+  /// Browser support is limited — works on Chrome/Android, but iOS Safari
+  /// ignores it and uses the system tint color instead.
+  final Color? selectionHandleColor;
+
+  const QuillJsEditorStyle({
+    this.fontFamily,
+    this.fontSize,
+    this.lineHeight,
+    this.letterSpacing,
+    this.color,
+    this.caretColor,
+    this.selectionColor,
+    this.selectionHandleColor,
+  });
+}
 
 /// Configuration for the Quill.js-based web editor.
 class QuillJsEditorConfiguration {
@@ -59,6 +105,10 @@ class QuillJsEditorConfiguration {
   /// list item at the current indent level. This prevents "orphan" nesting.
   final bool preventOrphanListNesting;
 
+  /// Visual styling for the editor content area (font, colors, etc.).
+  /// When null, Quill.js theme defaults are used.
+  final QuillJsEditorStyle? style;
+
   const QuillJsEditorConfiguration({
     required this.quillJsUrl,
     this.quillCssUrl,
@@ -69,6 +119,7 @@ class QuillJsEditorConfiguration {
     this.onLinkTapped,
     this.onContentChanged,
     this.preventOrphanListNesting = true,
+    this.style,
   });
 }
 
