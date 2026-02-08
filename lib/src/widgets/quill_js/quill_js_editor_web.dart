@@ -141,6 +141,14 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   JSFunction? _linkClickHandlerJs;
   JSFunction? _iframeLoadHandlerJs;
 
+  // Parent-window viewport fix listeners
+  JSFunction? _viewportResizeHandlerJs;
+  JSFunction? _iframeFocusInHandlerJs;
+  JSFunction? _iframeFocusOutHandlerJs;
+  double _fullViewportHeight = 0;
+  String? _savedHtmlOverflow;
+  String? _savedBodyOverflow;
+
   // Focus bridging state
   bool _isSyncingFocus = false;
 
@@ -202,6 +210,28 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
         _editorDiv!.removeEventListener('click', _linkClickHandlerJs);
       }
     }
+
+    // Remove parent-window viewport / scroll-lock listeners
+    if (_viewportResizeHandlerJs != null) {
+      web.window.visualViewport
+          ?.removeEventListener('resize', _viewportResizeHandlerJs);
+    }
+    widget.controller.keyboardHeight.value = 0;
+
+    final iframeDoc = _iframe.contentDocument;
+    if (iframeDoc != null) {
+      if (_iframeFocusInHandlerJs != null) {
+        iframeDoc.removeEventListener(
+            'focusin', _iframeFocusInHandlerJs, true.toJS);
+      }
+      if (_iframeFocusOutHandlerJs != null) {
+        iframeDoc.removeEventListener(
+            'focusout', _iframeFocusOutHandlerJs, true.toJS);
+      }
+    }
+
+    // Restore parent overflow in case disposed while focused
+    _restoreParentOverflow();
 
     super.dispose();
   }
@@ -392,6 +422,7 @@ $dynamicCss
 
     _attachController();
     _setupFocusBridge();
+    _setupParentViewportFixes();
   }
 
   // ------------------------------------------------------------------
@@ -436,6 +467,84 @@ $dynamicCss
     } finally {
       _isSyncingFocus = false;
     }
+  }
+
+  // ------------------------------------------------------------------
+  // Parent-window viewport fixes
+  // ------------------------------------------------------------------
+
+  /// Sets up two complementary fixes that the iframe alone cannot solve:
+  ///
+  /// 1. **Visual Viewport keyboard detection** — The parent window's
+  ///    `visualViewport` shrinks when the mobile keyboard opens. We listen
+  ///    for `resize` events and write the keyboard height to
+  ///    `widget.controller.keyboardHeight` so the host Flutter layout can
+  ///    add bottom padding (since `MediaQuery.viewInsets.bottom` is always
+  ///    0 on Flutter Web).
+  ///
+  /// 2. **Parent-page scroll lock** — On iOS Safari, focusing an element
+  ///    inside an iframe still triggers the browser's "scroll to show
+  ///    focused element" behaviour on the *parent* page, which pushes the
+  ///    app bar off-screen. We counter this by setting `overflow: hidden`
+  ///    on `<html>` and `<body>` while the editor is focused, and resetting
+  ///    `scrollTop` to 0 on every focus event.
+  void _setupParentViewportFixes() {
+    // --- Visual Viewport keyboard height detection ---
+    _fullViewportHeight = web.window.innerHeight.toDouble();
+    final vv = web.window.visualViewport;
+    if (vv != null) {
+      _viewportResizeHandlerJs = ((web.Event _) {
+        final currentHeight = vv.height;
+        final kb = _fullViewportHeight - currentHeight;
+        // Ignore small differences (< 50px) caused by browser chrome
+        // toggling (e.g. address bar hide/show).
+        widget.controller.keyboardHeight.value = kb > 50 ? kb : 0.0;
+      }).toJS;
+      vv.addEventListener('resize', _viewportResizeHandlerJs);
+    }
+
+    // --- Parent-page scroll lock on focus/blur ---
+    final iframeDoc = _iframe.contentDocument;
+    if (iframeDoc == null) return;
+
+    _iframeFocusInHandlerJs = ((web.Event _) {
+      _lockParentScroll();
+    }).toJS;
+
+    _iframeFocusOutHandlerJs = ((web.Event _) {
+      _restoreParentOverflow();
+    }).toJS;
+
+    // Capture phase so we fire before the browser scrolls the parent.
+    iframeDoc.addEventListener('focusin', _iframeFocusInHandlerJs, true.toJS);
+    iframeDoc.addEventListener(
+        'focusout', _iframeFocusOutHandlerJs, true.toJS);
+  }
+
+  /// Locks the parent page scroll by setting `overflow: hidden` on `<html>`
+  /// and `<body>`, then resets any scroll the browser may have already applied.
+  void _lockParentScroll() {
+    final html = web.document.documentElement as web.HTMLElement?;
+    final body = web.document.body;
+
+    // Save current overflow so we can restore on blur/dispose.
+    _savedHtmlOverflow = html?.style.getPropertyValue('overflow') ?? '';
+    _savedBodyOverflow = body?.style.getPropertyValue('overflow') ?? '';
+
+    html?.style.setProperty('overflow', 'hidden');
+    body?.style.setProperty('overflow', 'hidden');
+
+    // Reset any scroll the browser already applied.
+    html?.scrollTop = 0;
+    body?.scrollTop = 0;
+  }
+
+  /// Restores the parent page overflow to whatever it was before we locked it.
+  void _restoreParentOverflow() {
+    final html = web.document.documentElement as web.HTMLElement?;
+    html?.style.setProperty('overflow', _savedHtmlOverflow ?? '');
+    web.document.body?.style
+        .setProperty('overflow', _savedBodyOverflow ?? '');
   }
 
   // ------------------------------------------------------------------
