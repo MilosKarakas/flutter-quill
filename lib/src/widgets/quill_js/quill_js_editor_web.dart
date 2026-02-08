@@ -1,9 +1,13 @@
-// Web implementation of QuillJsEditorView using HtmlElementView + Quill.js.
+// Web implementation of QuillJsEditorView using an iframe-based HtmlElementView
+// + Quill.js. The iframe provides natural scroll/keyboard/focus isolation,
+// preventing the browser from scrolling the parent Flutter page when the
+// keyboard opens or when the user drags inside the editor.
+//
 // This file is only loaded on web via conditional export.
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:ui' show Color;
 import 'dart:ui_web' as ui_web;
 
@@ -14,12 +18,8 @@ import 'package:web/web.dart' as web;
 import 'quill_js_configurations.dart';
 
 // ---------------------------------------------------------------------------
-// JS interop bindings for Quill.js 2.0 (using Dart 3.3+ extension types)
+// JS interop helpers (work on any window context)
 // ---------------------------------------------------------------------------
-
-/// Used to check whether the Quill.js global is available.
-@JS('Quill')
-external JSAny? get _quillJsGlobal;
 
 /// Represents a Quill.js selection range `{index, length}`.
 extension type _JsRange._(JSObject _) implements JSObject {
@@ -27,14 +27,15 @@ extension type _JsRange._(JSObject _) implements JSObject {
   external int get length;
 }
 
-/// Zero-cost wrapper around a Quill.js 2.0 editor instance.
+/// Wrapper around a Quill.js 2.0 editor instance obtained from an iframe's
+/// `contentWindow`. Methods map directly to Quill.js API calls.
 ///
-/// All methods are `external` and map directly to Quill.js API calls with
-/// automatic Dart↔JS type conversion — no manual `callMethodVarArgs` needed.
-@JS('Quill')
+/// Unlike the previous `@JS('Quill')` extension type, this one does NOT bind
+/// to the main window's `Quill` global. Instead, we obtain the Quill
+/// constructor from `iframe.contentWindow['Quill']` and call
+/// `callAsConstructor` to create an instance. The returned [JSObject] is then
+/// used with this extension type for strongly-typed access to Quill methods.
 extension type _QuillJsInstance._(JSObject _) implements JSObject {
-  external _QuillJsInstance(JSObject container, JSObject options);
-
   external void format(String name, JSAny? value);
   external void formatText(
       int index, int length, String name, JSAny? value);
@@ -54,12 +55,6 @@ extension type _QuillJsInstance._(JSObject _) implements JSObject {
   external void setSelection(int index, int length);
 }
 
-@JS('JSON.stringify')
-external JSString _jsonStringify(JSAny? obj);
-
-@JS('JSON.parse')
-external JSAny _jsonParse(JSString json);
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -73,78 +68,25 @@ String _colorToCss(Color c) {
   return 'rgba(${c.red}, ${c.green}, ${c.blue}, $a)';
 }
 
-// ---------------------------------------------------------------------------
-// Script / CSS loading
-// ---------------------------------------------------------------------------
+/// JSON.stringify — works on any JSObject regardless of origin window,
+/// because JSObject identity is shared across same-origin frames.
+@JS('JSON.stringify')
+external JSString _mainJsonStringify(JSAny? obj);
 
-Completer<void>? _scriptLoadCompleter;
-bool _customCssInjected = false;
-
-bool _isQuillLoaded() => _quillJsGlobal.isDefinedAndNotNull;
-
-Future<void> _ensureQuillJsLoaded(String jsUrl, String? cssUrl) async {
-  if (_isQuillLoaded()) return;
-
-  if (_scriptLoadCompleter != null) {
-    await _scriptLoadCompleter!.future;
-    return;
-  }
-
-  _scriptLoadCompleter = Completer<void>();
-
-  // Load theme CSS
-  if (cssUrl != null) {
-    final link = web.document.createElement('link') as web.HTMLLinkElement
-      ..rel = 'stylesheet'
-      ..type = 'text/css'
-      ..href = cssUrl;
-    web.document.head?.append(link);
-  }
-
-  // Inject custom CSS overrides
-  if (!_customCssInjected) {
-    _customCssInjected = true;
-    final style =
-        web.document.createElement('style') as web.HTMLStyleElement;
-    style.textContent = '''
-.ql-container.ql-snow { border: none !important; font-size: 16px; }
-.ql-editor { padding: 12px 16px; min-height: 100%; outline: none; }
-.ql-editor.ql-blank::before { font-style: normal; color: rgba(0,0,0,0.38); }
-.ql-editor a { cursor: pointer; color: #1a73e8; text-decoration: underline; }
-''';
-    web.document.head?.append(style);
-  }
-
-  // Load Quill.js script
-  final script =
-      web.document.createElement('script') as web.HTMLScriptElement
-        ..src = jsUrl;
-
-  script.addEventListener(
-    'load',
-    ((web.Event _) {
-      _scriptLoadCompleter?.complete();
-    }).toJS,
-  );
-
-  script.addEventListener(
-    'error',
-    ((web.Event _) {
-      _scriptLoadCompleter
-          ?.completeError('Failed to load Quill.js from $jsUrl');
-      _scriptLoadCompleter = null; // allow retry
-    }).toJS,
-  );
-
-  web.document.head?.append(script);
-  await _scriptLoadCompleter!.future;
-}
+@JS('JSON.parse')
+external JSAny _mainJsonParse(JSString json);
 
 // ---------------------------------------------------------------------------
-// QuillJsEditorView — the web widget
+// QuillJsEditorView — the web widget (iframe-based)
 // ---------------------------------------------------------------------------
 
-/// Embeds a Quill.js 2.0 rich-text editor inside an [HtmlElementView].
+/// Embeds a Quill.js 2.0 rich-text editor inside an [HtmlElementView] backed
+/// by an `<iframe>`.
+///
+/// The iframe provides:
+/// - **Scroll isolation** — scroll events stay inside the iframe.
+/// - **Focus isolation** — keyboard open/close does not scroll the parent page.
+/// - **Touch isolation** — touch-drag does not move the Flutter layout.
 ///
 /// This widget is only available on Flutter web. On other platforms the
 /// conditional export provides a stub that shows a placeholder message.
@@ -183,8 +125,11 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   static int _nextId = 0;
 
   late final String _viewType;
-  late final web.HTMLDivElement _containerDiv;
-  late final web.HTMLDivElement _editorDiv;
+  late final web.HTMLIFrameElement _iframe;
+
+  /// Reference to the Quill.js editor div inside the iframe (`#editor`).
+  /// Set after the iframe loads and Quill is initialised.
+  web.HTMLElement? _editorDiv;
 
   _QuillJsInstance? _quill;
 
@@ -194,19 +139,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // Event listener references for cleanup
   JSFunction? _tabKeyHandlerJs;
   JSFunction? _linkClickHandlerJs;
-  JSFunction? _scrollBoundaryHandlerJs;
-  JSFunction? _editorFocusFixJs;
-  JSFunction? _editorBlurFixJs;
-  JSFunction? _viewportResizeHandlerJs;
-
-  // Injected <style> element ID for ::selection styling (cleaned up on dispose)
-  String? _selectionStyleId;
+  JSFunction? _iframeLoadHandlerJs;
 
   // Focus bridging state
   bool _isSyncingFocus = false;
-
-  // The full viewport height (no keyboard). Captured once at init.
-  double _fullViewportHeight = 0;
 
   // ------------------------------------------------------------------
   // Lifecycle
@@ -218,25 +154,24 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
     _viewType = 'quill-js-editor-${_nextId++}';
 
-    // Build the container DOM structure:
-    //   _containerDiv (platform view root)
-    //     └── _editorDiv (Quill.js target)
-    _containerDiv = web.document.createElement('div') as web.HTMLDivElement
+    // Build the iframe element with srcdoc containing the editor HTML.
+    _iframe = web.document.createElement('iframe') as web.HTMLIFrameElement
       ..style.setProperty('width', '100%')
       ..style.setProperty('height', '100%')
-      ..style.setProperty('overflow', 'auto');
-
-    _editorDiv = web.document.createElement('div') as web.HTMLDivElement;
-    _containerDiv.append(_editorDiv);
+      ..style.setProperty('border', 'none')
+      ..setAttribute('srcdoc', _buildSrcdoc());
 
     // Register platform view factory
     ui_web.platformViewRegistry.registerViewFactory(
       _viewType,
-      (int viewId, {Object? params}) => _containerDiv,
+      (int viewId, {Object? params}) => _iframe,
     );
 
-    // Begin async initialisation
-    _initializeAsync();
+    // Listen for the iframe to finish loading (Quill.js will be ready).
+    _iframeLoadHandlerJs = ((web.Event _) {
+      _onIframeLoaded();
+    }).toJS;
+    _iframe.addEventListener('load', _iframeLoadHandlerJs);
   }
 
   @override
@@ -253,71 +188,149 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     _teardownFocusBridge();
     _detachController();
 
-    // Remove DOM event listeners
-    if (_tabKeyHandlerJs != null) {
-      _editorDiv.removeEventListener('keydown', _tabKeyHandlerJs, true.toJS);
-    }
-    if (_linkClickHandlerJs != null) {
-      _editorDiv.removeEventListener('click', _linkClickHandlerJs);
-    }
-    if (_scrollBoundaryHandlerJs != null) {
-      _containerDiv.removeEventListener('wheel', _scrollBoundaryHandlerJs);
+    // Remove iframe load listener
+    if (_iframeLoadHandlerJs != null) {
+      _iframe.removeEventListener('load', _iframeLoadHandlerJs);
     }
 
-    // Remove scroll / viewport fix listeners
-    final qlEditor =
-        _editorDiv.querySelector('.ql-editor') as web.HTMLElement?;
-    final target = qlEditor ?? _editorDiv;
-    if (_editorFocusFixJs != null) {
-      target.removeEventListener('focus', _editorFocusFixJs, true.toJS);
-    }
-    if (_editorBlurFixJs != null) {
-      target.removeEventListener('blur', _editorBlurFixJs, true.toJS);
-    }
-    // Restore overflow in case the editor is disposed while focused.
-    (web.document.documentElement as web.HTMLElement?)
-        ?.style.setProperty('overflow', _savedHtmlOverflow ?? '');
-    web.document.body?.style
-        .setProperty('overflow', _savedBodyOverflow ?? '');
-
-    // Remove Visual Viewport listener
-    if (_viewportResizeHandlerJs != null) {
-      web.window.visualViewport
-          ?.removeEventListener('resize', _viewportResizeHandlerJs);
-    }
-    // Reset keyboard height so consumers don't keep stale padding.
-    widget.controller.keyboardHeight.value = 0;
-
-    // Remove injected selection style
-    if (_selectionStyleId != null) {
-      web.document.getElementById(_selectionStyleId!)?.remove();
+    // Remove DOM event listeners inside the iframe
+    if (_editorDiv != null) {
+      if (_tabKeyHandlerJs != null) {
+        _editorDiv!.removeEventListener('keydown', _tabKeyHandlerJs, true.toJS);
+      }
+      if (_linkClickHandlerJs != null) {
+        _editorDiv!.removeEventListener('click', _linkClickHandlerJs);
+      }
     }
 
     super.dispose();
   }
 
   // ------------------------------------------------------------------
-  // Initialisation
+  // Iframe srcdoc generation
   // ------------------------------------------------------------------
 
-  Future<void> _initializeAsync() async {
+  /// Builds the full HTML document that will be loaded into the iframe via
+  /// `srcdoc`. Quill.js and its CSS are loaded via `<script>` and `<link>`
+  /// tags inside this document.
+  String _buildSrcdoc() {
+    final config = widget.configuration;
+    final style = config.style;
+
+    // --- Build dynamic <style> block for QuillJsEditorStyle ---
+    final dynamicCss = StringBuffer();
+
+    if (style != null) {
+      final editorCss = StringBuffer();
+      if (style.fontFamily != null) {
+        editorCss.write('font-family: ${style.fontFamily};');
+      }
+      if (style.fontSize != null) {
+        editorCss.write('font-size: ${style.fontSize}px;');
+      }
+      if (style.lineHeight != null) {
+        editorCss.write('line-height: ${style.lineHeight};');
+      }
+      if (style.letterSpacing != null) {
+        editorCss.write('letter-spacing: ${style.letterSpacing}px;');
+      }
+      if (style.color != null) {
+        editorCss.write('color: ${_colorToCss(style.color!)};');
+      }
+      if (style.caretColor != null) {
+        editorCss.write('caret-color: ${_colorToCss(style.caretColor!)};');
+      }
+      if (style.selectionHandleColor != null) {
+        editorCss
+            .write('accent-color: ${_colorToCss(style.selectionHandleColor!)};');
+      }
+      if (editorCss.isNotEmpty) {
+        dynamicCss.writeln('.ql-editor { $editorCss }');
+      }
+
+      // Pseudo-element styles
+      if (style.selectionColor != null) {
+        final c = _colorToCss(style.selectionColor!);
+        dynamicCss.writeln('.ql-editor::selection { background-color: $c; }');
+        dynamicCss.writeln('.ql-editor *::selection { background-color: $c; }');
+      }
+      if (style.placeholderColor != null) {
+        final c = _colorToCss(style.placeholderColor!);
+        dynamicCss.writeln(
+            '.ql-editor.ql-blank::before { color: $c !important; }');
+      }
+      if (style.linkColor != null) {
+        final c = _colorToCss(style.linkColor!);
+        dynamicCss.writeln('.ql-editor a { color: $c !important; }');
+      }
+    }
+
+    // --- Build the CSS link tag ---
+    final cssLink = config.quillCssUrl != null
+        ? '<link rel="stylesheet" href="${_escapeHtml(config.quillCssUrl!)}">'
+        : '';
+
+    return '''<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+$cssLink
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.ql-container.ql-snow { border: none !important; font-size: 16px; }
+.ql-editor { padding: 12px 16px; min-height: 100%; outline: none; }
+.ql-editor.ql-blank::before { font-style: normal; color: rgba(0,0,0,0.38); }
+.ql-editor a { cursor: pointer; color: #1a73e8; text-decoration: underline; }
+$dynamicCss
+</style>
+</head>
+<body>
+<div id="editor"></div>
+<script src="${_escapeHtml(config.quillJsUrl)}"></script>
+</body>
+</html>''';
+  }
+
+  /// Minimal HTML escaping for attribute values in srcdoc.
+  static String _escapeHtml(String s) =>
+      s.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+
+  // ------------------------------------------------------------------
+  // Initialisation (after iframe loads)
+  // ------------------------------------------------------------------
+
+  void _onIframeLoaded() {
+    if (!mounted) return;
+
     try {
-      await _ensureQuillJsLoaded(
-        widget.configuration.quillJsUrl,
-        widget.configuration.quillCssUrl,
-      );
+      final contentWindow = _iframe.contentWindow;
+      final contentDoc = _iframe.contentDocument;
+      if (contentWindow == null || contentDoc == null) {
+        throw StateError('iframe contentWindow/contentDocument is null');
+      }
 
-      if (!mounted) return;
+      // Find the #editor div inside the iframe
+      _editorDiv =
+          contentDoc.querySelector('#editor') as web.HTMLElement?;
+      if (_editorDiv == null) {
+        throw StateError('Could not find #editor inside iframe');
+      }
 
-      // Ensure the container has been laid out in the DOM
-      final completer = Completer<void>();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        completer.complete();
-      });
-      await completer.future;
-      if (!mounted) return;
+      // Check that Quill.js loaded successfully inside the iframe
+      final quillGlobal =
+          (contentWindow as JSObject)['Quill'];
+      if (!quillGlobal.isDefinedAndNotNull) {
+        throw StateError(
+            'Quill.js did not load inside iframe. Check quillJsUrl.');
+      }
 
-      _setupQuill();
+      _setupQuill(contentWindow as JSObject);
 
       setState(() => _loadState = _LoadState.ready);
 
@@ -338,7 +351,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     }
   }
 
-  void _setupQuill() {
+  void _setupQuill(JSObject iframeWindow) {
     final config = widget.configuration;
 
     final options = <String, dynamic>{
@@ -358,7 +371,12 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       'readOnly': config.readOnly,
     }.jsify() as JSObject;
 
-    _quill = _QuillJsInstance(_editorDiv, options);
+    // Obtain the Quill constructor from the iframe's window and create
+    // the editor instance inside the iframe's document.
+    final quillConstructor = iframeWindow['Quill'] as JSFunction;
+    final jsQuill = quillConstructor.callAsConstructor<JSObject>(
+        _editorDiv!, options);
+    _quill = jsQuill as _QuillJsInstance;
 
     // Set initial content
     if (config.initialContent != null) {
@@ -374,8 +392,6 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
     _attachController();
     _setupFocusBridge();
-    _applyEditorStyle();
-    _setupScrollAndViewportFixes();
   }
 
   // ------------------------------------------------------------------
@@ -390,7 +406,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     widget.focusNode?.removeListener(_onFlutterFocusChanged);
   }
 
-  /// Flutter FocusNode changed → sync to JS editor.
+  /// Flutter FocusNode changed -> sync to JS editor.
   void _onFlutterFocusChanged() {
     if (_isSyncingFocus || _quill == null) return;
     _isSyncingFocus = true;
@@ -406,7 +422,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     }
   }
 
-  /// JS editor focus changed → sync to Flutter FocusNode.
+  /// JS editor focus changed -> sync to Flutter FocusNode.
   void _onJsFocusChanged({required bool hasFocus}) {
     final node = widget.focusNode;
     if (node == null || _isSyncingFocus) return;
@@ -420,196 +436,6 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     } finally {
       _isSyncingFocus = false;
     }
-  }
-
-  // ------------------------------------------------------------------
-  // Scroll & viewport fixes for PlatformView on mobile web
-  // ------------------------------------------------------------------
-
-  // Saved original overflow values so we can restore them on blur.
-  String? _savedHtmlOverflow;
-  String? _savedBodyOverflow;
-
-  /// Sets up mitigations for PlatformView scroll / viewport issues:
-  ///
-  /// 1. **Scroll containment** – `overscroll-behavior: contain` prevents
-  ///    scroll-chaining from the editor's own scrollable area to the browser
-  ///    page, which otherwise moves the whole page on touch-drag.
-  ///
-  /// 2. **touch-action: none** – prevents the browser from interpreting touch
-  ///    gestures on the editor container as page-level pan/scroll. The Quill.js
-  ///    contenteditable still handles its own selection / scrolling internally.
-  ///
-  /// 3. **Wheel boundary passthrough** – on desktop, lets wheel events
-  ///    propagate to the Flutter scroll view when the editor is at its scroll
-  ///    boundary (top / bottom).
-  ///
-  /// 4. **Page-scroll lock while focused** – on focus, `<html>` and `<body>`
-  ///    get `overflow: hidden` to prevent the browser from scrolling the page
-  ///    when the keyboard opens (which would move the app bar off-screen).
-  ///    On blur the original overflow is restored.
-  ///
-  /// 5. **Visual Viewport keyboard detection** – listens to the browser's
-  ///    `visualViewport.onresize` to detect the virtual keyboard height
-  ///    (since `MediaQuery.viewInsets.bottom` is always 0 on Flutter Web).
-  ///    The detected height is written to
-  ///    `widget.controller.keyboardHeight` so the host layout can react.
-  void _setupScrollAndViewportFixes() {
-    // --- CSS containment ---
-    _containerDiv.style.setProperty('overscroll-behavior', 'contain');
-    _containerDiv.style.setProperty('touch-action', 'none');
-
-    // --- Wheel events (desktop) ---
-    _scrollBoundaryHandlerJs = ((web.Event event) {
-      final wheelEvt = event as web.WheelEvent;
-      final el = _containerDiv;
-      final atTop = el.scrollTop <= 0 && wheelEvt.deltaY < 0;
-      final atBottom =
-          el.scrollTop + el.clientHeight >= el.scrollHeight - 1 &&
-              wheelEvt.deltaY > 0;
-      if (atTop || atBottom) {
-        // At boundary — let it propagate to Flutter
-        return;
-      }
-    }).toJS;
-    _containerDiv.addEventListener('wheel', _scrollBoundaryHandlerJs);
-
-    // --- Page-scroll lock via overflow: hidden ---
-    _editorFocusFixJs = ((web.Event _) {
-      final html =
-          web.document.documentElement as web.HTMLElement?;
-      final body = web.document.body;
-      // Save current overflow values so we can restore them later.
-      _savedHtmlOverflow =
-          html?.style.getPropertyValue('overflow') ?? '';
-      _savedBodyOverflow =
-          body?.style.getPropertyValue('overflow') ?? '';
-      html?.style.setProperty('overflow', 'hidden');
-      body?.style.setProperty('overflow', 'hidden');
-      // Reset any scroll the browser may have already applied.
-      html?.scrollTop = 0;
-      body?.scrollTop = 0;
-    }).toJS;
-
-    _editorBlurFixJs = ((web.Event _) {
-      // Restore original overflow.
-      final html =
-          web.document.documentElement as web.HTMLElement?;
-      html?.style.setProperty('overflow', _savedHtmlOverflow ?? '');
-      web.document.body?.style
-          .setProperty('overflow', _savedBodyOverflow ?? '');
-    }).toJS;
-
-    // The Quill.js `.ql-editor` contenteditable is inside _editorDiv.
-    final qlEditor =
-        _editorDiv.querySelector('.ql-editor') as web.HTMLElement?;
-    final target = qlEditor ?? _editorDiv;
-    target.addEventListener('focus', _editorFocusFixJs, true.toJS);
-    target.addEventListener('blur', _editorBlurFixJs, true.toJS);
-
-    // --- Visual Viewport keyboard height detection ---
-    // On mobile web, MediaQuery.viewInsets.bottom is always 0.
-    // The Visual Viewport API reports the actual visible area; when the
-    // keyboard opens, visualViewport.height shrinks while
-    // window.innerHeight stays the same.  The difference is the
-    // keyboard height.
-    _fullViewportHeight = web.window.innerHeight.toDouble();
-    final vv = web.window.visualViewport;
-    if (vv != null) {
-      _viewportResizeHandlerJs = ((web.Event _) {
-        final currentHeight = vv.height;
-        final kb = _fullViewportHeight - currentHeight;
-        // Ignore small differences (< 50px) caused by browser chrome
-        // toggling (e.g. address bar hide/show).
-        final keyboardHeight = kb > 50 ? kb : 0.0;
-        widget.controller.keyboardHeight.value = keyboardHeight;
-      }).toJS;
-      vv.addEventListener('resize', _viewportResizeHandlerJs);
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // Editor visual styling
-  // ------------------------------------------------------------------
-
-  void _applyEditorStyle() {
-    final style = widget.configuration.style;
-    if (style == null) return;
-
-    // Quill.js creates a `.ql-editor` contenteditable div inside _editorDiv.
-    final editorEl =
-        _editorDiv.querySelector('.ql-editor') as web.HTMLElement?;
-    if (editorEl == null) return;
-
-    final css = editorEl.style;
-
-    if (style.fontFamily != null) {
-      css.setProperty('font-family', style.fontFamily!);
-    }
-    if (style.fontSize != null) {
-      css.setProperty('font-size', '${style.fontSize}px');
-    }
-    if (style.lineHeight != null) {
-      css.setProperty('line-height', '${style.lineHeight}');
-    }
-    if (style.letterSpacing != null) {
-      css.setProperty('letter-spacing', '${style.letterSpacing}px');
-    }
-    if (style.color != null) {
-      css.setProperty('color', _colorToCss(style.color!));
-    }
-    if (style.caretColor != null) {
-      css.setProperty('caret-color', _colorToCss(style.caretColor!));
-    }
-    if (style.selectionHandleColor != null) {
-      // accent-color influences selection handles on Chrome/Android.
-      css.setProperty('accent-color', _colorToCss(style.selectionHandleColor!));
-    }
-
-    // Pseudo-element styles (::selection, ::before, links) require a <style>
-    // tag — they can't be set via inline styles.
-    _injectPseudoStyles(style);
-  }
-
-  /// Injects a scoped `<style>` element for pseudo-element rules (selection
-  /// highlight, placeholder text, link color), uniquely scoped via a class
-  /// on `_editorDiv`.
-  void _injectPseudoStyles(QuillJsEditorStyle style) {
-    if (style.selectionColor == null &&
-        style.placeholderColor == null &&
-        style.linkColor == null) {
-      return;
-    }
-
-    final className = _viewType; // already unique per instance
-    _editorDiv.classList.add(className);
-
-    final id = 'sel-style-$_viewType';
-    _selectionStyleId = id;
-
-    final buf = StringBuffer();
-
-    if (style.selectionColor != null) {
-      final c = _colorToCss(style.selectionColor!);
-      buf.writeln('.$className .ql-editor::selection { background-color: $c; }');
-      buf.writeln('.$className .ql-editor *::selection { background-color: $c; }');
-    }
-
-    if (style.placeholderColor != null) {
-      final c = _colorToCss(style.placeholderColor!);
-      buf.writeln('.$className .ql-editor.ql-blank::before { color: $c !important; }');
-    }
-
-    if (style.linkColor != null) {
-      final c = _colorToCss(style.linkColor!);
-      buf.writeln('.$className .ql-editor a { color: $c !important; }');
-    }
-
-    final styleEl =
-        web.document.createElement('style') as web.HTMLStyleElement;
-    styleEl.id = id;
-    styleEl.textContent = buf.toString();
-    web.document.head?.append(styleEl);
   }
 
   // ------------------------------------------------------------------
@@ -669,19 +495,20 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // ------------------------------------------------------------------
 
   void _setupLinkClickHandler() {
+    final editorDiv = _editorDiv!;
+
     _linkClickHandlerJs = ((web.Event event) {
       var target = (event as web.MouseEvent).target as web.Element?;
 
       // Walk up the DOM to find an <a> element
-      while (target != null && target != _editorDiv) {
+      while (target != null && target != editorDiv) {
         if (target.tagName.toLowerCase() == 'a') {
           event.preventDefault();
           event.stopPropagation();
 
           final anchor = target as web.HTMLAnchorElement;
           // Use getAttribute to get the raw href as stored by Quill.js,
-          // NOT anchor.href which resolves relative to the page origin
-          // (e.g. "example.com" → "http://localhost:8080/example.com").
+          // NOT anchor.href which resolves relative to the page origin.
           final href = anchor.getAttribute('href') ?? anchor.href;
           final text = anchor.textContent ?? '';
 
@@ -692,7 +519,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       }
     }).toJS;
 
-    _editorDiv.addEventListener('click', _linkClickHandlerJs);
+    editorDiv.addEventListener('click', _linkClickHandlerJs);
   }
 
   Future<void> _handleLinkTapped(String href, String text) async {
@@ -747,7 +574,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     }).toJS;
 
     // Use capture phase so we fire before Quill's keyboard handler
-    _editorDiv.addEventListener('keydown', _tabKeyHandlerJs, true.toJS);
+    _editorDiv!.addEventListener('keydown', _tabKeyHandlerJs, true.toJS);
   }
 
   /// Returns `true` if the current line is allowed to be indented.
@@ -848,8 +675,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
         if (length > 0) {
           _quill!.setSelection(length - 1, 0);
         }
-        // Scroll the HTML container to the bottom
-        _containerDiv.scrollTop = _containerDiv.scrollHeight;
+        // Scroll the Quill editor container inside the iframe to the bottom.
+        final qlContainer =
+            _iframe.contentDocument?.querySelector('.ql-container');
+        if (qlContainer != null) {
+          (qlContainer as web.HTMLElement).scrollTop =
+              qlContainer.scrollHeight;
+        }
       },
       focus: () => _quill!.focus(),
       blur: () => _quill!.blur(),
@@ -959,7 +791,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     final formatObj = _quill?.getFormat();
     if (formatObj == null) return {};
     try {
-      final jsonStr = _jsonStringify(formatObj).toDart;
+      final jsonStr = _mainJsonStringify(formatObj).toDart;
       if (jsonStr.isEmpty || jsonStr == '{}') return {};
       return (jsonDecode(jsonStr) as Map).cast<String, dynamic>();
     } catch (_) {
@@ -1000,11 +832,11 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
   static JSObject _deltaToJs(Delta delta) {
     final json = jsonEncode({'ops': delta.toJson()});
-    return _jsonParse(json.toJS) as JSObject;
+    return _mainJsonParse(json.toJS) as JSObject;
   }
 
   static Delta _jsToDelta(JSObject jsDelta) {
-    final jsonStr = _jsonStringify(jsDelta).toDart;
+    final jsonStr = _mainJsonStringify(jsDelta).toDart;
     final map = jsonDecode(jsonStr) as Map<String, dynamic>;
     return Delta.fromJson(map['ops'] as List);
   }
