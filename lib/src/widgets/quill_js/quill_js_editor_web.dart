@@ -143,8 +143,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
   // Parent-window viewport fix listeners
   JSFunction? _viewportResizeHandlerJs;
-  JSFunction? _iframeFocusInHandlerJs;
-  JSFunction? _iframeFocusOutHandlerJs;
+  JSFunction? _parentScrollResetJs;
   double _fullViewportHeight = 0;
   String? _savedHtmlOverflow;
   String? _savedBodyOverflow;
@@ -218,19 +217,11 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     }
     widget.controller.keyboardHeight.value = 0;
 
-    final iframeDoc = _iframe.contentDocument;
-    if (iframeDoc != null) {
-      if (_iframeFocusInHandlerJs != null) {
-        iframeDoc.removeEventListener(
-            'focusin', _iframeFocusInHandlerJs, true.toJS);
-      }
-      if (_iframeFocusOutHandlerJs != null) {
-        iframeDoc.removeEventListener(
-            'focusout', _iframeFocusOutHandlerJs, true.toJS);
-      }
+    if (_parentScrollResetJs != null) {
+      web.window.removeEventListener('scroll', _parentScrollResetJs, true.toJS);
     }
 
-    // Restore parent overflow in case disposed while focused
+    // Restore parent overflow now that the editor is gone
     _restoreParentOverflow();
 
     super.dispose();
@@ -482,12 +473,17 @@ $dynamicCss
   ///    add bottom padding (since `MediaQuery.viewInsets.bottom` is always
   ///    0 on Flutter Web).
   ///
-  /// 2. **Parent-page scroll lock** — On iOS Safari, focusing an element
-  ///    inside an iframe still triggers the browser's "scroll to show
-  ///    focused element" behaviour on the *parent* page, which pushes the
-  ///    app bar off-screen. We counter this by setting `overflow: hidden`
-  ///    on `<html>` and `<body>` while the editor is focused, and resetting
-  ///    `scrollTop` to 0 on every focus event.
+  /// 2. **Permanent parent-page scroll lock** — On iOS Safari, focusing an
+  ///    element inside an iframe still triggers the browser's "scroll to
+  ///    show focused element" behaviour on the *parent* page, which pushes
+  ///    the app bar off-screen. We prevent this by:
+  ///    - Setting `overflow: hidden` on `<html>` and `<body>` **once** when
+  ///      the editor mounts (restored only in `dispose()`).
+  ///    - Adding a `scroll` event listener on `window` that immediately
+  ///      resets `scrollTop` to 0 whenever the browser tries to scroll.
+  ///
+  ///    This is safe because Flutter Web renders entirely in a canvas — it
+  ///    does not use native html/body scrolling.
   void _setupParentViewportFixes() {
     // --- Visual Viewport keyboard height detection ---
     _fullViewportHeight = web.window.innerHeight.toDouble();
@@ -503,38 +499,35 @@ $dynamicCss
       vv.addEventListener('resize', _viewportResizeHandlerJs);
     }
 
-    // --- Parent-page scroll lock on focus/blur ---
-    final iframeDoc = _iframe.contentDocument;
-    if (iframeDoc == null) return;
+    // --- Permanent parent-page scroll lock ---
+    _lockParentScroll();
 
-    _iframeFocusInHandlerJs = ((web.Event _) {
-      _lockParentScroll();
+    // Belt-and-suspenders: if anything still triggers a parent-page scroll
+    // (e.g. iOS keyboard animation), immediately snap back to 0.
+    _parentScrollResetJs = ((web.Event _) {
+      final html = web.document.documentElement as web.HTMLElement?;
+      if ((html?.scrollTop ?? 0) != 0) html?.scrollTop = 0;
+      if ((web.document.body?.scrollTop ?? 0) != 0) {
+        web.document.body?.scrollTop = 0;
+      }
     }).toJS;
-
-    _iframeFocusOutHandlerJs = ((web.Event _) {
-      _restoreParentOverflow();
-    }).toJS;
-
-    // Capture phase so we fire before the browser scrolls the parent.
-    iframeDoc.addEventListener('focusin', _iframeFocusInHandlerJs, true.toJS);
-    iframeDoc.addEventListener(
-        'focusout', _iframeFocusOutHandlerJs, true.toJS);
+    web.window.addEventListener('scroll', _parentScrollResetJs, true.toJS);
   }
 
   /// Locks the parent page scroll by setting `overflow: hidden` on `<html>`
-  /// and `<body>`, then resets any scroll the browser may have already applied.
+  /// and `<body>`. Called once at setup; restored only in `dispose()`.
   void _lockParentScroll() {
     final html = web.document.documentElement as web.HTMLElement?;
     final body = web.document.body;
 
-    // Save current overflow so we can restore on blur/dispose.
+    // Save current overflow so we can restore in dispose.
     _savedHtmlOverflow = html?.style.getPropertyValue('overflow') ?? '';
     _savedBodyOverflow = body?.style.getPropertyValue('overflow') ?? '';
 
     html?.style.setProperty('overflow', 'hidden');
     body?.style.setProperty('overflow', 'hidden');
 
-    // Reset any scroll the browser already applied.
+    // Reset any existing scroll offset.
     html?.scrollTop = 0;
     body?.scrollTop = 0;
   }
