@@ -402,6 +402,11 @@ $dynamicCss
     // Set initial content
     if (config.initialContent != null) {
       _quill!.setContents(_deltaToJs(config.initialContent!));
+
+      // Move cursor to end and scroll to make it visible
+      if (config.moveCursorToEndOnInit) {
+        _moveCursorToEndAndScroll();
+      }
     }
 
     _setupEventListeners();
@@ -729,6 +734,29 @@ $dynamicCss
   }
 
   // ------------------------------------------------------------------
+  // Cursor / scroll helpers
+  // ------------------------------------------------------------------
+
+  /// Moves the cursor to the very end of the document and scrolls the
+  /// Quill container so the cursor is visible.
+  void _moveCursorToEndAndScroll() {
+    if (_quill == null) return;
+
+    final length = _quill!.getLength();
+    if (length > 0) {
+      _quill!.setSelection(length - 1, 0);
+    }
+
+    // Scroll the Quill editor container inside the iframe to the bottom.
+    final qlContainer =
+        _iframe.contentDocument?.querySelector('.ql-container');
+    if (qlContainer != null) {
+      (qlContainer as web.HTMLElement).scrollTop =
+          qlContainer.scrollHeight;
+    }
+  }
+
+  // ------------------------------------------------------------------
   // Controller attachment
   // ------------------------------------------------------------------
 
@@ -772,19 +800,7 @@ $dynamicCss
       setContents: (Delta delta) {
         _quill!.setContents(_deltaToJs(delta));
       },
-      scrollToEnd: () {
-        final length = _quill!.getLength();
-        if (length > 0) {
-          _quill!.setSelection(length - 1, 0);
-        }
-        // Scroll the Quill editor container inside the iframe to the bottom.
-        final qlContainer =
-            _iframe.contentDocument?.querySelector('.ql-container');
-        if (qlContainer != null) {
-          (qlContainer as web.HTMLElement).scrollTop =
-              qlContainer.scrollHeight;
-        }
-      },
+      scrollToEnd: _moveCursorToEndAndScroll,
       focus: () => _quill!.focus(),
       blur: () => _quill!.blur(),
     );

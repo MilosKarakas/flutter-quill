@@ -117,6 +117,11 @@ class QuillJsEditorConfiguration {
   /// When null, Quill.js theme defaults are used.
   final QuillJsEditorStyle? style;
 
+  /// When true and [initialContent] is provided, the cursor is placed at the
+  /// end of the content and the editor scrolls to make it visible.
+  /// Defaults to `false`.
+  final bool moveCursorToEndOnInit;
+
   const QuillJsEditorConfiguration({
     required this.quillJsUrl,
     this.quillCssUrl,
@@ -128,6 +133,7 @@ class QuillJsEditorConfiguration {
     this.onContentChanged,
     this.preventOrphanListNesting = true,
     this.style,
+    this.moveCursorToEndOnInit = false,
   });
 }
 
