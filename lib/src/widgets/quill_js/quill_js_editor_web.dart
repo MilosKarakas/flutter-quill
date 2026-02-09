@@ -40,6 +40,12 @@ extension type _QuillJsInstance._(JSObject _) implements JSObject {
   external void formatText(
       int index, int length, String name, JSAny? value);
   external JSObject? getFormat();
+
+  /// Overload of `getFormat` that accepts an index and length, returning the
+  /// common format across the given range.
+  @JS('getFormat')
+  external JSObject? getFormatAt(int index, int length);
+
   external JSObject getContents();
   external void setContents(JSObject delta);
   external _JsRange? getSelection([bool focus]);
@@ -699,38 +705,23 @@ $dynamicCss
     if (!format.containsKey('list')) return true; // not in a list
 
     final currentIndent = (format['indent'] as num?)?.toInt() ?? 0;
-    final delta = _getContentsDelta();
 
-    int offset = 0;
-    int? prevLineIndent;
-    bool prevLineIsList = false;
+    // Find the previous line by locating the last '\n' before the cursor
+    // in the plain text. This avoids fragile Delta op parsing.
+    final textBeforeCursor = _quill!.getText(0, sel.index);
+    final prevNewline = textBeforeCursor.lastIndexOf('\n');
 
-    for (final op in delta.toList()) {
-      final opData = op.data;
-      final opLen = opData is String ? opData.length : 1;
-
-      // Stop once we've passed the cursor
-      if (offset + opLen > sel.index) break;
-
-      if (opData is String && opData.contains('\n')) {
-        if (opData == '\n') {
-          // Standalone newline — block-attributed
-          final attrs = op.attributes ?? {};
-          prevLineIsList = attrs.containsKey('list');
-          prevLineIndent =
-              prevLineIsList ? ((attrs['indent'] as num?)?.toInt() ?? 0) : null;
-        } else {
-          // Embedded newline (plain text, no block attributes)
-          prevLineIsList = false;
-          prevLineIndent = null;
-        }
-      }
-
-      offset += opLen;
+    if (prevNewline < 0) {
+      // Cursor is on the very first line — no parent to nest under.
+      return false;
     }
 
-    if (!prevLineIsList) return false;
-    return (prevLineIndent ?? -1) >= currentIndent;
+    // Query Quill.js for the block format at that '\n' character.
+    final prevFormat = _getFormatAt(prevNewline, 1);
+    if (!prevFormat.containsKey('list')) return false;
+
+    final prevIndent = (prevFormat['indent'] as num?)?.toInt() ?? 0;
+    return prevIndent >= currentIndent;
   }
 
   // ------------------------------------------------------------------
@@ -795,9 +786,9 @@ $dynamicCss
         }
         _syncFormatState();
       },
-      requestLink: () => _handleRequestLink(),
-      getContents: () => _getContentsDelta(),
-      setContents: (Delta delta) {
+      requestLink: _handleRequestLink,
+      getContents: _getContentsDelta,
+      setContents: (delta) {
         _quill!.setContents(_deltaToJs(delta));
       },
       scrollToEnd: _moveCursorToEndAndScroll,
@@ -907,6 +898,19 @@ $dynamicCss
 
   Map<String, dynamic> _getFormat() {
     final formatObj = _quill?.getFormat();
+    if (formatObj == null) return {};
+    try {
+      final jsonStr = _mainJsonStringify(formatObj).toDart;
+      if (jsonStr.isEmpty || jsonStr == '{}') return {};
+      return (jsonDecode(jsonStr) as Map).cast<String, dynamic>();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Returns the format at a specific [index] spanning [length] characters.
+  Map<String, dynamic> _getFormatAt(int index, int length) {
+    final formatObj = _quill?.getFormatAt(index, length);
     if (formatObj == null) return {};
     try {
       final jsonStr = _mainJsonStringify(formatObj).toDart;
