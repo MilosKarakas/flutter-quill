@@ -15,6 +15,7 @@ class QuillJsEditorView extends StatelessWidget {
   final FocusNode? focusNode;
   final bool autoFocus;
   final Widget? loadingBuilder;
+  final Object? tapRegionGroupId;
 
   const QuillJsEditorView({
     super.key,
@@ -23,6 +24,7 @@ class QuillJsEditorView extends StatelessWidget {
     this.focusNode,
     this.autoFocus = false,
     this.loadingBuilder,
+    this.tapRegionGroupId,
   });
 
   @override

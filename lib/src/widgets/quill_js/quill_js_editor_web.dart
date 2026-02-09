@@ -114,6 +114,15 @@ class QuillJsEditorView extends StatefulWidget {
   /// area is left empty (transparent) during loading.
   final Widget? loadingBuilder;
 
+  /// An optional group identifier for the [TapRegion] used to implement
+  /// [QuillJsEditorConfiguration.unfocusOnTapOutside].
+  ///
+  /// When set, the editor registers in this tap-region group. Wrap companion
+  /// widgets (e.g. your formatting toolbar) in a [TapRegion] with the same
+  /// [tapRegionGroupId] so that taps on the toolbar are considered "inside"
+  /// and do not blur the editor.
+  final Object? tapRegionGroupId;
+
   const QuillJsEditorView({
     super.key,
     required this.configuration,
@@ -121,6 +130,7 @@ class QuillJsEditorView extends StatefulWidget {
     this.focusNode,
     this.autoFocus = false,
     this.loadingBuilder,
+    this.tapRegionGroupId,
   });
 
   @override
@@ -156,6 +166,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
   // Focus bridging state
   bool _isSyncingFocus = false;
+  bool _editorHasFocus = false;
 
   // When true, the text-change handler skips firing onContentChanged.
   // Used to suppress notifications during programmatic setContents calls.
@@ -370,6 +381,7 @@ $dynamicCss
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || _quill == null) return;
           _quill!.focus();
+          _editorHasFocus = true;
           _onJsFocusChanged(hasFocus: true);
         });
       }
@@ -592,11 +604,13 @@ $dynamicCss
   void _onSelectionChanged(JSObject? range) {
     // range == null means the editor lost focus
     if (range == null) {
+      _editorHasFocus = false;
       _onJsFocusChanged(hasFocus: false);
       return;
     }
 
     // range != null means the editor has focus
+    _editorHasFocus = true;
     _onJsFocusChanged(hasFocus: true);
 
     final format = _getFormat();
@@ -974,12 +988,23 @@ $dynamicCss
   }
 
   // ------------------------------------------------------------------
+  // Tap-outside handling
+  // ------------------------------------------------------------------
+
+  void _onTapOutside(PointerDownEvent _) {
+    if (!_editorHasFocus || _quill == null) return;
+    _quill!.blur();
+    // The blur fires Quill's selection-change with null, which triggers
+    // _onJsFocusChanged(hasFocus: false), syncing the Flutter FocusNode.
+  }
+
+  // ------------------------------------------------------------------
   // Build
   // ------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    Widget child = Stack(
       children: [
         HtmlElementView(viewType: _viewType),
         if (_loadState == _LoadState.loading && widget.loadingBuilder != null)
@@ -1002,6 +1027,16 @@ $dynamicCss
           ),
       ],
     );
+
+    if (widget.configuration.unfocusOnTapOutside) {
+      child = TapRegion(
+        groupId: widget.tapRegionGroupId,
+        onTapOutside: _onTapOutside,
+        child: child,
+      );
+    }
+
+    return child;
   }
 }
 

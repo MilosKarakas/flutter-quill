@@ -122,6 +122,25 @@ class QuillJsEditorConfiguration {
   /// Defaults to `false`.
   final bool moveCursorToEndOnInit;
 
+  /// Whether tapping outside the editor should automatically blur it and
+  /// dismiss the on-screen keyboard.
+  ///
+  /// Uses Flutter's [TapRegion] mechanism: any pointer-down event that lands
+  /// outside the editor's tap region group causes the editor to blur.
+  ///
+  /// To prevent toolbar buttons from triggering the blur, wrap your toolbar
+  /// widget in a [TapRegion] with the same [tapRegionGroupId]:
+  ///
+  /// ```dart
+  /// TapRegion(
+  ///   groupId: myGroupId,
+  ///   child: MyToolbar(controller: controller),
+  /// )
+  /// ```
+  ///
+  /// Defaults to `true`.
+  final bool unfocusOnTapOutside;
+
   const QuillJsEditorConfiguration({
     required this.quillJsUrl,
     this.quillCssUrl,
@@ -134,6 +153,7 @@ class QuillJsEditorConfiguration {
     this.preventOrphanListNesting = true,
     this.style,
     this.moveCursorToEndOnInit = false,
+    this.unfocusOnTapOutside = true,
   });
 }
 
