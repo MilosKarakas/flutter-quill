@@ -157,6 +157,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // Focus bridging state
   bool _isSyncingFocus = false;
 
+  // When true, the text-change handler skips firing onContentChanged.
+  // Used to suppress notifications during programmatic setContents calls.
+  bool _suppressContentChanged = false;
+
   // ------------------------------------------------------------------
   // Lifecycle
   // ------------------------------------------------------------------
@@ -557,11 +561,14 @@ $dynamicCss
 
   void _setupEventListeners() {
     // text-change: (delta, oldDelta, source) => void
+    // Fire for both 'user' (typing, keyboard shortcuts) and 'api' (toolbar
+    // formatting) sources.  Programmatic setContents calls suppress via
+    // the _suppressContentChanged flag.
     _quill!.on(
       'text-change',
       ((JSAny? delta, JSAny? oldDelta, JSAny? source) {
         final src = (source as JSString?)?.toDart;
-        if (src == 'user') {
+        if (src == 'user' || src == 'api') {
           _onTextChanged();
         }
       }).toJS,
@@ -577,6 +584,7 @@ $dynamicCss
   }
 
   void _onTextChanged() {
+    if (_suppressContentChanged) return;
     final delta = _getContentsDelta();
     widget.configuration.onContentChanged?.call(delta);
   }
@@ -789,7 +797,9 @@ $dynamicCss
       requestLink: _handleRequestLink,
       getContents: _getContentsDelta,
       setContents: (delta) {
+        _suppressContentChanged = true;
         _quill!.setContents(_deltaToJs(delta));
+        _suppressContentChanged = false;
       },
       scrollToEnd: _moveCursorToEndAndScroll,
       focus: () => _quill!.focus(),
