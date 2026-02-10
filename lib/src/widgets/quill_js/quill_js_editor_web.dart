@@ -580,6 +580,23 @@ $dynamicCss
   // Quill.js event listeners
   // ------------------------------------------------------------------
 
+  /// Computes the cursor position to restore after reverting a change.
+  /// For inserts: cursor was at the insert index. For deletes: cursor was after
+  /// the deleted text (e.g. backspace). Returns 0 if no content-changing op.
+  static int _cursorPositionToRestoreAfterRevert(Delta changeDelta) {
+    int offset = 0;
+    for (final op in changeDelta.toList()) {
+      if (op.isRetain) {
+        offset += op.length ?? 0;
+      } else if (op.isInsert) {
+        return offset; // Cursor was at offset before the insert.
+      } else if (op.isDelete) {
+        return offset + (op.length ?? 0); // Cursor was after deleted text.
+      }
+    }
+    return offset;
+  }
+
   void _setupEventListeners() {
     // text-change: (delta, oldContents, source) => void
     // Fires when document content changes (typing, deletions, insertions).
@@ -607,7 +624,13 @@ $dynamicCss
                 if (!callback(changeDelta, oldDelta)) {
                   _isReverting = true;
                   _suppressContentChanged = true;
+                  final cursorPos = _cursorPositionToRestoreAfterRevert(
+                      changeDelta);
                   _quill!.setContents(oldContentsObj);
+                  final len = _quill!.getLength();
+                  final clamped =
+                      cursorPos.clamp(0, len > 0 ? len - 1 : 0);
+                  _quill!.setSelection(clamped, 0);
                   _suppressContentChanged = false;
                   return;
                 }
