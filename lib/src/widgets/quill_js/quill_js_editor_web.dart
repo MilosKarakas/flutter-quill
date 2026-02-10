@@ -580,8 +580,13 @@ $dynamicCss
       'text-change',
       ((JSAny? delta, JSAny? oldDelta, JSAny? source) {
         final src = (source as JSString?)?.toDart;
-        if (src == 'user' || src == 'api') {
+        if (src == 'user') {
           _onTextChanged();
+        } else if (src == 'api') {
+          // 'api' source includes keyboard shortcuts (Cmd+B, Cmd+I, etc.)
+          // and toolbar formatting - sync the format state to update toolbar
+          _onTextChanged();
+          _syncFormatState();
         }
       }).toJS,
     );
@@ -613,16 +618,8 @@ $dynamicCss
     _editorHasFocus = true;
     _onJsFocusChanged(hasFocus: true);
 
-    final format = _getFormat();
-    final state = QuillJsFormatState(
-      bold: format['bold'] == true,
-      italic: format['italic'] == true,
-      underline: format['underline'] == true,
-      list: format['list'] is String ? format['list'] as String : null,
-      link: format['link'] is String ? format['link'] as String : null,
-    );
-
-    widget.controller.updateFormatState(state);
+    // Sync format state whenever selection changes (cursor moves, text selected, etc.)
+    _syncFormatState();
   }
 
   // ------------------------------------------------------------------
@@ -831,12 +828,19 @@ $dynamicCss
   /// Reads the current format from Quill and pushes it to the controller.
   void _syncFormatState() {
     final format = _getFormat();
+    final sel = _getQuillSelection();
+    final isCollapsed = sel == null || sel.length == 0;
+    
+    // For collapsed selections (just cursor), link format shouldn't be active
+    // because typing won't continue the link.
     final state = QuillJsFormatState(
       bold: format['bold'] == true,
       italic: format['italic'] == true,
       underline: format['underline'] == true,
       list: format['list'] is String ? format['list'] as String : null,
-      link: format['link'] is String ? format['link'] as String : null,
+      link: (!isCollapsed && format['link'] is String) 
+          ? format['link'] as String 
+          : null,
     );
     widget.controller.updateFormatState(state);
   }
