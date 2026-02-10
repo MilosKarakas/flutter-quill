@@ -15,6 +15,7 @@ import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 
+import '../default_styles.dart';
 import 'quill_js_configurations.dart';
 
 // ---------------------------------------------------------------------------
@@ -47,7 +48,10 @@ extension type _QuillJsInstance._(JSObject _) implements JSObject {
   external JSObject? getFormatAt(int index, int length);
 
   external JSObject getContents();
+  @JS('getContents')
+  external JSObject getContentsRange(int index, int length);
   external void setContents(JSObject delta);
+  external JSObject updateContents(JSObject delta, [JSString? source]);
   external _JsRange? getSelection([bool focus]);
   external void on(String event, JSFunction handler);
   external void enable(bool enabled);
@@ -72,6 +76,117 @@ typedef _LinkRange = ({int index, int length});
 String _colorToCss(Color c) {
   final a = (c.alpha / 255).toStringAsFixed(3);
   return 'rgba(${c.red}, ${c.green}, ${c.blue}, $a)';
+}
+
+/// Appends CSS for [DefaultStyles] to [sb].
+void _appendDefaultStylesCss(StringBuffer sb, DefaultStyles styles) {
+  // Base editor styles from paragraph
+  if (styles.paragraph != null) {
+    sb.writeln('.ql-editor { ${_textStyleToCss(styles.paragraph!.style)} }');
+  }
+  // Placeholder (empty editor)
+  if (styles.placeHolder != null) {
+    final css = _textStyleToCss(styles.placeHolder!.style);
+    sb.writeln('.ql-editor.ql-blank::before { $css }');
+  }
+  // Bold (strong)
+  if (styles.bold != null) {
+    sb.writeln('.ql-editor strong { ${_textStyleToCss(styles.bold!)} }');
+  }
+  // Italic (em)
+  if (styles.italic != null) {
+    sb.writeln('.ql-editor em { ${_textStyleToCss(styles.italic!)} }');
+  }
+  // Link
+  if (styles.link != null) {
+    sb.writeln('.ql-editor a { ${_textStyleToCss(styles.link!)} }');
+  }
+}
+
+/// Converts [TextStyle] to CSS property string.
+String _textStyleToCss(TextStyle style) {
+  final css = StringBuffer();
+  if (style.fontFamily != null) {
+    css.write('font-family: ${style.fontFamily};');
+  }
+  if (style.fontSize != null) {
+    css.write('font-size: ${style.fontSize}px;');
+  }
+  if (style.fontWeight != null) {
+    final w = style.fontWeight!;
+    css.write('font-weight: ${(w.index + 1) * 100};');
+  }
+  if (style.fontStyle != null) {
+    css.write('font-style: ${style.fontStyle == FontStyle.italic ? 'italic' : 'normal'};');
+  }
+  if (style.height != null) {
+    css.write('line-height: ${style.height};');
+  }
+  if (style.letterSpacing != null) {
+    css.write('letter-spacing: ${style.letterSpacing}px;');
+  }
+  if (style.color != null) {
+    css.write('color: ${_colorToCss(style.color!)};');
+  }
+  if (style.decoration != null && style.decoration != TextDecoration.none) {
+    if (style.decoration!.contains(TextDecoration.underline)) {
+      css.write('text-decoration: underline;');
+    } else if (style.decoration!.contains(TextDecoration.lineThrough)) {
+      css.write('text-decoration: line-through;');
+    }
+  }
+  return css.toString();
+}
+
+/// Appends CSS for [QuillJsEditorStyle] to [sb].
+void _appendQuillJsEditorStyleCss(StringBuffer sb, QuillJsEditorStyle style) {
+  final editorCss = StringBuffer();
+  if (style.fontFamily != null) {
+    editorCss.write('font-family: ${style.fontFamily};');
+  }
+  if (style.fontSize != null) {
+    editorCss.write('font-size: ${style.fontSize}px;');
+  }
+  if (style.lineHeight != null) {
+    editorCss.write('line-height: ${style.lineHeight};');
+  }
+  if (style.letterSpacing != null) {
+    editorCss.write('letter-spacing: ${style.letterSpacing}px;');
+  }
+  if (style.color != null) {
+    editorCss.write('color: ${_colorToCss(style.color!)};');
+  }
+  if (style.caretColor != null) {
+    editorCss.write('caret-color: ${_colorToCss(style.caretColor!)};');
+  }
+  if (style.selectionHandleColor != null) {
+    editorCss.write('accent-color: ${_colorToCss(style.selectionHandleColor!)};');
+  }
+  if (editorCss.isNotEmpty) {
+    sb.writeln('.ql-editor { $editorCss }');
+  }
+  if (style.selectionColor != null) {
+    final c = _colorToCss(style.selectionColor!);
+    sb.writeln('.ql-editor::selection { background-color: $c; }');
+    sb.writeln('.ql-editor *::selection { background-color: $c; }');
+  }
+  if (style.placeholderColor != null) {
+    final c = _colorToCss(style.placeholderColor!);
+    sb.writeln('.ql-editor.ql-blank::before { color: $c !important; }');
+  }
+  if (style.linkColor != null) {
+    final c = _colorToCss(style.linkColor!);
+    sb.writeln('.ql-editor a { color: $c !important; }');
+  }
+  if (style.boldFontWeight != null) {
+    final w = style.boldFontWeight is num
+        ? (style.boldFontWeight as num).toString()
+        : style.boldFontWeight.toString();
+    sb.writeln('.ql-editor strong { font-weight: $w !important; }');
+  }
+  if (style.italicFontStyle != null) {
+    sb.writeln('.ql-editor em { font-style: ${style.italicFontStyle!} !important; }');
+  }
 }
 
 /// JSON.stringify — works on any JSObject regardless of origin window,
@@ -157,6 +272,9 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   JSFunction? _enterKeyHandlerJs;
   JSFunction? _linkClickHandlerJs;
   JSFunction? _iframeLoadHandlerJs;
+  JSFunction? _pasteHandlerJs;
+  JSFunction? _copyHandlerJs;
+  JSFunction? _cutHandlerJs;
 
   // Parent-window viewport fix listeners
   JSFunction? _viewportResizeHandlerJs;
@@ -237,6 +355,15 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       if (_linkClickHandlerJs != null) {
         _editorDiv!.removeEventListener('click', _linkClickHandlerJs);
       }
+      if (_pasteHandlerJs != null) {
+        _editorDiv!.removeEventListener('paste', _pasteHandlerJs, true.toJS);
+      }
+      if (_copyHandlerJs != null) {
+        _editorDiv!.removeEventListener('copy', _copyHandlerJs, true.toJS);
+      }
+      if (_cutHandlerJs != null) {
+        _editorDiv!.removeEventListener('cut', _cutHandlerJs, true.toJS);
+      }
     }
 
     // Remove parent-window viewport / scroll-lock listeners
@@ -265,54 +392,12 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   /// tags inside this document.
   String _buildSrcdoc() {
     final config = widget.configuration;
-    final style = config.style;
-
-    // --- Build dynamic <style> block for QuillJsEditorStyle ---
     final dynamicCss = StringBuffer();
 
-    if (style != null) {
-      final editorCss = StringBuffer();
-      if (style.fontFamily != null) {
-        editorCss.write('font-family: ${style.fontFamily};');
-      }
-      if (style.fontSize != null) {
-        editorCss.write('font-size: ${style.fontSize}px;');
-      }
-      if (style.lineHeight != null) {
-        editorCss.write('line-height: ${style.lineHeight};');
-      }
-      if (style.letterSpacing != null) {
-        editorCss.write('letter-spacing: ${style.letterSpacing}px;');
-      }
-      if (style.color != null) {
-        editorCss.write('color: ${_colorToCss(style.color!)};');
-      }
-      if (style.caretColor != null) {
-        editorCss.write('caret-color: ${_colorToCss(style.caretColor!)};');
-      }
-      if (style.selectionHandleColor != null) {
-        editorCss
-            .write('accent-color: ${_colorToCss(style.selectionHandleColor!)};');
-      }
-      if (editorCss.isNotEmpty) {
-        dynamicCss.writeln('.ql-editor { $editorCss }');
-      }
-
-      // Pseudo-element styles
-      if (style.selectionColor != null) {
-        final c = _colorToCss(style.selectionColor!);
-        dynamicCss.writeln('.ql-editor::selection { background-color: $c; }');
-        dynamicCss.writeln('.ql-editor *::selection { background-color: $c; }');
-      }
-      if (style.placeholderColor != null) {
-        final c = _colorToCss(style.placeholderColor!);
-        dynamicCss.writeln(
-            '.ql-editor.ql-blank::before { color: $c !important; }');
-      }
-      if (style.linkColor != null) {
-        final c = _colorToCss(style.linkColor!);
-        dynamicCss.writeln('.ql-editor a { color: $c !important; }');
-      }
+    if (config.styles != null) {
+      _appendDefaultStylesCss(dynamicCss, config.styles!);
+    } else if (config.style != null) {
+      _appendQuillJsEditorStyleCss(dynamicCss, config.style!);
     }
 
     // --- Build the CSS link tag ---
@@ -442,6 +527,7 @@ $dynamicCss
     _setupEventListeners();
     _setupLinkClickHandler();
     _setupEnterKeyHandler();
+    _setupClipboardInterceptors();
 
     if (config.preventOrphanListNesting) {
       _setupTabKeyHandler();
@@ -580,6 +666,17 @@ $dynamicCss
   // Quill.js event listeners
   // ------------------------------------------------------------------
 
+  /// Returns the total character length of insert operations in [delta].
+  static int _deltaLength(Delta delta) {
+    int len = 0;
+    for (final op in delta.toList()) {
+      if (op.isInsert) {
+        len += op.length ?? 0;
+      }
+    }
+    return len;
+  }
+
   /// Computes the cursor position to restore after reverting a change.
   /// For inserts: cursor was at the insert index. For deletes: cursor was after
   /// the deleted text (e.g. backspace). Returns 0 if no content-changing op.
@@ -710,6 +807,108 @@ $dynamicCss
     }).toJS;
 
     editorDiv.addEventListener('click', _linkClickHandlerJs);
+  }
+
+  // ------------------------------------------------------------------
+  // Clipboard paste/copy interceptors
+  // ------------------------------------------------------------------
+
+  void _setupClipboardInterceptors() {
+    final pasteInterceptor = widget.configuration.onPasteInterceptor;
+    final copyInterceptor = widget.configuration.onCopyInterceptor;
+    if (pasteInterceptor == null && copyInterceptor == null) return;
+
+    final editorDiv = _editorDiv!;
+
+    if (pasteInterceptor != null) {
+      _pasteHandlerJs = ((web.Event event) {
+        final clipEvent = event as web.ClipboardEvent;
+        final data = clipEvent.clipboardData;
+        if (data == null) return;
+
+        final plainText = data.getData('text/plain');
+        final html = data.getData('text/html');
+        final plain = plainText.isNotEmpty ? plainText : null;
+        final htmlContent = html.isNotEmpty ? html : null;
+
+        final pasteDelta = pasteInterceptor(plain, htmlContent);
+        if (pasteDelta == null || pasteDelta.isEmpty) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        final sel = _getQuillSelection(focus: true);
+        final index = sel?.index ?? 0;
+
+        final pasteOps = pasteDelta.toJson() as List;
+        final combinedOps = [
+          {'retain': index},
+          ...pasteOps,
+        ];
+        final combined = Delta.fromJson(combinedOps);
+        _suppressContentChanged = true;
+        _quill!.updateContents(_deltaToJs(combined), 'api'.toJS);
+        _suppressContentChanged = false;
+
+        final pasteLength = _deltaLength(pasteDelta);
+        _quill!.setSelection(index + pasteLength, 0);
+      }).toJS;
+      editorDiv.addEventListener('paste', _pasteHandlerJs!, true.toJS);
+    }
+
+    if (copyInterceptor != null) {
+      _copyHandlerJs = ((web.Event event) {
+        final sel = _getQuillSelection();
+        if (sel == null || sel.length == 0) return;
+
+        final plainText = _quill!.getText(sel.index, sel.length);
+        final selDelta = _quill!.getContentsRange(sel.index, sel.length);
+        final delta = _jsToDelta(selDelta);
+
+        final result = copyInterceptor(plainText, delta);
+        if (result == null) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        final clipEvent = event as web.ClipboardEvent;
+        final data = clipEvent.clipboardData;
+        if (data != null) {
+          data.setData('text/plain', result.plainText);
+          if (result.html != null) {
+            data.setData('text/html', result.html!);
+          }
+        }
+      }).toJS;
+      editorDiv.addEventListener('copy', _copyHandlerJs!, true.toJS);
+
+      _cutHandlerJs = ((web.Event event) {
+        final sel = _getQuillSelection();
+        if (sel == null || sel.length == 0) return;
+
+        final plainText = _quill!.getText(sel.index, sel.length);
+        final selDelta = _quill!.getContentsRange(sel.index, sel.length);
+        final delta = _jsToDelta(selDelta);
+
+        final result = copyInterceptor(plainText, delta);
+        if (result == null) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        final clipEvent = event as web.ClipboardEvent;
+        final data = clipEvent.clipboardData;
+        if (data != null) {
+          data.setData('text/plain', result.plainText);
+          if (result.html != null) {
+            data.setData('text/html', result.html!);
+          }
+        }
+        _quill!.deleteText(sel.index, sel.length);
+        _quill!.setSelection(sel.index, 0);
+      }).toJS;
+      editorDiv.addEventListener('cut', _cutHandlerJs!, true.toJS);
+    }
   }
 
   Future<void> _handleLinkTapped(String href, String text) async {

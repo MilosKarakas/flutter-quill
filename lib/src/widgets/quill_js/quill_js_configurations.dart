@@ -3,6 +3,9 @@ import 'dart:ui' show Color;
 import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../models/structs/copy_data.dart';
+import '../default_styles.dart';
+
 /// Data representing a link (used in create/edit callbacks).
 class QuillJsLinkData {
   /// The URL of the link.
@@ -70,6 +73,14 @@ class QuillJsEditorStyle {
   /// Color of hyperlinks in the editor content.
   final Color? linkColor;
 
+  /// Font weight for bold text (e.g. `700`, `'bold'`).
+  /// Applied to `strong` elements. Defaults to Quill theme (typically 700).
+  final Object? boldFontWeight;
+
+  /// Font style for italic text (e.g. `'italic'`, `'oblique'`).
+  /// Applied to `em` elements. Defaults to Quill theme (typically italic).
+  final String? italicFontStyle;
+
   const QuillJsEditorStyle({
     this.fontFamily,
     this.fontSize,
@@ -81,6 +92,8 @@ class QuillJsEditorStyle {
     this.selectionHandleColor,
     this.placeholderColor,
     this.linkColor,
+    this.boldFontWeight,
+    this.italicFontStyle,
   });
 }
 
@@ -126,8 +139,27 @@ class QuillJsEditorConfiguration {
   /// list item at the current indent level. This prevents "orphan" nesting.
   final bool preventOrphanListNesting;
 
+  /// Intercepts paste operations inside the iframe.
+  ///
+  /// Called when the user pastes into the editor. Return a [Delta] to apply
+  /// custom formatted content, or `null` to let Quill handle the paste as usual.
+  /// Matches [QuillEditor.onPasteInterceptor] API.
+  final Delta? Function(String? plainText, String? html)? onPasteInterceptor;
+
+  /// Intercepts copy operations inside the iframe.
+  ///
+  /// Called when the user copies from the editor. Return [CopyClipboardData]
+  /// to write rich text to the clipboard, or `null` for default behavior.
+  /// Matches [QuillEditor.onCopyInterceptor] API.
+  final CopyInterceptor? onCopyInterceptor;
+
+  /// Styles for the editor, using the same [DefaultStyles] API as [QuillEditor].
+  /// Enables sharing one configuration between native and web editors.
+  /// When null, [style] is used if provided, otherwise Quill.js theme defaults.
+  final DefaultStyles? styles;
+
   /// Visual styling for the editor content area (font, colors, etc.).
-  /// When null, Quill.js theme defaults are used.
+  /// Used when [styles] is null. When both are null, Quill.js theme defaults apply.
   final QuillJsEditorStyle? style;
 
   /// When true and [initialContent] is provided, the cursor is placed at the
@@ -165,6 +197,9 @@ class QuillJsEditorConfiguration {
     this.onContentChanged,
     this.onBeforeTextChange,
     this.preventOrphanListNesting = true,
+    this.onPasteInterceptor,
+    this.onCopyInterceptor,
+    this.styles,
     this.style,
     this.moveCursorToEndOnInit = false,
     this.unfocusOnTapOutside = true,
