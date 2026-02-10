@@ -17,9 +17,10 @@ class QuillJsLinkData {
 /// Callback invoked when the user requests to create a new link.
 ///
 /// [selectedText] is the currently selected text in the editor, if any.
+/// [existingUrl] is the current link URL if editing an existing link, null if creating new.
 /// Return a [QuillJsLinkData] to create the link, or `null` to cancel.
 typedef QuillJsLinkCreateCallback = Future<QuillJsLinkData?> Function(
-    String? selectedText);
+    String? selectedText, [String? existingUrl]);
 
 /// Callback invoked when the user taps an existing link in the editor.
 ///

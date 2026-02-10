@@ -661,6 +661,9 @@ $dynamicCss
     final callback = widget.configuration.onLinkTapped;
     if (callback == null) return;
 
+    // Blur editor to dismiss keyboard before showing link dialog
+    _quill?.blur();
+
     // Small delay so Quill processes the click and updates selection
     await Future.delayed(const Duration(milliseconds: 50));
     if (!mounted || _quill == null) return;
@@ -843,6 +846,9 @@ $dynamicCss
   // ------------------------------------------------------------------
 
   Future<void> _handleRequestLink() async {
+    // Blur editor to dismiss keyboard before showing link dialog
+    _quill?.blur();
+    
     final format = _getFormat();
     final linkUrl = format['link'];
 
@@ -882,7 +888,7 @@ $dynamicCss
   }
 
   Future<void> _handleLinkEdit(String currentUrl) async {
-    final callback = widget.configuration.onLinkTapped;
+    final callback = widget.configuration.onLinkCreate;
     if (callback == null) return;
 
     final sel = _getQuillSelection(focus: true);
@@ -892,22 +898,15 @@ $dynamicCss
     if (linkRange == null) return;
 
     final linkText = _quill!.getText(linkRange.index, linkRange.length);
-    final result = await callback(currentUrl, linkText);
-    if (!mounted || _quill == null) return;
+    
+    // Call onLinkCreate with both the existing text and URL for pre-filling
+    final result = await callback(linkText, currentUrl);
+    if (!mounted || _quill == null || result == null) return;
 
-    if (result == null) {
-      _quill!.formatText(
-          linkRange.index, linkRange.length, 'link', false.toJS);
-    } else {
-      if (result.text != null && result.text != linkText) {
-        _quill!.deleteText(linkRange.index, linkRange.length);
-        _quill!.insertText(
-            linkRange.index, result.text!, 'link'.toJS, result.url.toJS);
-      } else {
-        _quill!.formatText(
-            linkRange.index, linkRange.length, 'link', result.url.toJS);
-      }
-    }
+    // Delete the old link and insert the new one
+    _quill!.deleteText(linkRange.index, linkRange.length);
+    final text = result.text ?? result.url;
+    _quill!.insertText(linkRange.index, text, 'link'.toJS, result.url.toJS);
   }
 
   // ------------------------------------------------------------------
