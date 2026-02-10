@@ -586,8 +586,10 @@ $dynamicCss
         final src = (source as JSString?)?.toDart;
         if (src == 'user' || src == 'api') {
           _onTextChanged();
-          // Also sync format state as the cursor position/format may have changed
-          _syncFormatState();
+          // Sync format state after a short delay to ensure format is applied
+          Future.delayed(const Duration(milliseconds: 10), () {
+            if (mounted) _syncFormatState();
+          });
         }
       }).toJS,
     );
@@ -817,38 +819,53 @@ $dynamicCss
   // Controller attachment
   // ------------------------------------------------------------------
 
+  /// Helper to preserve scroll position during format operations
+  void _formatWithScrollPreservation(String formatName, JSAny? value) {
+    final container = _iframe.contentDocument?.querySelector('.ql-editor');
+    final scrollTop = (container as web.HTMLElement?)?.scrollTop ?? 0;
+    
+    _quill!.format(formatName, value);
+    
+    // Restore scroll position after a short delay
+    Future.delayed(const Duration(milliseconds: 10), () {
+      if (container != null && mounted) {
+        container.scrollTop = scrollTop;
+      }
+    });
+  }
+
   void _attachController() {
     widget.controller.attachCallbacks(
       toggleBold: () {
         final fmt = _getFormat();
-        _quill!.format('bold', (!(fmt['bold'] == true)).toJS);
+        _formatWithScrollPreservation('bold', (!(fmt['bold'] == true)).toJS);
         _syncFormatState();
       },
       toggleItalic: () {
         final fmt = _getFormat();
-        _quill!.format('italic', (!(fmt['italic'] == true)).toJS);
+        _formatWithScrollPreservation('italic', (!(fmt['italic'] == true)).toJS);
         _syncFormatState();
       },
       toggleUnderline: () {
         final fmt = _getFormat();
-        _quill!.format('underline', (!(fmt['underline'] == true)).toJS);
+        _formatWithScrollPreservation('underline', (!(fmt['underline'] == true)).toJS);
         _syncFormatState();
       },
       toggleOrderedList: () {
         final fmt = _getFormat();
         if (fmt['list'] == 'ordered') {
-          _quill!.format('list', false.toJS);
+          _formatWithScrollPreservation('list', false.toJS);
         } else {
-          _quill!.format('list', 'ordered'.toJS);
+          _formatWithScrollPreservation('list', 'ordered'.toJS);
         }
         _syncFormatState();
       },
       toggleBulletList: () {
         final fmt = _getFormat();
         if (fmt['list'] == 'bullet') {
-          _quill!.format('list', false.toJS);
+          _formatWithScrollPreservation('list', false.toJS);
         } else {
-          _quill!.format('list', 'bullet'.toJS);
+          _formatWithScrollPreservation('list', 'bullet'.toJS);
         }
         _syncFormatState();
       },
