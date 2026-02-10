@@ -154,6 +154,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
   // Event listener references for cleanup
   JSFunction? _tabKeyHandlerJs;
+  JSFunction? _enterKeyHandlerJs;
   JSFunction? _linkClickHandlerJs;
   JSFunction? _iframeLoadHandlerJs;
 
@@ -225,6 +226,9 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     if (_editorDiv != null) {
       if (_tabKeyHandlerJs != null) {
         _editorDiv!.removeEventListener('keydown', _tabKeyHandlerJs, true.toJS);
+      }
+      if (_enterKeyHandlerJs != null) {
+        _editorDiv!.removeEventListener('keydown', _enterKeyHandlerJs, true.toJS);
       }
       if (_linkClickHandlerJs != null) {
         _editorDiv!.removeEventListener('click', _linkClickHandlerJs);
@@ -433,6 +437,7 @@ $dynamicCss
 
     _setupEventListeners();
     _setupLinkClickHandler();
+    _setupEnterKeyHandler();
 
     if (config.preventOrphanListNesting) {
       _setupTabKeyHandler();
@@ -573,25 +578,22 @@ $dynamicCss
 
   void _setupEventListeners() {
     // text-change: (delta, oldDelta, source) => void
-    // Fire for both 'user' (typing, keyboard shortcuts) and 'api' (toolbar
-    // formatting) sources.  Programmatic setContents calls suppress via
-    // the _suppressContentChanged flag.
+    // Fires when document content changes (typing, deletions, insertions).
+    // Note: Format-only changes (like Cmd+B on selected text) do NOT fire this.
     _quill!.on(
       'text-change',
       ((JSAny? delta, JSAny? oldDelta, JSAny? source) {
         final src = (source as JSString?)?.toDart;
-        if (src == 'user') {
+        if (src == 'user' || src == 'api') {
           _onTextChanged();
-        } else if (src == 'api') {
-          // 'api' source includes keyboard shortcuts (Cmd+B, Cmd+I, etc.)
-          // and toolbar formatting - sync the format state to update toolbar
-          _onTextChanged();
+          // Also sync format state as the cursor position/format may have changed
           _syncFormatState();
         }
       }).toJS,
     );
 
     // selection-change: (range, oldRange, source) => void
+    // Fires when selection changes OR when formats are applied to selected text
     _quill!.on(
       'selection-change',
       ((JSAny? range, JSAny? oldRange, JSAny? source) {
@@ -744,6 +746,48 @@ $dynamicCss
 
     final prevIndent = (prevFormat['indent'] as num?)?.toInt() ?? 0;
     return prevIndent >= currentIndent;
+  }
+
+  // ------------------------------------------------------------------
+  // Enter key handling (preserve inline formatting on new line)
+  // ------------------------------------------------------------------
+
+  void _setupEnterKeyHandler() {
+    _enterKeyHandlerJs = ((web.Event event) {
+      final keyEvent = event as web.KeyboardEvent;
+      if (keyEvent.key == 'Enter' && !keyEvent.shiftKey) {
+        // Get current format before Enter is processed
+        final format = _getFormat();
+        final hasInlineFormat = format['bold'] == true ||
+            format['italic'] == true ||
+            format['underline'] == true;
+
+        if (hasInlineFormat) {
+          // Let Quill handle the Enter key first
+          // Then apply the formatting to the new line
+          Future.delayed(const Duration(milliseconds: 10), () {
+            if (!mounted || _quill == null) return;
+            
+            // Apply the same formatting to the new line
+            if (format['bold'] == true) {
+              _quill!.format('bold', true.toJS);
+            }
+            if (format['italic'] == true) {
+              _quill!.format('italic', true.toJS);
+            }
+            if (format['underline'] == true) {
+              _quill!.format('underline', true.toJS);
+            }
+            
+            // Sync toolbar state
+            _syncFormatState();
+          });
+        }
+      }
+    }).toJS;
+
+    // Use capture phase so we can read format before Quill processes Enter
+    _editorDiv!.addEventListener('keydown', _enterKeyHandlerJs, true.toJS);
   }
 
   // ------------------------------------------------------------------
