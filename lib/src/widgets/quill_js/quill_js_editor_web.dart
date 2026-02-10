@@ -869,7 +869,7 @@ $dynamicCss
       selectedText = _quill!.getText(sel.index, sel.length);
     }
 
-    final result = await callback(selectedText);
+    final result = await callback(selectedText: selectedText);
     if (result == null || !mounted || _quill == null) return;
 
     if (sel != null && sel.length > 0) {
@@ -900,7 +900,10 @@ $dynamicCss
     final linkText = _quill!.getText(linkRange.index, linkRange.length);
     
     // Call onLinkCreate with both the existing text and URL for pre-filling
-    final result = await callback(linkText, currentUrl);
+    final result = await callback(
+      selectedText: linkText,
+      existingUrl: currentUrl,
+    );
     if (!mounted || _quill == null || result == null) return;
 
     // Delete the old link and insert the new one
