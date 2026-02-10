@@ -714,16 +714,19 @@ $dynamicCss
       // Remove the link
       _quill!.formatText(
           linkRange.index, linkRange.length, 'link', false.toJS);
+      _quill!.setSelection(linkRange.index + linkRange.length, 0);
     } else {
       if (result.text != null && result.text != linkText) {
         // Replace text and set new link
         _quill!.deleteText(linkRange.index, linkRange.length);
         _quill!.insertText(
             linkRange.index, result.text!, 'link'.toJS, result.url.toJS);
+        _quill!.setSelection(linkRange.index + result.text!.length, 0);
       } else {
         // Update URL only
         _quill!.formatText(
             linkRange.index, linkRange.length, 'link', result.url.toJS);
+        _quill!.setSelection(linkRange.index + linkRange.length, 0);
       }
     }
   }
@@ -1006,13 +1009,16 @@ $dynamicCss
         _quill!.deleteText(sel.index, sel.length);
         _quill!.insertText(
             sel.index, result.text!, 'link'.toJS, result.url.toJS);
+        _quill!.setSelection(sel.index + result.text!.length, 0);
       } else {
         _quill!.formatText(sel.index, sel.length, 'link', result.url.toJS);
+        _quill!.setSelection(sel.index + sel.length, 0);
       }
     } else {
       final insertIdx = sel?.index ?? (_quill!.getLength() - 1);
       final text = result.text ?? result.url;
       _quill!.insertText(insertIdx, text, 'link'.toJS, result.url.toJS);
+      _quill!.setSelection(insertIdx + text.length, 0);
     }
   }
 
@@ -1039,6 +1045,7 @@ $dynamicCss
     _quill!.deleteText(linkRange.index, linkRange.length);
     final text = result.text ?? result.url;
     _quill!.insertText(linkRange.index, text, 'link'.toJS, result.url.toJS);
+    _quill!.setSelection(linkRange.index + text.length, 0);
   }
 
   // ------------------------------------------------------------------
