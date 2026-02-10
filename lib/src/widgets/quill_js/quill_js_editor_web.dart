@@ -173,6 +173,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // Used to suppress notifications during programmatic setContents calls.
   bool _suppressContentChanged = false;
 
+  // When true, we are reverting a change via onBeforeTextChange; skip the
+  // callback to avoid re-entry when our setContents fires text-change.
+  bool _isReverting = false;
+
   // ------------------------------------------------------------------
   // Lifecycle
   // ------------------------------------------------------------------
@@ -577,15 +581,42 @@ $dynamicCss
   // ------------------------------------------------------------------
 
   void _setupEventListeners() {
-    // text-change: (delta, oldDelta, source) => void
+    // text-change: (delta, oldContents, source) => void
     // Fires when document content changes (typing, deletions, insertions).
     // Note: Format-only changes (like Cmd+B on selected text) do NOT fire this.
     _quill!.on(
       'text-change',
-      ((JSAny? delta, JSAny? oldDelta, JSAny? source) {
+      ((JSAny? changeDeltaJs, JSAny? oldContentsJs, JSAny? source) {
         final src = (source as JSString?)?.toDart;
         if (src == 'user' || src == 'api') {
-          _onTextChanged();
+          if (_isReverting) {
+            _isReverting = false;
+            _onTextChanged();
+          } else {
+            final callback = widget.configuration.onBeforeTextChange;
+            if (callback != null &&
+                changeDeltaJs != null &&
+                oldContentsJs != null) {
+              final changeDeltaObj = changeDeltaJs;
+              final oldContentsObj = oldContentsJs;
+              if (changeDeltaObj is! JSObject || oldContentsObj is! JSObject) {
+                _onTextChanged();
+              } else {
+                final changeDelta = _jsToDelta(changeDeltaObj);
+                final oldDelta = _jsToDelta(oldContentsObj);
+                if (!callback(changeDelta, oldDelta)) {
+                  _isReverting = true;
+                  _suppressContentChanged = true;
+                  _quill!.setContents(oldContentsObj);
+                  _suppressContentChanged = false;
+                  return;
+                }
+                _onTextChanged();
+              }
+            } else {
+              _onTextChanged();
+            }
+          }
           // Sync format state after a short delay to ensure format is applied
           Future.delayed(const Duration(milliseconds: 10), () {
             if (mounted) _syncFormatState();
@@ -877,6 +908,39 @@ $dynamicCss
         _suppressContentChanged = false;
       },
       scrollToEnd: _moveCursorToEndAndScroll,
+      clear: () {
+        _suppressContentChanged = true;
+        _quill!.setContents(_deltaToJs(Delta()..insert('\n')));
+        _suppressContentChanged = false;
+        _moveCursorToEndAndScroll();
+      },
+      setSelection: (index, length) {
+        _quill!.setSelection(index, length);
+      },
+      insertText: (index, text, attributes) {
+        if (attributes != null &&
+            attributes.containsKey('link') &&
+            attributes['link'] != null) {
+          final url = attributes['link']!.toString();
+          _quill!.insertText(index, text, 'link'.toJS, url.toJS);
+        } else {
+          _quill!.insertText(index, text);
+        }
+      },
+      replaceText: (index, length, replacement) {
+        _quill!.deleteText(index, length);
+        _quill!.insertText(index, replacement);
+        _quill!.setSelection(index + replacement.length, 0);
+      },
+      insertTextAtCursor: (text) {
+        final sel = _getQuillSelection(focus: true);
+        final idx = sel?.index ??
+            ((_quill!.getLength() > 1) ? _quill!.getLength() - 1 : 0);
+        final len = sel?.length ?? 0;
+        _quill!.deleteText(idx, len);
+        _quill!.insertText(idx, text);
+        _quill!.setSelection(idx + text.length, 0);
+      },
       focus: () => _quill!.focus(),
       blur: () => _quill!.blur(),
     );

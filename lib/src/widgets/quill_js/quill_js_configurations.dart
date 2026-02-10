@@ -112,6 +112,16 @@ class QuillJsEditorConfiguration {
   /// Called whenever the editor content changes (user edits only).
   final ValueChanged<Delta>? onContentChanged;
 
+  /// Called after a text change is applied; return `false` to revert it.
+  ///
+  /// Quill.js applies changes before firing events, so this callback runs
+  /// post-change. If it returns `false`, the change is reverted by restoring
+  /// [oldDelta]. Use this for max-length enforcement, content validation, etc.
+  ///
+  /// [changeDelta] is the delta that was applied; [oldDelta] is the document
+  /// before the change. A brief flicker may occur when reverting large changes.
+  final bool Function(Delta changeDelta, Delta oldDelta)? onBeforeTextChange;
+
   /// When true, prevents list indentation (Tab key) if there is no preceding
   /// list item at the current indent level. This prevents "orphan" nesting.
   final bool preventOrphanListNesting;
@@ -153,6 +163,7 @@ class QuillJsEditorConfiguration {
     this.onLinkCreate,
     this.onLinkTapped,
     this.onContentChanged,
+    this.onBeforeTextChange,
     this.preventOrphanListNesting = true,
     this.style,
     this.moveCursorToEndOnInit = false,
@@ -285,6 +296,31 @@ class QuillJsEditorController extends ChangeNotifier {
   /// at the very end. Useful after setting initial content.
   void scrollToEnd() => _callbacks?.scrollToEnd.call();
 
+  /// Clears all editor content and resets to an empty document.
+  /// Equivalent to [QuillController.clear].
+  void clear() => _callbacks?.clear.call();
+
+  /// Sets the cursor/selection to the given range.
+  /// [index] is the start offset, [length] is the selection length.
+  /// Use [length] of 0 for a collapsed cursor.
+  void setSelection(int index, int length) =>
+      _callbacks?.setSelection(index, length);
+
+  /// Moves the cursor to the given offset (collapsed selection).
+  void moveCursorToPosition(int offset) => setSelection(offset, 0);
+
+  /// Inserts [text] at [index], optionally with [attributes] (e.g. `{'link': url}`).
+  void insertText(int index, String text, [Map<String, dynamic>? attributes]) =>
+      _callbacks?.insertText(index, text, attributes);
+
+  /// Replaces [length] characters at [index] with [replacement].
+  void replaceText(int index, int length, String replacement) =>
+      _callbacks?.replaceText(index, length, replacement);
+
+  /// Inserts [text] at the current cursor/selection.
+  /// If text is selected, replaces the selection; otherwise inserts at cursor.
+  void insertTextAtCursor(String text) => _callbacks?.insertTextAtCursor(text);
+
   /// Focuses the editor.
   void focus() => _callbacks?.focus.call();
 
@@ -314,6 +350,13 @@ class QuillJsEditorController extends ChangeNotifier {
     required Delta Function() getContents,
     required void Function(Delta) setContents,
     required VoidCallback scrollToEnd,
+    required VoidCallback clear,
+    required void Function(int index, int length) setSelection,
+    required void Function(int index, String text, Map<String, dynamic>?)
+        insertText,
+    required void Function(int index, int length, String replacement)
+        replaceText,
+    required void Function(String text) insertTextAtCursor,
     required VoidCallback focus,
     required VoidCallback blur,
   }) {
@@ -327,6 +370,11 @@ class QuillJsEditorController extends ChangeNotifier {
       getContents: getContents,
       setContents: setContents,
       scrollToEnd: scrollToEnd,
+      clear: clear,
+      setSelection: setSelection,
+      insertText: insertText,
+      replaceText: replaceText,
+      insertTextAtCursor: insertTextAtCursor,
       focus: focus,
       blur: blur,
     );
@@ -356,6 +404,12 @@ class _EditorCallbacks {
   final Delta Function() getContents;
   final void Function(Delta) setContents;
   final VoidCallback scrollToEnd;
+  final VoidCallback clear;
+  final void Function(int index, int length) setSelection;
+  final void Function(int index, String text, Map<String, dynamic>?)
+      insertText;
+  final void Function(int index, int length, String replacement) replaceText;
+  final void Function(String text) insertTextAtCursor;
   final VoidCallback focus;
   final VoidCallback blur;
 
@@ -369,6 +423,11 @@ class _EditorCallbacks {
     required this.getContents,
     required this.setContents,
     required this.scrollToEnd,
+    required this.clear,
+    required this.setSelection,
+    required this.insertText,
+    required this.replaceText,
+    required this.insertTextAtCursor,
     required this.focus,
     required this.blur,
   });
