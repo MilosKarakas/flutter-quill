@@ -482,7 +482,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
     if (config.styles != null) {
       _appendDefaultStylesCss(dynamicCss, config.styles!);
-    } else if (config.style != null) {
+    }
+    if (config.style != null) {
       _appendQuillJsEditorStyleCss(dynamicCss, config.style!);
     }
 

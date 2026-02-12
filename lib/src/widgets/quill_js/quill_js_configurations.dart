@@ -176,11 +176,15 @@ class QuillJsEditorConfiguration {
 
   /// Styles for the editor, using the same [DefaultStyles] API as [QuillEditor].
   /// Enables sharing one configuration between native and web editors.
-  /// When null, [style] is used if provided, otherwise Quill.js theme defaults.
+  /// Applied first to text-level defaults (`.ql-editor`, links, placeholder,
+  /// bold/italic, etc.).
   final DefaultStyles? styles;
 
   /// Visual styling for the editor content area (font, colors, etc.).
-  /// Used when [styles] is null. When both are null, Quill.js theme defaults apply.
+  /// Applied after [styles] to override/add iframe CSS for caret, selection,
+  /// colors, font properties, and related visual details.
+  ///
+  /// When both [styles] and [style] are null, Quill.js theme defaults apply.
   final QuillJsEditorStyle? style;
 
   /// When true and [initialContent] is provided, the cursor is placed at the
