@@ -1000,25 +1000,26 @@ $customCss
   }
 
   Future<void> _handleLinkTapped(String href, String text) async {
+    // Let Quill process the click first so getSelection points at the tap.
+    await Future.delayed(const Duration(milliseconds: 10));
+    if (!mounted || _quill == null) return;
+
+    final sel = _getQuillSelection();
+    final linkRange = sel != null
+        ? _findLinkRange(sel.index)
+        : _findLinkRangeByHref(href);
+
     final callback = widget.configuration.onLinkTapped;
     if (callback == null) return;
 
     // Blur editor to dismiss keyboard before showing link dialog
     _quill?.blur();
-
-    // Small delay so Quill processes the click and updates selection
-    await Future.delayed(const Duration(milliseconds: 50));
-    if (!mounted || _quill == null) return;
-
-    final sel = _getQuillSelection();
-    if (sel == null) return;
-
-    final linkRange = _findLinkRange(sel.index);
-    if (linkRange == null) return;
-
-    final linkText = _quill!.getText(linkRange.index, linkRange.length);
+    final linkText = linkRange != null
+        ? _quill!.getText(linkRange.index, linkRange.length)
+        : text;
     final result = await callback(href, linkText);
     if (!mounted || _quill == null) return;
+    if (linkRange == null) return;
 
     if (result == null) {
       // Remove the link
@@ -1418,6 +1419,53 @@ $customCss
       offset += len;
     }
     return null;
+  }
+
+  /// Finds the first contiguous link range whose `link` attribute matches [href].
+  _LinkRange? _findLinkRangeByHref(String href) {
+    final delta = _getContentsDelta();
+    final ops = delta.toList();
+
+    int offset = 0;
+    int? currentStart;
+    int currentLength = 0;
+    String? currentHref;
+
+    _LinkRange? flushCurrentRange() {
+      if (currentStart != null && currentHref == href && currentLength > 0) {
+        return (index: currentStart, length: currentLength);
+      }
+      return null;
+    }
+
+    for (final op in ops) {
+      final data = op.data;
+      final len = data is String ? data.length : 1;
+      final attrs = op.attributes;
+      final opHref = attrs != null ? attrs['link'] as String? : null;
+
+      if (opHref != null) {
+        if (currentStart == null || currentHref != opHref) {
+          final matched = flushCurrentRange();
+          if (matched != null) return matched;
+          currentStart = offset;
+          currentLength = len;
+          currentHref = opHref;
+        } else {
+          currentLength += len;
+        }
+      } else {
+        final matched = flushCurrentRange();
+        if (matched != null) return matched;
+        currentStart = null;
+        currentLength = 0;
+        currentHref = null;
+      }
+
+      offset += len;
+    }
+
+    return flushCurrentRange();
   }
 
   // ------------------------------------------------------------------
