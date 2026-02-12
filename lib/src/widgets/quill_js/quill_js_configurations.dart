@@ -43,6 +43,11 @@ class QuillJsEditorStyle {
   /// The CSS font-family value (e.g. `'Roboto, sans-serif'`).
   final String? fontFamily;
 
+  /// CSS `font-variation-settings` value for variable fonts.
+  ///
+  /// Example: `"wght" 400, "wdth" 95`
+  final String? fontVariationSettings;
+
   /// Font size in logical pixels.
   final double? fontSize;
 
@@ -83,6 +88,7 @@ class QuillJsEditorStyle {
 
   const QuillJsEditorStyle({
     this.fontFamily,
+    this.fontVariationSettings,
     this.fontSize,
     this.lineHeight,
     this.letterSpacing,
@@ -105,6 +111,21 @@ class QuillJsEditorConfiguration {
   /// URL to your self-hosted Quill CSS theme file (e.g., quill.snow.css).
   /// If null, no theme CSS is loaded (you can include it in your index.html).
   final String? quillCssUrl;
+
+  /// Additional CSS injected into the iframe `<style>` block.
+  ///
+  /// Useful for custom `@font-face` declarations required by [styles] or
+  /// [style] (for example variable fonts shipped as Flutter web assets).
+  ///
+  /// Example:
+  /// ```css
+  /// @font-face {
+  ///   font-family: 'RobotoFlex';
+  ///   src: url('assets/assets/fonts/Roboto_Flex/RobotoFlex.ttf')
+  ///        format('truetype-variations');
+  /// }
+  /// ```
+  final String? customCss;
 
   /// Initial content as a [Delta]. If null, the editor starts empty.
   final Delta? initialContent;
@@ -189,6 +210,7 @@ class QuillJsEditorConfiguration {
   const QuillJsEditorConfiguration({
     required this.quillJsUrl,
     this.quillCssUrl,
+    this.customCss,
     this.initialContent,
     this.placeholder,
     this.readOnly = false,

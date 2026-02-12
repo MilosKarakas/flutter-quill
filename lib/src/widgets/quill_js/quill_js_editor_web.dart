@@ -78,6 +78,79 @@ String _colorToCss(Color c) {
   return 'rgba(${c.red}, ${c.green}, ${c.blue}, $a)';
 }
 
+const _genericFontFamilies = <String>{
+  'serif',
+  'sans-serif',
+  'monospace',
+  'cursive',
+  'fantasy',
+  'system-ui',
+  'ui-serif',
+  'ui-sans-serif',
+  'ui-monospace',
+  'ui-rounded',
+  'emoji',
+  'math',
+  'fangsong',
+};
+
+String _cssSingleQuoted(String value) {
+  final escaped = value.replaceAll(r'\', r'\\').replaceAll('\'', r"\'");
+  return '\'${escaped.trim()}\'';
+}
+
+String _cssDoubleQuoted(String value) {
+  final escaped = value.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+  return '"$escaped"';
+}
+
+String _fontFamilyTokenToCss(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) {
+    return '';
+  }
+  if (_genericFontFamilies.contains(trimmed.toLowerCase())) {
+    return trimmed.toLowerCase();
+  }
+  return _cssSingleQuoted(trimmed);
+}
+
+String? _fontFamilyToCss(TextStyle style) {
+  final families = <String>[];
+  final family = style.fontFamily;
+  if (family != null && family.trim().isNotEmpty) {
+    families.add(_fontFamilyTokenToCss(family));
+  }
+  final fallbacks = style.fontFamilyFallback;
+  if (fallbacks != null) {
+    for (final fallback in fallbacks) {
+      final familyToken = _fontFamilyTokenToCss(fallback);
+      if (familyToken.isNotEmpty) {
+        families.add(familyToken);
+      }
+    }
+  }
+  if (families.isEmpty) {
+    return null;
+  }
+  return families.join(', ');
+}
+
+String? _fontVariationSettingsToCss(TextStyle style) {
+  final fontVariations = style.fontVariations;
+  if (fontVariations == null || fontVariations.isEmpty) {
+    return null;
+  }
+  return fontVariations
+      .map((variation) =>
+          '${_cssDoubleQuoted(variation.axis)} ${variation.value}')
+      .join(', ');
+}
+
+String _sanitizeInlineCss(String css) {
+  return css.replaceAll(RegExp(r'</style', caseSensitive: false), '<\\/style');
+}
+
 /// Appends CSS for [DefaultStyles] to [sb].
 void _appendDefaultStylesCss(StringBuffer sb, DefaultStyles styles) {
   // Base editor styles from paragraph
@@ -106,8 +179,13 @@ void _appendDefaultStylesCss(StringBuffer sb, DefaultStyles styles) {
 /// Converts [TextStyle] to CSS property string.
 String _textStyleToCss(TextStyle style) {
   final css = StringBuffer();
-  if (style.fontFamily != null) {
-    css.write('font-family: ${style.fontFamily};');
+  final fontFamily = _fontFamilyToCss(style);
+  if (fontFamily != null) {
+    css.write('font-family: $fontFamily;');
+  }
+  final variationSettings = _fontVariationSettingsToCss(style);
+  if (variationSettings != null) {
+    css.write('font-variation-settings: $variationSettings;');
   }
   if (style.fontSize != null) {
     css.write('font-size: ${style.fontSize}px;');
@@ -143,6 +221,11 @@ void _appendQuillJsEditorStyleCss(StringBuffer sb, QuillJsEditorStyle style) {
   final editorCss = StringBuffer();
   if (style.fontFamily != null) {
     editorCss.write('font-family: ${style.fontFamily};');
+  }
+  if (style.fontVariationSettings != null &&
+      style.fontVariationSettings!.trim().isNotEmpty) {
+    editorCss
+        .write('font-variation-settings: ${style.fontVariationSettings};');
   }
   if (style.fontSize != null) {
     editorCss.write('font-size: ${style.fontSize}px;');
@@ -393,6 +476,9 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   String _buildSrcdoc() {
     final config = widget.configuration;
     final dynamicCss = StringBuffer();
+    final customCss = config.customCss == null
+        ? ''
+        : _sanitizeInlineCss(config.customCss!);
 
     if (config.styles != null) {
       _appendDefaultStylesCss(dynamicCss, config.styles!);
@@ -423,6 +509,7 @@ html, body {
 .ql-editor.ql-blank::before { font-style: normal; color: rgba(0,0,0,0.38); }
 .ql-editor a { cursor: pointer; color: #1a73e8; text-decoration: underline; }
 $dynamicCss
+$customCss
 </style>
 </head>
 <body>
