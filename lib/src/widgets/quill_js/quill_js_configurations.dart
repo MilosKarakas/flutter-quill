@@ -146,6 +146,21 @@ class QuillJsEditorConfiguration {
   /// Called whenever the editor content changes (user edits only).
   final ValueChanged<Delta>? onContentChanged;
 
+  /// Called once when the web editor is fully initialized and mounted.
+  ///
+  /// This fires after internal controller attachment and after the editor
+  /// enters the ready state. The callback is dispatched in a post-frame
+  /// callback so it is safe to request focus immediately.
+  ///
+  /// Example:
+  /// ```dart
+  /// onEditorReady: () {
+  ///   myFocusNode.requestFocus();
+  ///   controller.focus();
+  /// },
+  /// ```
+  final VoidCallback? onEditorReady;
+
   /// Called after a text change is applied; return `false` to revert it.
   ///
   /// Quill.js applies changes before firing events, so this callback runs
@@ -227,6 +242,7 @@ class QuillJsEditorConfiguration {
     this.onLinkCreate,
     this.onLinkTapped,
     this.onContentChanged,
+    this.onEditorReady,
     this.onBeforeTextChange,
     this.preventOrphanListNesting = true,
     this.onPasteInterceptor,

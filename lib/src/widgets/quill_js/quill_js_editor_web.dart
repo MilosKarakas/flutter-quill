@@ -385,6 +385,9 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // callback to avoid re-entry when our setContents fires text-change.
   bool _isReverting = false;
 
+  // Ensures onEditorReady is fired only once per mounted editor instance.
+  bool _didNotifyEditorReady = false;
+
   // --- First-focus cursor placement state (moveCursorToEndOnFirstFocus) ---
   // True after the one-shot cursor-to-end has been applied (or skipped).
   bool _didApplyInitialCursorPlacement = false;
@@ -570,6 +573,7 @@ $customCss
       _setupQuill(contentWindow as JSObject);
 
       setState(() => _loadState = _LoadState.ready);
+      _scheduleOnEditorReadyCallback();
 
       // Auto-focus after the build pass so the HtmlElementView is visible.
       if (widget.autoFocus) {
@@ -587,6 +591,20 @@ $customCss
         _errorMessage = e.toString();
       });
     }
+  }
+
+  void _scheduleOnEditorReadyCallback() {
+    if (_didNotifyEditorReady) return;
+    final onEditorReady = widget.configuration.onEditorReady;
+    if (onEditorReady == null) return;
+
+    _didNotifyEditorReady = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_loadState != _LoadState.ready) return;
+      if (!widget.controller.isAttached) return;
+      onEditorReady();
+    });
   }
 
   void _setupQuill(JSObject iframeWindow) {
