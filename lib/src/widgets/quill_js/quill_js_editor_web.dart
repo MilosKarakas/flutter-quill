@@ -63,6 +63,13 @@ extension type _QuillJsInstance._(JSObject _) implements JSObject {
   external void insertText(int index, String text,
       [JSAny? formatName, JSAny? formatValue]);
   external void setSelection(int index, int length);
+
+  /// Like [setSelection] but with an explicit Quill source string.
+  ///
+  /// Pass `'silent'.toJS` to avoid firing the `selection-change` event,
+  /// or `'api'.toJS` to fire it with a non-user source.
+  @JS('setSelection')
+  external void setSelectionWithSource(int index, int length, JSString source);
 }
 
 // ---------------------------------------------------------------------------
@@ -378,6 +385,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // callback to avoid re-entry when our setContents fires text-change.
   bool _isReverting = false;
 
+  // --- First-focus cursor placement state (moveCursorToEndOnFirstFocus) ---
+  // True after the one-shot cursor-to-end has been applied (or skipped).
+  bool _didApplyInitialCursorPlacement = false;
+  // True once the user has made any selection/caret change from a user source
+  // (pointer-down, keyboard navigation, etc.) before the first-focus apply.
+  bool _didUserInteractWithSelection = false;
+
   // ------------------------------------------------------------------
   // Lifecycle
   // ------------------------------------------------------------------
@@ -605,11 +619,6 @@ $customCss
     // Set initial content
     if (config.initialContent != null) {
       _quill!.setContents(_deltaToJs(config.initialContent!));
-
-      // Move cursor to end and scroll to make it visible
-      if (config.moveCursorToEndOnInit) {
-        _moveCursorToEndAndScroll();
-      }
     }
 
     _setupEventListeners();
@@ -834,11 +843,15 @@ $customCss
     );
 
     // selection-change: (range, oldRange, source) => void
-    // Fires when selection changes OR when formats are applied to selected text
+    // Fires when selection changes OR when formats are applied to selected text.
+    // We forward the source so we can distinguish user vs api/silent changes.
     _quill!.on(
       'selection-change',
       ((JSAny? range, JSAny? oldRange, JSAny? source) {
-        _onSelectionChanged(range as JSObject?);
+        _onSelectionChanged(
+          range as JSObject?,
+          (source as JSString?)?.toDart,
+        );
       }).toJS,
     );
   }
@@ -849,7 +862,7 @@ $customCss
     widget.configuration.onContentChanged?.call(delta);
   }
 
-  void _onSelectionChanged(JSObject? range) {
+  void _onSelectionChanged(JSObject? range, String? source) {
     // range == null means the editor lost focus
     if (range == null) {
       _editorHasFocus = false;
@@ -857,12 +870,52 @@ $customCss
       return;
     }
 
-    // range != null means the editor has focus
+    final wasFocused = _editorHasFocus;
     _editorHasFocus = true;
     _onJsFocusChanged(hasFocus: true);
 
+    // Track user-originated selection/caret changes (pointer-down, keyboard
+    // navigation, explicit range selections). Programmatic changes tagged as
+    // 'api' or 'silent' are ignored so they don't poison the guard.
+    if (source == 'user') {
+      _didUserInteractWithSelection = true;
+    }
+
+    // On focus transition (was blurred, now focused), attempt first-focus
+    // cursor placement if the feature is enabled.
+    if (!wasFocused) {
+      _maybeMoveCursorToEndOnFirstFocus();
+    }
+
     // Sync format state whenever selection changes (cursor moves, text selected, etc.)
     _syncFormatState();
+  }
+
+  /// One-shot: moves the cursor to the end of the document on first focus gain,
+  /// provided the user has not already positioned the caret themselves.
+  void _maybeMoveCursorToEndOnFirstFocus() {
+    if (_didApplyInitialCursorPlacement) return;
+    if (!widget.configuration.moveCursorToEndOnFirstFocus) return;
+    if (_didUserInteractWithSelection) return;
+    if (_loadState != _LoadState.ready || _quill == null) return;
+
+    final length = _quill!.getLength();
+    if (length > 0) {
+      // Use 'silent' source so this programmatic move does not fire another
+      // selection-change event and does not feed back into
+      // _didUserInteractWithSelection.
+      _quill!.setSelectionWithSource(length - 1, 0, 'silent'.toJS);
+    }
+
+    // Scroll the Quill editor container inside the iframe to the bottom.
+    final qlContainer =
+        _iframe.contentDocument?.querySelector('.ql-container');
+    if (qlContainer != null) {
+      (qlContainer as web.HTMLElement).scrollTop =
+          qlContainer.scrollHeight;
+    }
+
+    _didApplyInitialCursorPlacement = true;
   }
 
   // ------------------------------------------------------------------

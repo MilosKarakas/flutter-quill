@@ -187,10 +187,16 @@ class QuillJsEditorConfiguration {
   /// When both [styles] and [style] are null, Quill.js theme defaults apply.
   final QuillJsEditorStyle? style;
 
-  /// When true and [initialContent] is provided, the cursor is placed at the
-  /// end of the content and the editor scrolls to make it visible.
+  /// When true, the cursor is moved to the end of the document and the editor
+  /// scrolls to make it visible — but only on the **first focus gain**, and
+  /// only if the user has not already positioned the caret themselves.
+  ///
+  /// This avoids the focus-stealing side-effect of the old
+  /// `moveCursorToEndOnInit` approach, which called `setSelection` at init
+  /// time and implicitly focused the editor.
+  ///
   /// Defaults to `false`.
-  final bool moveCursorToEndOnInit;
+  final bool moveCursorToEndOnFirstFocus;
 
   /// Whether tapping outside the editor should automatically blur it and
   /// dismiss the on-screen keyboard.
@@ -227,7 +233,7 @@ class QuillJsEditorConfiguration {
     this.onCopyInterceptor,
     this.styles,
     this.style,
-    this.moveCursorToEndOnInit = false,
+    this.moveCursorToEndOnFirstFocus = false,
     this.unfocusOnTapOutside = true,
   });
 }
