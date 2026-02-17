@@ -380,7 +380,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   int _focusSyncEpoch = 0;
 
   static const Duration _domFocusRetryDelay = Duration(milliseconds: 40);
-  static const int _domFocusRetryCount = 1;
+  static const int _domFocusRetryCount = 3;
 
   // When true, the text-change handler skips firing onContentChanged.
   // Used to suppress notifications during programmatic setContents calls.
@@ -718,19 +718,39 @@ $customCss
     _pendingDomFocusSync = false;
     _withFocusSyncGuard(widget.controller.focus);
 
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _runDeferredDomFocusAttempt(epoch);
+    });
+
     for (var i = 1; i <= _domFocusRetryCount; i++) {
       Future<void>.delayed(
         Duration(microseconds: _domFocusRetryDelay.inMicroseconds * i),
-        () {
-          if (!mounted) return;
-          if (epoch != _focusSyncEpoch) return;
-          final currentNode = widget.focusNode;
-          if (currentNode == null || !currentNode.hasFocus) return;
-          if (!widget.controller.isAttached) return;
-          _withFocusSyncGuard(widget.controller.focus);
-        },
+        () => _runDeferredDomFocusAttempt(epoch),
       );
     }
+  }
+
+  void _runDeferredDomFocusAttempt(int epoch) {
+    if (!mounted) return;
+    if (epoch != _focusSyncEpoch) return;
+    final node = widget.focusNode;
+    if (node == null || !node.hasFocus) return;
+    if (!widget.controller.isAttached) return;
+    _withFocusSyncGuard(widget.controller.focus);
+  }
+
+  /// Blurs the JS editor and proactively mirrors blur to Flutter focus.
+  ///
+  /// In some iframe/browser paths Quill's `selection-change(null)` can be
+  /// dropped, leaving Flutter focused while DOM focus is already gone. That
+  /// stale state prevents a later `requestFocus()` from emitting a new focus
+  /// change event. We sync Flutter focus eagerly to keep both sides aligned.
+  void _blurEditorAndSyncFlutterFocus() {
+    final quill = _quill;
+    if (quill == null) return;
+    quill.blur();
+    _editorHasFocus = false;
+    _onJsFocusChanged(hasFocus: false);
   }
 
   void _withFocusSyncGuard(VoidCallback action) {
@@ -1158,7 +1178,7 @@ $customCss
     if (callback == null) return;
 
     // Blur editor to dismiss keyboard before showing link dialog
-    _quill?.blur();
+    _blurEditorAndSyncFlutterFocus();
     final linkText = linkRange != null
         ? _quill!.getText(linkRange.index, linkRange.length)
         : text;
@@ -1435,7 +1455,7 @@ $customCss
 
   Future<void> _handleRequestLink() async {
     // Blur editor to dismiss keyboard before showing link dialog
-    _quill?.blur();
+    _blurEditorAndSyncFlutterFocus();
     
     final format = _getFormat();
     final linkUrl = format['link'];
@@ -1634,9 +1654,7 @@ $customCss
 
   void _onTapOutside(PointerDownEvent _) {
     if (!_editorHasFocus || _quill == null) return;
-    _quill!.blur();
-    // The blur fires Quill's selection-change with null, which triggers
-    // _onJsFocusChanged(hasFocus: false), syncing the Flutter FocusNode.
+    _blurEditorAndSyncFlutterFocus();
   }
 
   // ------------------------------------------------------------------
