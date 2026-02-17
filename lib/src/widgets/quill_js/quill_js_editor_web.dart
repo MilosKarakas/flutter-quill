@@ -1695,6 +1695,16 @@ $customCss
       );
     }
 
+    final node = widget.focusNode;
+    if (node != null) {
+      // Ensure the provided FocusNode is attached to Flutter's focus tree.
+      // Without this, requestFocus() from client code can be a no-op.
+      child = Focus(
+        focusNode: node,
+        child: child,
+      );
+    }
+
     return child;
   }
 }
