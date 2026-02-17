@@ -376,6 +376,11 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // Focus bridging state
   bool _isSyncingFocus = false;
   bool _editorHasFocus = false;
+  bool _pendingDomFocusSync = false;
+  int _focusSyncEpoch = 0;
+
+  static const Duration _domFocusRetryDelay = Duration(milliseconds: 40);
+  static const int _domFocusRetryCount = 1;
 
   // When true, the text-change handler skips firing onContentChanged.
   // Used to suppress notifications during programmatic setContents calls.
@@ -423,6 +428,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       _onIframeLoaded();
     }).toJS;
     _iframe.addEventListener('load', _iframeLoadHandlerJs);
+
+    _setupFocusBridge();
   }
 
   @override
@@ -431,6 +438,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
     if (widget.configuration.readOnly != oldWidget.configuration.readOnly) {
       _quill?.enable(!widget.configuration.readOnly);
+    }
+
+    if (widget.focusNode != oldWidget.focusNode) {
+      oldWidget.focusNode?.removeListener(_onFlutterFocusChanged);
+      _focusSyncEpoch++;
+      _pendingDomFocusSync = false;
+      _setupFocusBridge();
     }
   }
 
@@ -574,6 +588,7 @@ $customCss
 
       setState(() => _loadState = _LoadState.ready);
       _scheduleOnEditorReadyCallback();
+      _scheduleDeferredDomFocusSync();
 
       // Auto-focus after the build pass so the HtmlElementView is visible.
       if (widget.autoFocus) {
@@ -649,7 +664,6 @@ $customCss
     }
 
     _attachController();
-    _setupFocusBridge();
     _setupParentViewportFixes();
   }
 
@@ -658,7 +672,14 @@ $customCss
   // ------------------------------------------------------------------
 
   void _setupFocusBridge() {
-    widget.focusNode?.addListener(_onFlutterFocusChanged);
+    final node = widget.focusNode;
+    node?.addListener(_onFlutterFocusChanged);
+
+    // If Flutter focus was obtained before the web editor attached, replay
+    // ownership sync once callbacks become available.
+    if (node?.hasFocus ?? false) {
+      _syncDomFocusOwnership(force: true);
+    }
   }
 
   void _teardownFocusBridge() {
@@ -667,18 +688,71 @@ $customCss
 
   /// Flutter FocusNode changed -> sync to JS editor.
   void _onFlutterFocusChanged() {
-    if (_isSyncingFocus || _quill == null) return;
+    final node = widget.focusNode;
+    if (node == null) return;
+
+    if (!node.hasFocus) {
+      _pendingDomFocusSync = false;
+      _focusSyncEpoch++;
+      if (!widget.controller.isAttached) return;
+      _withFocusSyncGuard(widget.controller.blur);
+      return;
+    }
+
+    _syncDomFocusOwnership(force: true);
+  }
+
+  void _syncDomFocusOwnership({bool force = false}) {
+    if (!mounted) return;
+    final node = widget.focusNode;
+    if (node == null) return;
+
+    if (!node.hasFocus) return;
+
+    if (!widget.controller.isAttached) {
+      if (force) _pendingDomFocusSync = true;
+      return;
+    }
+
+    final epoch = ++_focusSyncEpoch;
+    _pendingDomFocusSync = false;
+    _withFocusSyncGuard(widget.controller.focus);
+
+    for (var i = 1; i <= _domFocusRetryCount; i++) {
+      Future<void>.delayed(
+        Duration(microseconds: _domFocusRetryDelay.inMicroseconds * i),
+        () {
+          if (!mounted) return;
+          if (epoch != _focusSyncEpoch) return;
+          final currentNode = widget.focusNode;
+          if (currentNode == null || !currentNode.hasFocus) return;
+          if (!widget.controller.isAttached) return;
+          _withFocusSyncGuard(widget.controller.focus);
+        },
+      );
+    }
+  }
+
+  void _withFocusSyncGuard(VoidCallback action) {
+    if (_isSyncingFocus) return;
     _isSyncingFocus = true;
     try {
-      final node = widget.focusNode!;
-      if (node.hasFocus) {
-        _quill!.focus();
-      } else {
-        _quill!.blur();
-      }
+      action();
     } finally {
       _isSyncingFocus = false;
     }
+  }
+
+  void _scheduleDeferredDomFocusSync() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_loadState != _LoadState.ready) return;
+      final node = widget.focusNode;
+      if (node == null) return;
+      if (_pendingDomFocusSync || node.hasFocus) {
+        _syncDomFocusOwnership(force: true);
+      }
+    });
   }
 
   /// JS editor focus changed -> sync to Flutter FocusNode.
