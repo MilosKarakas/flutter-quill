@@ -38,8 +38,7 @@ extension type _JsRange._(JSObject _) implements JSObject {
 /// used with this extension type for strongly-typed access to Quill methods.
 extension type _QuillJsInstance._(JSObject _) implements JSObject {
   external void format(String name, JSAny? value);
-  external void formatText(
-      int index, int length, String name, JSAny? value);
+  external void formatText(int index, int length, String name, JSAny? value);
   external JSObject? getFormat();
 
   /// Overload of `getFormat` that accepts an index and length, returning the
@@ -60,8 +59,12 @@ extension type _QuillJsInstance._(JSObject _) implements JSObject {
   external void focus();
   external void blur();
   external void deleteText(int index, int length);
-  external void insertText(int index, String text,
-      [JSAny? formatName, JSAny? formatValue]);
+  external void insertText(
+    int index,
+    String text, [
+    JSAny? formatName,
+    JSAny? formatValue,
+  ]);
   external void setSelection(int index, int length);
 
   /// Like [setSelection] but with an explicit Quill source string.
@@ -78,6 +81,7 @@ extension type _QuillJsInstance._(JSObject _) implements JSObject {
 
 typedef _QuillSelection = ({int index, int length});
 typedef _LinkRange = ({int index, int length});
+typedef _LinkEditContext = ({_LinkRange range, String url});
 
 /// Converts a Flutter [Color] to a CSS `rgba(...)` string.
 String _colorToCss(Color c) {
@@ -149,8 +153,9 @@ String? _fontVariationSettingsToCss(TextStyle style) {
     return null;
   }
   return fontVariations
-      .map((variation) =>
-          '${_cssDoubleQuoted(variation.axis)} ${variation.value}')
+      .map(
+        (variation) => '${_cssDoubleQuoted(variation.axis)} ${variation.value}',
+      )
       .join(', ');
 }
 
@@ -202,7 +207,9 @@ String _textStyleToCss(TextStyle style) {
     css.write('font-weight: ${(w.index + 1) * 100};');
   }
   if (style.fontStyle != null) {
-    css.write('font-style: ${style.fontStyle == FontStyle.italic ? 'italic' : 'normal'};');
+    css.write(
+      'font-style: ${style.fontStyle == FontStyle.italic ? 'italic' : 'normal'};',
+    );
   }
   if (style.height != null) {
     css.write('line-height: ${style.height};');
@@ -231,8 +238,7 @@ void _appendQuillJsEditorStyleCss(StringBuffer sb, QuillJsEditorStyle style) {
   }
   if (style.fontVariationSettings != null &&
       style.fontVariationSettings!.trim().isNotEmpty) {
-    editorCss
-        .write('font-variation-settings: ${style.fontVariationSettings};');
+    editorCss.write('font-variation-settings: ${style.fontVariationSettings};');
   }
   if (style.fontSize != null) {
     editorCss.write('font-size: ${style.fontSize}px;');
@@ -250,7 +256,9 @@ void _appendQuillJsEditorStyleCss(StringBuffer sb, QuillJsEditorStyle style) {
     editorCss.write('caret-color: ${_colorToCss(style.caretColor!)};');
   }
   if (style.selectionHandleColor != null) {
-    editorCss.write('accent-color: ${_colorToCss(style.selectionHandleColor!)};');
+    editorCss.write(
+      'accent-color: ${_colorToCss(style.selectionHandleColor!)};',
+    );
   }
   if (editorCss.isNotEmpty) {
     sb.writeln('.ql-editor { $editorCss }');
@@ -275,7 +283,9 @@ void _appendQuillJsEditorStyleCss(StringBuffer sb, QuillJsEditorStyle style) {
     sb.writeln('.ql-editor strong { font-weight: $w !important; }');
   }
   if (style.italicFontStyle != null) {
-    sb.writeln('.ql-editor em { font-style: ${style.italicFontStyle!} !important; }');
+    sb.writeln(
+      '.ql-editor em { font-style: ${style.italicFontStyle!} !important; }',
+    );
   }
 }
 
@@ -400,6 +410,9 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // (pointer-down, keyboard navigation, etc.) before the first-focus apply.
   bool _didUserInteractWithSelection = false;
 
+  // Prevents duplicate link dialogs when toolbar is tapped repeatedly.
+  bool _isHandlingLinkRequest = false;
+
   // ------------------------------------------------------------------
   // Lifecycle
   // ------------------------------------------------------------------
@@ -464,7 +477,11 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
         _editorDiv!.removeEventListener('keydown', _tabKeyHandlerJs, true.toJS);
       }
       if (_enterKeyHandlerJs != null) {
-        _editorDiv!.removeEventListener('keydown', _enterKeyHandlerJs, true.toJS);
+        _editorDiv!.removeEventListener(
+          'keydown',
+          _enterKeyHandlerJs,
+          true.toJS,
+        );
       }
       if (_linkClickHandlerJs != null) {
         _editorDiv!.removeEventListener('click', _linkClickHandlerJs);
@@ -482,8 +499,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
     // Remove parent-window viewport / scroll-lock listeners
     if (_viewportResizeHandlerJs != null) {
-      web.window.visualViewport
-          ?.removeEventListener('resize', _viewportResizeHandlerJs);
+      web.window.visualViewport?.removeEventListener(
+        'resize',
+        _viewportResizeHandlerJs,
+      );
     }
     widget.controller.keyboardHeight.value = 0;
 
@@ -570,18 +589,17 @@ $customCss
       }
 
       // Find the #editor div inside the iframe
-      _editorDiv =
-          contentDoc.querySelector('#editor') as web.HTMLElement?;
+      _editorDiv = contentDoc.querySelector('#editor') as web.HTMLElement?;
       if (_editorDiv == null) {
         throw StateError('Could not find #editor inside iframe');
       }
 
       // Check that Quill.js loaded successfully inside the iframe
-      final quillGlobal =
-          (contentWindow as JSObject)['Quill'];
+      final quillGlobal = (contentWindow as JSObject)['Quill'];
       if (!quillGlobal.isDefinedAndNotNull) {
         throw StateError(
-            'Quill.js did not load inside iframe. Check quillJsUrl.');
+          'Quill.js did not load inside iframe. Check quillJsUrl.',
+        );
       }
 
       _setupQuill(contentWindow as JSObject);
@@ -625,28 +643,32 @@ $customCss
   void _setupQuill(JSObject iframeWindow) {
     final config = widget.configuration;
 
-    final options = <String, dynamic>{
-      'theme': 'snow',
-      'modules': <String, dynamic>{
-        'toolbar': false, // toolbar is handled by Flutter
-      },
-      'formats': <String>[
-        'bold',
-        'italic',
-        'underline',
-        'list',
-        'link',
-        'indent',
-      ],
-      if (config.placeholder != null) 'placeholder': config.placeholder,
-      'readOnly': config.readOnly,
-    }.jsify() as JSObject;
+    final options =
+        <String, dynamic>{
+              'theme': 'snow',
+              'modules': <String, dynamic>{
+                'toolbar': false, // toolbar is handled by Flutter
+              },
+              'formats': <String>[
+                'bold',
+                'italic',
+                'underline',
+                'list',
+                'link',
+                'indent',
+              ],
+              if (config.placeholder != null) 'placeholder': config.placeholder,
+              'readOnly': config.readOnly,
+            }.jsify()
+            as JSObject;
 
     // Obtain the Quill constructor from the iframe's window and create
     // the editor instance inside the iframe's document.
     final quillConstructor = iframeWindow['Quill'] as JSFunction;
     final jsQuill = quillConstructor.callAsConstructor<JSObject>(
-        _editorDiv!, options);
+      _editorDiv!,
+      options,
+    );
     _quill = jsQuill as _QuillJsInstance;
 
     // Set initial content
@@ -867,8 +889,7 @@ $customCss
   void _restoreParentOverflow() {
     final html = web.document.documentElement as web.HTMLElement?;
     html?.style.setProperty('overflow', _savedHtmlOverflow ?? '');
-    web.document.body?.style
-        .setProperty('overflow', _savedBodyOverflow ?? '');
+    web.document.body?.style.setProperty('overflow', _savedBodyOverflow ?? '');
   }
 
   // ------------------------------------------------------------------
@@ -931,11 +952,11 @@ $customCss
                   _isReverting = true;
                   _suppressContentChanged = true;
                   final cursorPos = _cursorPositionToRestoreAfterRevert(
-                      changeDelta);
+                    changeDelta,
+                  );
                   _quill!.setContents(oldContentsObj);
                   final len = _quill!.getLength();
-                  final clamped =
-                      cursorPos.clamp(0, len > 0 ? len - 1 : 0);
+                  final clamped = cursorPos.clamp(0, len > 0 ? len - 1 : 0);
                   _quill!.setSelection(clamped, 0);
                   _suppressContentChanged = false;
                   return;
@@ -960,10 +981,7 @@ $customCss
     _quill!.on(
       'selection-change',
       ((JSAny? range, JSAny? oldRange, JSAny? source) {
-        _onSelectionChanged(
-          range as JSObject?,
-          (source as JSString?)?.toDart,
-        );
+        _onSelectionChanged(range as JSObject?, (source as JSString?)?.toDart);
       }).toJS,
     );
   }
@@ -1020,11 +1038,9 @@ $customCss
     }
 
     // Scroll the Quill editor container inside the iframe to the bottom.
-    final qlContainer =
-        _iframe.contentDocument?.querySelector('.ql-container');
+    final qlContainer = _iframe.contentDocument?.querySelector('.ql-container');
     if (qlContainer != null) {
-      (qlContainer as web.HTMLElement).scrollTop =
-          qlContainer.scrollHeight;
+      (qlContainer as web.HTMLElement).scrollTop = qlContainer.scrollHeight;
     }
 
     _didApplyInitialCursorPlacement = true;
@@ -1188,20 +1204,27 @@ $customCss
 
     if (result == null) {
       // Remove the link
-      _quill!.formatText(
-          linkRange.index, linkRange.length, 'link', false.toJS);
+      _quill!.formatText(linkRange.index, linkRange.length, 'link', false.toJS);
       _quill!.setSelection(linkRange.index + linkRange.length, 0);
     } else {
       if (result.text != null && result.text != linkText) {
         // Replace text and set new link
         _quill!.deleteText(linkRange.index, linkRange.length);
         _quill!.insertText(
-            linkRange.index, result.text!, 'link'.toJS, result.url.toJS);
+          linkRange.index,
+          result.text!,
+          'link'.toJS,
+          result.url.toJS,
+        );
         _quill!.setSelection(linkRange.index + result.text!.length, 0);
       } else {
         // Update URL only
         _quill!.formatText(
-            linkRange.index, linkRange.length, 'link', result.url.toJS);
+          linkRange.index,
+          linkRange.length,
+          'link',
+          result.url.toJS,
+        );
         _quill!.setSelection(linkRange.index + linkRange.length, 0);
       }
     }
@@ -1270,7 +1293,8 @@ $customCss
       if (keyEvent.key == 'Enter' && !keyEvent.shiftKey) {
         // Get current format before Enter is processed
         final format = _getFormat();
-        final hasInlineFormat = format['bold'] == true ||
+        final hasInlineFormat =
+            format['bold'] == true ||
             format['italic'] == true ||
             format['underline'] == true;
 
@@ -1279,7 +1303,7 @@ $customCss
           // Then apply the formatting to the new line
           Future.delayed(const Duration(milliseconds: 10), () {
             if (!mounted || _quill == null) return;
-            
+
             // Apply the same formatting to the new line
             if (format['bold'] == true) {
               _quill!.format('bold', true.toJS);
@@ -1290,7 +1314,7 @@ $customCss
             if (format['underline'] == true) {
               _quill!.format('underline', true.toJS);
             }
-            
+
             // Sync toolbar state
             _syncFormatState();
           });
@@ -1317,11 +1341,9 @@ $customCss
     }
 
     // Scroll the Quill editor container inside the iframe to the bottom.
-    final qlContainer =
-        _iframe.contentDocument?.querySelector('.ql-container');
+    final qlContainer = _iframe.contentDocument?.querySelector('.ql-container');
     if (qlContainer != null) {
-      (qlContainer as web.HTMLElement).scrollTop =
-          qlContainer.scrollHeight;
+      (qlContainer as web.HTMLElement).scrollTop = qlContainer.scrollHeight;
     }
   }
 
@@ -1333,9 +1355,9 @@ $customCss
   void _formatWithScrollPreservation(String formatName, JSAny? value) {
     final container = _iframe.contentDocument?.querySelector('.ql-editor');
     final scrollTop = (container as web.HTMLElement?)?.scrollTop ?? 0;
-    
+
     _quill!.format(formatName, value);
-    
+
     // Restore scroll position after a short delay
     Future.delayed(const Duration(milliseconds: 10), () {
       if (container != null && mounted) {
@@ -1353,12 +1375,18 @@ $customCss
       },
       toggleItalic: () {
         final fmt = _getFormat();
-        _formatWithScrollPreservation('italic', (!(fmt['italic'] == true)).toJS);
+        _formatWithScrollPreservation(
+          'italic',
+          (!(fmt['italic'] == true)).toJS,
+        );
         _syncFormatState();
       },
       toggleUnderline: () {
         final fmt = _getFormat();
-        _formatWithScrollPreservation('underline', (!(fmt['underline'] == true)).toJS);
+        _formatWithScrollPreservation(
+          'underline',
+          (!(fmt['underline'] == true)).toJS,
+        );
         _syncFormatState();
       },
       toggleOrderedList: () {
@@ -1413,7 +1441,8 @@ $customCss
       },
       insertTextAtCursor: (text) {
         final sel = _getQuillSelection(focus: true);
-        final idx = sel?.index ??
+        final idx =
+            sel?.index ??
             ((_quill!.getLength() > 1) ? _quill!.getLength() - 1 : 0);
         final len = sel?.length ?? 0;
         _quill!.deleteText(idx, len);
@@ -1434,7 +1463,7 @@ $customCss
     final format = _getFormat();
     final sel = _getQuillSelection();
     final isCollapsed = sel == null || sel.length == 0;
-    
+
     // For collapsed selections (just cursor), link format shouldn't be active
     // because typing won't continue the link.
     final state = QuillJsFormatState(
@@ -1442,8 +1471,8 @@ $customCss
       italic: format['italic'] == true,
       underline: format['underline'] == true,
       list: format['list'] is String ? format['list'] as String : null,
-      link: (!isCollapsed && format['link'] is String) 
-          ? format['link'] as String 
+      link: (!isCollapsed && format['link'] is String)
+          ? format['link'] as String
           : null,
     );
     widget.controller.updateFormatState(state);
@@ -1454,24 +1483,34 @@ $customCss
   // ------------------------------------------------------------------
 
   Future<void> _handleRequestLink() async {
-    // Blur editor to dismiss keyboard before showing link dialog
-    _blurEditorAndSyncFlutterFocus();
-    
-    final format = _getFormat();
-    final linkUrl = format['link'];
+    if (_isHandlingLinkRequest || _quill == null) return;
+    if (widget.configuration.onLinkCreate == null) return;
 
-    if (linkUrl is String && linkUrl.isNotEmpty) {
-      await _handleLinkEdit(linkUrl);
-    } else {
-      await _handleLinkCreate();
+    _isHandlingLinkRequest = true;
+    try {
+      // Snapshot the current selection without forcing editor focus. On mobile
+      // web, forcing focus can reopen the keyboard before the dialog appears.
+      final selection = _getQuillSelection();
+      final editContext = _resolveLinkEditContext(selection);
+
+      if (editContext != null) {
+        await _handleLinkEdit(
+          currentUrl: editContext.url,
+          linkRange: editContext.range,
+        );
+      } else {
+        await _handleLinkCreate(initialSelection: selection);
+      }
+    } finally {
+      _isHandlingLinkRequest = false;
     }
   }
 
-  Future<void> _handleLinkCreate() async {
+  Future<void> _handleLinkCreate({_QuillSelection? initialSelection}) async {
     final callback = widget.configuration.onLinkCreate;
     if (callback == null) return;
 
-    final sel = _getQuillSelection(focus: true);
+    final sel = initialSelection ?? _getQuillSelection();
     String? selectedText;
     if (sel != null && sel.length > 0) {
       selectedText = _quill!.getText(sel.index, sel.length);
@@ -1484,32 +1523,35 @@ $customCss
       if (result.text != null && result.text != selectedText) {
         _quill!.deleteText(sel.index, sel.length);
         _quill!.insertText(
-            sel.index, result.text!, 'link'.toJS, result.url.toJS);
+          sel.index,
+          result.text!,
+          'link'.toJS,
+          result.url.toJS,
+        );
         _quill!.setSelection(sel.index + result.text!.length, 0);
       } else {
         _quill!.formatText(sel.index, sel.length, 'link', result.url.toJS);
         _quill!.setSelection(sel.index + sel.length, 0);
       }
     } else {
-      final insertIdx = sel?.index ?? (_quill!.getLength() - 1);
+      final docEnd = _quill!.getLength() - 1;
+      final maxInsert = docEnd < 0 ? 0 : docEnd;
+      final insertIdx = (sel?.index ?? maxInsert).clamp(0, maxInsert).toInt();
       final text = result.text ?? result.url;
       _quill!.insertText(insertIdx, text, 'link'.toJS, result.url.toJS);
       _quill!.setSelection(insertIdx + text.length, 0);
     }
   }
 
-  Future<void> _handleLinkEdit(String currentUrl) async {
+  Future<void> _handleLinkEdit({
+    required String currentUrl,
+    required _LinkRange linkRange,
+  }) async {
     final callback = widget.configuration.onLinkCreate;
     if (callback == null) return;
 
-    final sel = _getQuillSelection(focus: true);
-    if (sel == null) return;
-
-    final linkRange = _findLinkRange(sel.index);
-    if (linkRange == null) return;
-
     final linkText = _quill!.getText(linkRange.index, linkRange.length);
-    
+
     // Call onLinkCreate with both the existing text and URL for pre-filling
     final result = await callback(
       selectedText: linkText,
@@ -1522,6 +1564,27 @@ $customCss
     final text = result.text ?? result.url;
     _quill!.insertText(linkRange.index, text, 'link'.toJS, result.url.toJS);
     _quill!.setSelection(linkRange.index + text.length, 0);
+  }
+
+  _LinkEditContext? _resolveLinkEditContext(_QuillSelection? selection) {
+    if (selection == null || _quill == null) return null;
+
+    final linkRange = _findLinkRange(selection.index);
+    if (linkRange == null) return null;
+
+    final rangeFormat = _getFormatAt(linkRange.index, 1);
+    final rangeUrl = rangeFormat['link'];
+    if (rangeUrl is String && rangeUrl.isNotEmpty) {
+      return (range: linkRange, url: rangeUrl);
+    }
+
+    final selectionFormat = _getFormat();
+    final selectionUrl = selectionFormat['link'];
+    if (selectionUrl is String && selectionUrl.isNotEmpty) {
+      return (range: linkRange, url: selectionUrl);
+    }
+
+    return null;
   }
 
   // ------------------------------------------------------------------
@@ -1699,10 +1762,7 @@ $customCss
     if (node != null) {
       // Ensure the provided FocusNode is attached to Flutter's focus tree.
       // Without this, requestFocus() from client code can be a no-op.
-      child = Focus(
-        focusNode: node,
-        child: child,
-      );
+      child = Focus(focusNode: node, child: child);
     }
 
     return child;

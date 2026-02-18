@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/documents/attribute.dart';
@@ -25,9 +27,11 @@ class LinkStyleButton extends StatefulWidget {
     this.linkDialogAction,
     this.linkDialogBuilder,
     Key? key,
-  })  : assert(controller != null || quillJsController != null,
-            'Either controller or quillJsController must be provided'),
-        super(key: key);
+  }) : assert(
+         controller != null || quillJsController != null,
+         'Either controller or quillJsController must be provided',
+       ),
+       super(key: key);
 
   final QuillController? controller;
   final QuillJsEditorController? quillJsController;
@@ -91,12 +95,12 @@ class _LinkStyleButtonState extends State<LinkStyleButton> {
         size: widget.iconSize,
         color: isToggled
             ? (widget.iconTheme?.iconSelectedColor ??
-                theme.primaryIconTheme.color)
+                  theme.primaryIconTheme.color)
             : (widget.iconTheme?.iconUnselectedColor ?? theme.iconTheme.color),
       ),
       fillColor: isToggled
           ? (widget.iconTheme?.iconSelectedFillColor ??
-              Theme.of(context).primaryColor)
+                Theme.of(context).primaryColor)
           : (widget.iconTheme?.iconUnselectedFillColor ?? theme.canvasColor),
       borderRadius: widget.iconTheme?.borderRadius ?? 2,
       onPressed: pressedHandler,
@@ -113,9 +117,24 @@ class _LinkStyleButtonState extends State<LinkStyleButton> {
 
   void _handlePressed(BuildContext context) {
     if (widget._usesQuillJs) {
-      widget.quillJsController!.requestLink();
+      unawaited(_handleQuillJsLinkRequest());
     } else {
       _openLinkDialog(context);
+    }
+  }
+
+  Future<void> _handleQuillJsLinkRequest() async {
+    try {
+      await widget.quillJsController!.requestLink();
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'flutter_quill',
+          context: ErrorDescription('while handling Quill JS link request'),
+        ),
+      );
     }
   }
 
@@ -129,8 +148,9 @@ class _LinkStyleButtonState extends State<LinkStyleButton> {
         var text;
         if (link != null) {
           // text should be the link's corresponding text, not selection
-          final leaf =
-              widget.controller!.document.querySegmentLeafNode(index).leaf;
+          final leaf = widget.controller!.document
+              .querySegmentLeafNode(index)
+              .leaf;
           if (leaf != null) {
             text = leaf.toPlainText();
           }
@@ -153,11 +173,9 @@ class _LinkStyleButtonState extends State<LinkStyleButton> {
           action: widget.linkDialogAction,
         );
       },
-    ).then(
-      (value) {
-        if (value != null) _linkSubmitted(value);
-      },
-    );
+    ).then((value) {
+      if (value != null) _linkSubmitted(value);
+    });
   }
 
   String? _getLinkAttributeValue() {
@@ -180,8 +198,11 @@ class _LinkStyleButtonState extends State<LinkStyleButton> {
       }
     }
     widget.controller!.replaceText(index, length, value.text, null);
-    widget.controller!
-        .formatText(index, value.text.length, LinkAttribute(value.link));
+    widget.controller!.formatText(
+      index,
+      value.text.length,
+      LinkAttribute(value.link),
+    );
   }
 }
 
@@ -251,10 +272,7 @@ class _LinkDialogState extends State<_LinkDialog> {
               onChanged: _textChanged,
               controller: _textController,
               textInputAction: TextInputAction.next,
-              autofillHints: [
-                AutofillHints.name,
-                AutofillHints.url,
-              ],
+              autofillHints: [AutofillHints.name, AutofillHints.url],
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -281,26 +299,18 @@ class _LinkDialogState extends State<_LinkDialog> {
           ],
         ),
       ),
-      actions: [
-        _okButton(),
-      ],
+      actions: [_okButton()],
     );
   }
 
   Widget _okButton() {
     if (widget.action != null) {
-      return widget.action!.builder(
-        _canPress(),
-        _applyLink,
-      );
+      return widget.action!.builder(_canPress(), _applyLink);
     }
 
     return TextButton(
       onPressed: _canPress() ? _applyLink : null,
-      child: Text(
-        'Ok'.i18n,
-        style: widget.dialogTheme?.buttonTextStyle,
-      ),
+      child: Text('Ok'.i18n, style: widget.dialogTheme?.buttonTextStyle),
     );
   }
 
@@ -333,10 +343,7 @@ class _LinkDialogState extends State<_LinkDialog> {
 }
 
 class TextLink {
-  TextLink(
-    this.text,
-    this.link,
-  );
+  TextLink(this.text, this.link);
 
   final String text;
   final String link;

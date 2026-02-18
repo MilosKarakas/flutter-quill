@@ -22,18 +22,19 @@ class QuillJsLinkData {
 /// [selectedText] is the currently selected text in the editor, if any.
 /// [existingUrl] is the current link URL if editing an existing link, null if creating new.
 /// Return a [QuillJsLinkData] to create the link, or `null` to cancel.
-typedef QuillJsLinkCreateCallback = Future<QuillJsLinkData?> Function({
-  String? selectedText,
-  String? existingUrl,
-});
+typedef QuillJsLinkCreateCallback =
+    Future<QuillJsLinkData?> Function({
+      String? selectedText,
+      String? existingUrl,
+    });
 
 /// Callback invoked when the user taps an existing link in the editor.
 ///
 /// [url] is the current link URL, [text] is the displayed link text.
 /// Return an updated [QuillJsLinkData] to modify the link, or `null` to
 /// remove it.
-typedef QuillJsLinkTappedCallback = Future<QuillJsLinkData?> Function(
-    String url, String text);
+typedef QuillJsLinkTappedCallback =
+    Future<QuillJsLinkData?> Function(String url, String text);
 
 /// Visual styling for the Quill.js editor content area.
 ///
@@ -364,9 +365,11 @@ class QuillJsEditorController extends ChangeNotifier {
   void toggleBulletList() => _callbacks?.toggleBulletList.call();
 
   /// Requests a link creation or edit via the configured callbacks.
-  /// If the cursor is on an existing link, triggers [onLinkTapped].
-  /// Otherwise, triggers [onLinkCreate].
-  void requestLink() => _callbacks?.requestLink.call();
+  ///
+  /// This operation is asynchronous because it usually opens a dialog and
+  /// waits for user input.
+  Future<void> requestLink() =>
+      _callbacks?.requestLink.call() ?? Future<void>.value();
 
   /// Gets the current editor content as a [Delta].
   Delta get contents =>
@@ -429,16 +432,16 @@ class QuillJsEditorController extends ChangeNotifier {
     required VoidCallback toggleUnderline,
     required VoidCallback toggleOrderedList,
     required VoidCallback toggleBulletList,
-    required VoidCallback requestLink,
+    required AsyncCallback requestLink,
     required Delta Function() getContents,
     required void Function(Delta) setContents,
     required VoidCallback scrollToEnd,
     required VoidCallback clear,
     required void Function(int index, int length) setSelection,
     required void Function(int index, String text, Map<String, dynamic>?)
-        insertText,
+    insertText,
     required void Function(int index, int length, String replacement)
-        replaceText,
+    replaceText,
     required void Function(String text) insertTextAtCursor,
     required VoidCallback focus,
     required VoidCallback blur,
@@ -483,14 +486,13 @@ class _EditorCallbacks {
   final VoidCallback toggleUnderline;
   final VoidCallback toggleOrderedList;
   final VoidCallback toggleBulletList;
-  final VoidCallback requestLink;
+  final AsyncCallback requestLink;
   final Delta Function() getContents;
   final void Function(Delta) setContents;
   final VoidCallback scrollToEnd;
   final VoidCallback clear;
   final void Function(int index, int length) setSelection;
-  final void Function(int index, String text, Map<String, dynamic>?)
-      insertText;
+  final void Function(int index, String text, Map<String, dynamic>?) insertText;
   final void Function(int index, int length, String replacement) replaceText;
   final void Function(String text) insertTextAtCursor;
   final VoidCallback focus;
