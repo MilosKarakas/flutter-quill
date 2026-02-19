@@ -91,6 +91,7 @@ extension type _QuillJsConstructor._(JSObject _) implements JSObject {
 typedef _QuillSelection = ({int index, int length});
 typedef _LinkRange = ({int index, int length});
 typedef _LinkEditContext = ({_LinkRange range, String url});
+typedef _TappedAnchor = ({web.HTMLAnchorElement anchor, String href});
 
 /// Converts a Flutter [Color] to a CSS `rgba(...)` string.
 String _colorToCss(Color c) {
@@ -1089,21 +1090,23 @@ $customCss
   void _setupLinkClickHandler() {
     final editorDiv = _editorDiv!;
 
-    void handleAnchorTap(web.Event event) {
-      final anchor = _findAnchorFromEvent(event, editorDiv);
-      if (anchor == null) return;
+    void handleAnchorTap(web.Event event, {bool skipNextClick = false}) {
+      final tapped = _findTappedAnchorFromEvent(event, editorDiv);
+      if (tapped == null) return;
 
       event.preventDefault();
       event.stopPropagation();
 
-      _skipNextLinkClick = true;
-      final href = _rawHrefFromAnchor(anchor);
-      final text = anchor.textContent ?? '';
-      _handleLinkTapped(href, text, tappedAnchor: anchor);
+      if (skipNextClick) {
+        _skipNextLinkClick = true;
+      }
+
+      final text = tapped.anchor.textContent ?? '';
+      _handleLinkTapped(tapped.href, text, tappedAnchor: tapped.anchor);
     }
 
     _linkTouchStartHandlerJs = ((web.Event event) {
-      handleAnchorTap(event);
+      handleAnchorTap(event, skipNextClick: true);
     }).toJS;
 
     _linkPointerDownHandlerJs = ((web.Event event) {
@@ -1111,7 +1114,7 @@ $customCss
       if (pointerEvent.pointerType.toLowerCase() != 'touch') {
         return;
       }
-      handleAnchorTap(event);
+      handleAnchorTap(event, skipNextClick: true);
     }).toJS;
 
     _linkClickHandlerJs = ((web.Event event) {
@@ -1135,25 +1138,49 @@ $customCss
     editorDiv.addEventListener('click', _linkClickHandlerJs);
   }
 
-  web.HTMLAnchorElement? _findAnchorFromEvent(
+  _TappedAnchor? _findTappedAnchorFromEvent(
     web.Event event,
     web.HTMLElement editorDiv,
   ) {
     final target = event.target;
-    if (target is! web.Node) return null;
+    if (target is! web.Node) {
+      return null;
+    }
 
     web.Node? node = target;
     while (node != null && node != editorDiv) {
-      if (node is web.HTMLAnchorElement) return node;
+      if (node is web.HTMLAnchorElement) {
+        final href = _rawHrefFromAnchor(node);
+        if (href != null) {
+          return (anchor: node, href: href);
+        }
+      }
       node = node.parentNode;
     }
     return null;
   }
 
-  String _rawHrefFromAnchor(web.HTMLAnchorElement anchor) {
+  String? _rawHrefFromAnchor(web.HTMLAnchorElement anchor) {
     // Use getAttribute to get the raw href as stored by Quill.js, not
     // anchor.href which resolves relative to the page origin.
-    return anchor.getAttribute('href') ?? anchor.href;
+    try {
+      final attrHref = anchor.getAttribute('href');
+      if (attrHref != null && attrHref.isNotEmpty) {
+        return attrHref;
+      }
+    } catch (_) {
+      // Some browser/interop paths can expose null-typed href attributes.
+    }
+
+    try {
+      final resolvedHref = anchor.href;
+      if (resolvedHref.isNotEmpty) {
+        return resolvedHref;
+      }
+    } catch (_) {
+      // Fall through: treat anchor as non-link and do not intercept tap.
+    }
+    return null;
   }
 
   // ------------------------------------------------------------------
