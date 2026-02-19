@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 
 import '../default_styles.dart';
+import 'link_range_resolution.dart';
 import 'quill_js_configurations.dart';
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,7 @@ extension type _QuillJsInstance._(JSObject _) implements JSObject {
   external void enable(bool enabled);
   external String getText(int index, int length);
   external int getLength();
+  external int getIndex(JSObject blot);
   external void focus();
   external void blur();
   external void deleteText(int index, int length);
@@ -73,6 +75,13 @@ extension type _QuillJsInstance._(JSObject _) implements JSObject {
   /// or `'api'.toJS` to fire it with a non-user source.
   @JS('setSelection')
   external void setSelectionWithSource(int index, int length, JSString source);
+}
+
+/// Wrapper around the Quill constructor function object.
+///
+/// Quill exposes a static `find(domNode, bubble)` helper on this object.
+extension type _QuillJsConstructor._(JSObject _) implements JSObject {
+  external JSObject? find(JSObject node, [bool bubble]);
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +372,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   web.HTMLElement? _editorDiv;
 
   _QuillJsInstance? _quill;
+  _QuillJsConstructor? _quillConstructor;
 
   _LoadState _loadState = _LoadState.loading;
   String? _errorMessage;
@@ -371,6 +381,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   JSFunction? _tabKeyHandlerJs;
   JSFunction? _enterKeyHandlerJs;
   JSFunction? _linkClickHandlerJs;
+  JSFunction? _linkTouchStartHandlerJs;
+  JSFunction? _linkPointerDownHandlerJs;
   JSFunction? _iframeLoadHandlerJs;
   JSFunction? _pasteHandlerJs;
   JSFunction? _copyHandlerJs;
@@ -412,6 +424,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
   // Prevents duplicate link dialogs when toolbar is tapped repeatedly.
   bool _isHandlingLinkRequest = false;
+  bool _isHandlingLinkTapAction = false;
+  bool _skipNextLinkClick = false;
 
   // ------------------------------------------------------------------
   // Lifecycle
@@ -485,6 +499,20 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       }
       if (_linkClickHandlerJs != null) {
         _editorDiv!.removeEventListener('click', _linkClickHandlerJs);
+      }
+      if (_linkTouchStartHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'touchstart',
+          _linkTouchStartHandlerJs,
+          true.toJS,
+        );
+      }
+      if (_linkPointerDownHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'pointerdown',
+          _linkPointerDownHandlerJs,
+          true.toJS,
+        );
       }
       if (_pasteHandlerJs != null) {
         _editorDiv!.removeEventListener('paste', _pasteHandlerJs, true.toJS);
@@ -665,6 +693,7 @@ $customCss
     // Obtain the Quill constructor from the iframe's window and create
     // the editor instance inside the iframe's document.
     final quillConstructor = iframeWindow['Quill'] as JSFunction;
+    _quillConstructor = quillConstructor as _QuillJsConstructor;
     final jsQuill = quillConstructor.callAsConstructor<JSObject>(
       _editorDiv!,
       options,
@@ -1000,6 +1029,13 @@ $customCss
       return;
     }
 
+    // While a link action sheet/dialog is active, Quill can emit non-user
+    // selection updates that would incorrectly re-focus the editor on mobile.
+    if (_isHandlingLinkTapAction && source != 'user') {
+      _editorHasFocus = false;
+      return;
+    }
+
     final wasFocused = _editorHasFocus;
     _editorHasFocus = true;
     _onJsFocusChanged(hasFocus: true);
@@ -1053,29 +1089,71 @@ $customCss
   void _setupLinkClickHandler() {
     final editorDiv = _editorDiv!;
 
-    _linkClickHandlerJs = ((web.Event event) {
-      var target = (event as web.MouseEvent).target as web.Element?;
+    void handleAnchorTap(web.Event event) {
+      final anchor = _findAnchorFromEvent(event, editorDiv);
+      if (anchor == null) return;
 
-      // Walk up the DOM to find an <a> element
-      while (target != null && target != editorDiv) {
-        if (target.tagName.toLowerCase() == 'a') {
-          event.preventDefault();
-          event.stopPropagation();
+      event.preventDefault();
+      event.stopPropagation();
 
-          final anchor = target as web.HTMLAnchorElement;
-          // Use getAttribute to get the raw href as stored by Quill.js,
-          // NOT anchor.href which resolves relative to the page origin.
-          final href = anchor.getAttribute('href') ?? anchor.href;
-          final text = anchor.textContent ?? '';
+      _skipNextLinkClick = true;
+      final href = _rawHrefFromAnchor(anchor);
+      final text = anchor.textContent ?? '';
+      _handleLinkTapped(href, text, tappedAnchor: anchor);
+    }
 
-          _handleLinkTapped(href, text);
-          return;
-        }
-        target = target.parentElement;
-      }
+    _linkTouchStartHandlerJs = ((web.Event event) {
+      handleAnchorTap(event);
     }).toJS;
 
+    _linkPointerDownHandlerJs = ((web.Event event) {
+      final pointerEvent = event as web.PointerEvent;
+      if (pointerEvent.pointerType.toLowerCase() != 'touch') {
+        return;
+      }
+      handleAnchorTap(event);
+    }).toJS;
+
+    _linkClickHandlerJs = ((web.Event event) {
+      if (_skipNextLinkClick) {
+        _skipNextLinkClick = false;
+        return;
+      }
+      handleAnchorTap(event);
+    }).toJS;
+
+    editorDiv.addEventListener(
+      'touchstart',
+      _linkTouchStartHandlerJs!,
+      true.toJS,
+    );
+    editorDiv.addEventListener(
+      'pointerdown',
+      _linkPointerDownHandlerJs!,
+      true.toJS,
+    );
     editorDiv.addEventListener('click', _linkClickHandlerJs);
+  }
+
+  web.HTMLAnchorElement? _findAnchorFromEvent(
+    web.Event event,
+    web.HTMLElement editorDiv,
+  ) {
+    final target = event.target;
+    if (target is! web.Node) return null;
+
+    web.Node? node = target;
+    while (node != null && node != editorDiv) {
+      if (node is web.HTMLAnchorElement) return node;
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  String _rawHrefFromAnchor(web.HTMLAnchorElement anchor) {
+    // Use getAttribute to get the raw href as stored by Quill.js, not
+    // anchor.href which resolves relative to the page origin.
+    return anchor.getAttribute('href') ?? anchor.href;
   }
 
   // ------------------------------------------------------------------
@@ -1180,54 +1258,125 @@ $customCss
     }
   }
 
-  Future<void> _handleLinkTapped(String href, String text) async {
-    // Let Quill process the click first so getSelection points at the tap.
-    await Future.delayed(const Duration(milliseconds: 10));
-    if (!mounted || _quill == null) return;
+  Future<void> _handleLinkTapped(
+    String href,
+    String text, {
+    web.HTMLAnchorElement? tappedAnchor,
+  }) async {
+    if (_isHandlingLinkTapAction || _quill == null) return;
+    _isHandlingLinkTapAction = true;
+    try {
+      // Let Quill process the tap first so selection state can settle.
+      await Future.delayed(const Duration(milliseconds: 10));
+      if (!mounted || _quill == null) return;
 
-    final sel = _getQuillSelection();
-    final linkRange = sel != null
-        ? _findLinkRange(sel.index)
-        : _findLinkRangeByHref(href);
+      final linkRange = _resolveTappedLinkRange(
+        href,
+        tappedAnchor: tappedAnchor,
+      );
 
-    final callback = widget.configuration.onLinkTapped;
-    if (callback == null) return;
+      final callback = widget.configuration.onLinkTapped;
+      if (callback == null) return;
 
-    // Blur editor to dismiss keyboard before showing link dialog
-    _blurEditorAndSyncFlutterFocus();
-    final linkText = linkRange != null
-        ? _quill!.getText(linkRange.index, linkRange.length)
-        : text;
-    final result = await callback(href, linkText);
-    if (!mounted || _quill == null) return;
-    if (linkRange == null) return;
+      // Blur editor to dismiss keyboard before showing link dialog
+      _blurEditorAndSyncFlutterFocus();
+      final linkText = linkRange != null
+          ? _quill!.getText(linkRange.index, linkRange.length)
+          : text;
+      final result = await callback(href, linkText);
+      if (!mounted || _quill == null) return;
+      if (linkRange == null) return;
 
-    if (result == null) {
-      // Remove the link
-      _quill!.formatText(linkRange.index, linkRange.length, 'link', false.toJS);
-      _quill!.setSelection(linkRange.index + linkRange.length, 0);
-    } else {
-      if (result.text != null && result.text != linkText) {
-        // Replace text and set new link
-        _quill!.deleteText(linkRange.index, linkRange.length);
-        _quill!.insertText(
-          linkRange.index,
-          result.text!,
-          'link'.toJS,
-          result.url.toJS,
-        );
-        _quill!.setSelection(linkRange.index + result.text!.length, 0);
-      } else {
-        // Update URL only
+      if (result == null) {
+        // Remove the link
         _quill!.formatText(
           linkRange.index,
           linkRange.length,
           'link',
-          result.url.toJS,
+          false.toJS,
         );
-        _quill!.setSelection(linkRange.index + linkRange.length, 0);
+        _quill!.setSelectionWithSource(
+          linkRange.index + linkRange.length,
+          0,
+          'silent'.toJS,
+        );
+      } else {
+        if (result.text != null && result.text != linkText) {
+          // Replace text and set new link
+          _quill!.deleteText(linkRange.index, linkRange.length);
+          _quill!.insertText(
+            linkRange.index,
+            result.text!,
+            'link'.toJS,
+            result.url.toJS,
+          );
+          _quill!.setSelectionWithSource(
+            linkRange.index + result.text!.length,
+            0,
+            'silent'.toJS,
+          );
+        } else {
+          // Update URL only
+          _quill!.formatText(
+            linkRange.index,
+            linkRange.length,
+            'link',
+            result.url.toJS,
+          );
+          _quill!.setSelectionWithSource(
+            linkRange.index + linkRange.length,
+            0,
+            'silent'.toJS,
+          );
+        }
       }
+    } finally {
+      _isHandlingLinkTapAction = false;
     }
+  }
+
+  _LinkRange? _resolveTappedLinkRange(
+    String href, {
+    web.HTMLAnchorElement? tappedAnchor,
+  }) {
+    final fromAnchor = tappedAnchor != null
+        ? _findLinkRangeFromAnchorNode(tappedAnchor)
+        : null;
+    final sel = _getQuillSelection();
+    final fromSelection = sel != null ? _findLinkRange(sel.index) : null;
+    final fromHrefFallback = _findLinkRangeByHref(href);
+
+    return resolveQuillJsTappedLinkRange(
+      tappedHref: href,
+      rangeFromAnchor: fromAnchor,
+      hrefFromAnchorRange: _hrefForRange(fromAnchor),
+      rangeFromSelection: fromSelection,
+      hrefFromSelectionRange: _hrefForRange(fromSelection),
+      rangeFromHrefFallback: fromHrefFallback,
+    );
+  }
+
+  _LinkRange? _findLinkRangeFromAnchorNode(web.HTMLAnchorElement anchor) {
+    final quill = _quill;
+    final quillConstructor = _quillConstructor;
+    if (quill == null || quillConstructor == null) return null;
+
+    try {
+      final blot = quillConstructor.find(anchor as JSObject, true);
+      if (blot == null) return null;
+      final index = quill.getIndex(blot);
+      if (index < 0) return null;
+      return _findLinkRange(index);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _hrefForRange(_LinkRange? range) {
+    if (range == null) return null;
+    final format = _getFormatAt(range.index, 1);
+    final href = format['link'];
+    return href is String ? href : null;
   }
 
   // ------------------------------------------------------------------
@@ -1650,6 +1799,9 @@ $customCss
   }
 
   /// Finds the first contiguous link range whose `link` attribute matches [href].
+  ///
+  /// This is used as a fallback only; when duplicate href values exist, this
+  /// returns the first match in document order.
   _LinkRange? _findLinkRangeByHref(String href) {
     final delta = _getContentsDelta();
     final ops = delta.toList();
