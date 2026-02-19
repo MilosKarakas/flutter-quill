@@ -589,8 +589,16 @@ class RawEditorState extends EditorState
               onCopy: () {},
               onPaste: () {},
               onCut: () {},
-              onDidGainAccessibilityFocus: openConnectionIfNeeded,
-              onDidLoseAccessibilityFocus: closeConnectionIfNeeded,
+              onDidGainAccessibilityFocus: () {
+                if (!widget.focusNode.hasFocus && widget.focusNode.canRequestFocus) {
+                  widget.focusNode.requestFocus();
+                }
+              },
+              onDidLoseAccessibilityFocus: () {
+                if (widget.focusNode.hasFocus && !hasConnection) {
+                  widget.focusNode.unfocus();
+                }
+              },
               child: MouseRegion(
                 cursor: SystemMouseCursors.text,
                 child: _Editor(
