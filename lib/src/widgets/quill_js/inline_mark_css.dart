@@ -7,7 +7,8 @@ import '../default_styles.dart';
 /// Builds CSS for inline mark tags that avoids cross-mark overrides.
 ///
 /// - `strong` keeps bold-related styling but excludes `font-style`
-/// - `em` keeps italic-related styling but excludes `font-weight`
+/// - `em` keeps italic-related styling but excludes all weight controls
+///   (`font-weight` and variable-font `wght` axis)
 ///
 /// This prevents a custom italic style from resetting bold when text has both
 /// `bold` and `italic` attributes (and vice versa).
@@ -50,7 +51,10 @@ String _inlineMarkTextStyleToCss(
     css.write('font-family: $fontFamily;');
   }
 
-  final variationSettings = _fontVariationSettingsToCss(style);
+  final variationSettings = _fontVariationSettingsToCss(
+    style,
+    includeWeightAxis: includeFontWeight,
+  );
   if (variationSettings != null) {
     css.write('font-variation-settings: $variationSettings;');
   }
@@ -156,12 +160,23 @@ String? _fontFamilyToCss(TextStyle style) {
   return families.join(', ');
 }
 
-String? _fontVariationSettingsToCss(TextStyle style) {
+String? _fontVariationSettingsToCss(
+  TextStyle style, {
+  required bool includeWeightAxis,
+}) {
   final fontVariations = style.fontVariations;
   if (fontVariations == null || fontVariations.isEmpty) {
     return null;
   }
-  return fontVariations
+  final filtered = includeWeightAxis
+      ? fontVariations
+      : fontVariations
+            .where((variation) => variation.axis.toLowerCase() != 'wght')
+            .toList();
+  if (filtered.isEmpty) {
+    return null;
+  }
+  return filtered
       .map(
         (variation) => '${_cssDoubleQuoted(variation.axis)} ${variation.value}',
       )

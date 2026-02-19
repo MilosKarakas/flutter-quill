@@ -10,10 +10,15 @@ void main() {
         bold: TextStyle(
           fontWeight: FontWeight.w700,
           fontStyle: FontStyle.normal,
+          fontVariations: [FontVariation('wght', 700)],
         ),
         italic: TextStyle(
           fontStyle: FontStyle.italic,
           fontWeight: FontWeight.w400,
+          fontVariations: [
+            FontVariation('wght', 400),
+            FontVariation('wdth', 95),
+          ],
         ),
       );
 
@@ -22,9 +27,12 @@ void main() {
       final emRule = _extractRule(css, '.ql-editor em');
 
       expect(strongRule, contains('font-weight: 700;'));
+      expect(strongRule, contains('"wght" 700.0'));
       expect(strongRule, isNot(contains('font-style:')));
       expect(emRule, contains('font-style: italic;'));
       expect(emRule, isNot(contains('font-weight:')));
+      expect(emRule, isNot(contains('"wght"')));
+      expect(emRule, contains('"wdth" 95.0'));
     });
 
     test('keeps non-conflicting inline properties', () {
