@@ -375,6 +375,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // Event listener references for cleanup
   JSFunction? _tabKeyHandlerJs;
   JSFunction? _enterKeyHandlerJs;
+  JSFunction? _escapeKeyHandlerJs;
   JSFunction? _linkClickHandlerJs;
   JSFunction? _linkTouchStartHandlerJs;
   JSFunction? _linkPointerDownHandlerJs;
@@ -489,6 +490,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
         _editorDiv!.removeEventListener(
           'keydown',
           _enterKeyHandlerJs,
+          true.toJS,
+        );
+      }
+      if (_escapeKeyHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'keydown',
+          _escapeKeyHandlerJs,
           true.toJS,
         );
       }
@@ -703,6 +711,7 @@ $customCss
     _setupEventListeners();
     _setupLinkClickHandler();
     _setupEnterKeyHandler();
+    _setupEscapeKeyHandler();
     _setupClipboardInterceptors();
 
     if (config.preventOrphanListNesting) {
@@ -1494,6 +1503,30 @@ $customCss
 
     // Use capture phase so we can read format before Quill processes Enter
     _editorDiv!.addEventListener('keydown', _enterKeyHandlerJs, true.toJS);
+  }
+
+  // ------------------------------------------------------------------
+  // Escape key handling (move focus out of editor on web)
+  // ------------------------------------------------------------------
+
+  void _setupEscapeKeyHandler() {
+    _escapeKeyHandlerJs = ((web.Event event) {
+      final keyEvent = event as web.KeyboardEvent;
+      if (keyEvent.key == 'Escape' || keyEvent.key == 'Esc') {
+        event.preventDefault();
+        event.stopPropagation();
+
+        final node = widget.focusNode;
+        final shouldAdvanceFocus = node?.hasFocus ?? false;
+        _blurEditorAndSyncFlutterFocus();
+        if (shouldAdvanceFocus) {
+          node!.nextFocus();
+        }
+      }
+    }).toJS;
+
+    // Use capture phase to handle escape before Quill/browser defaults.
+    _editorDiv!.addEventListener('keydown', _escapeKeyHandlerJs, true.toJS);
   }
 
   // ------------------------------------------------------------------
