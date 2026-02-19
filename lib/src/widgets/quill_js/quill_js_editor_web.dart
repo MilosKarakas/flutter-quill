@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 
 import '../default_styles.dart';
+import 'inline_mark_css.dart';
 import 'link_range_resolution.dart';
 import 'quill_js_configurations.dart';
 
@@ -184,14 +185,7 @@ void _appendDefaultStylesCss(StringBuffer sb, DefaultStyles styles) {
     final css = _textStyleToCss(styles.placeHolder!.style);
     sb.writeln('.ql-editor.ql-blank::before { $css }');
   }
-  // Bold (strong)
-  if (styles.bold != null) {
-    sb.writeln('.ql-editor strong { ${_textStyleToCss(styles.bold!)} }');
-  }
-  // Italic (em)
-  if (styles.italic != null) {
-    sb.writeln('.ql-editor em { ${_textStyleToCss(styles.italic!)} }');
-  }
+  sb.write(buildQuillJsInlineMarkCss(styles));
   // Link
   if (styles.link != null) {
     sb.writeln('.ql-editor a { ${_textStyleToCss(styles.link!)} }');
