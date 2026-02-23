@@ -2255,6 +2255,39 @@ $customCss
     return text;
   }
 
+  double? _parseCssPx(String? value) {
+    if (value == null) return null;
+    final trimmed = value.trim().toLowerCase();
+    if (!trimmed.endsWith('px')) return null;
+    return double.tryParse(trimmed.substring(0, trimmed.length - 2));
+  }
+
+  web.HTMLElement? _quillEditorElement() =>
+      _iframe.contentDocument?.querySelector('.ql-editor') as web.HTMLElement?;
+
+  double? _computedEditorLineHeightPx() {
+    final editor = _quillEditorElement();
+    if (editor == null) return null;
+    final styles = web.window.getComputedStyle(editor);
+    final lineHeight = _parseCssPx(styles.getPropertyValue('line-height'));
+    if (lineHeight != null) return lineHeight;
+    final fontSize = _parseCssPx(styles.getPropertyValue('font-size'));
+    if (fontSize != null) {
+      return fontSize * (widget.configuration.style?.lineHeight ?? 1.5);
+    }
+    return null;
+  }
+
+  double? _computedEditorVerticalPaddingPx() {
+    final editor = _quillEditorElement();
+    if (editor == null) return null;
+    final styles = web.window.getComputedStyle(editor);
+    final top = _parseCssPx(styles.getPropertyValue('padding-top'));
+    final bottom = _parseCssPx(styles.getPropertyValue('padding-bottom'));
+    if (top == null || bottom == null) return null;
+    return top + bottom;
+  }
+
   double _resolveAutoResizeHeight(double maxWidth, TextDirection textDirection) {
     final cfg = widget.configuration;
     final style = cfg.style;
@@ -2290,6 +2323,13 @@ $customCss
       cfg.minLines,
       cfg.maxLines,
     );
+    final domLineHeightPx = _computedEditorLineHeightPx() ?? lineHeightPx;
+    final domVerticalPaddingPx =
+        _computedEditorVerticalPaddingPx() ?? cfg.autoResizeVerticalPadding;
+
+    if (math.max(wrappedLineCount, explicitLineCount) >= cfg.maxLines) {
+      return domLineHeightPx * cfg.maxLines + domVerticalPaddingPx;
+    }
 
     double visibleTextHeight = 0;
     if (lineMetrics.isNotEmpty) {
@@ -2304,7 +2344,7 @@ $customCss
       visibleTextHeight = textPainter.preferredLineHeight * visibleLineCount;
     }
 
-    return visibleTextHeight + cfg.autoResizeVerticalPadding;
+    return visibleTextHeight + domVerticalPaddingPx;
   }
 
   // ------------------------------------------------------------------
