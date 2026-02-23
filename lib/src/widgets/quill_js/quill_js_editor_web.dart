@@ -2243,7 +2243,16 @@ $customCss
       }
     }
     final text = buffer.toString();
-    return text.isEmpty ? '\n' : text;
+    if (text.isEmpty) {
+      return '';
+    }
+    // Quill documents always end with a terminal newline sentinel. For visual
+    // line counting we must ignore that single trailing newline, otherwise
+    // min/max lines become effectively N+1.
+    if (text.endsWith('\n')) {
+      return text.substring(0, text.length - 1);
+    }
+    return text;
   }
 
   double _resolveAutoResizeHeight(double maxWidth, TextDirection textDirection) {
@@ -2259,9 +2268,10 @@ $customCss
     }
 
     final text = _plainTextFromDelta(_contentForAutoResize);
+    final layoutText = text.isEmpty ? ' ' : text;
     final textPainter = TextPainter(
       text: TextSpan(
-        text: text,
+        text: layoutText,
         style: TextStyle(
           fontSize: fontSize,
           height: lineHeightMultiplier,
@@ -2274,7 +2284,7 @@ $customCss
     )..layout(maxWidth: contentWidth);
 
     final wrappedLineCount = textPainter.computeLineMetrics().length;
-    final explicitLineCount = '\n'.allMatches(text).length + 1;
+    final explicitLineCount = text.isEmpty ? 1 : '\n'.allMatches(text).length + 1;
     final lineCount = math.max(wrappedLineCount, explicitLineCount).clamp(
       cfg.minLines,
       cfg.maxLines,
