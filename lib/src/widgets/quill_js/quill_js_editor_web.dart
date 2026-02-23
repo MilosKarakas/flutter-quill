@@ -2278,14 +2278,14 @@ $customCss
     return null;
   }
 
-  double? _computedEditorVerticalPaddingPx() {
+  ({double top, double bottom})? _computedEditorVerticalPaddingPx() {
     final editor = _quillEditorElement();
     if (editor == null) return null;
     final styles = web.window.getComputedStyle(editor);
     final top = _parseCssPx(styles.getPropertyValue('padding-top'));
     final bottom = _parseCssPx(styles.getPropertyValue('padding-bottom'));
     if (top == null || bottom == null) return null;
-    return top + bottom;
+    return (top: top, bottom: bottom);
   }
 
   double _resolveAutoResizeHeight(double maxWidth, TextDirection textDirection) {
@@ -2324,11 +2324,16 @@ $customCss
       cfg.maxLines,
     );
     final domLineHeightPx = _computedEditorLineHeightPx() ?? lineHeightPx;
-    final domVerticalPaddingPx =
-        _computedEditorVerticalPaddingPx() ?? cfg.autoResizeVerticalPadding;
+    final domPadding = _computedEditorVerticalPaddingPx();
+    final topPaddingPx = domPadding?.top ?? (cfg.autoResizeVerticalPadding / 2);
+    final bottomPaddingPx =
+        domPadding?.bottom ?? (cfg.autoResizeVerticalPadding / 2);
+    final domVerticalPaddingPx = topPaddingPx + bottomPaddingPx;
 
     if (math.max(wrappedLineCount, explicitLineCount) >= cfg.maxLines) {
-      return domLineHeightPx * cfg.maxLines + domVerticalPaddingPx;
+      // Do not include bottom padding at clamp height; otherwise the top of
+      // line N+1 can remain visible by up to that padding amount.
+      return domLineHeightPx * cfg.maxLines + topPaddingPx;
     }
 
     double visibleTextHeight = 0;
