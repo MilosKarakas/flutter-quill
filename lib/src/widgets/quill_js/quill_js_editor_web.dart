@@ -410,9 +410,12 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // Parent-window viewport fix listeners
   JSFunction? _viewportResizeHandlerJs;
   JSFunction? _parentScrollResetJs;
-  double _fullViewportHeight = 0;
   String? _savedHtmlOverflow;
   String? _savedBodyOverflow;
+  int _lowKeyboardFramesWhileFocused = 0;
+
+  static const double _keyboardOpenThresholdPx = 50.0;
+  static const int _keyboardCloseConfirmFrames = 3;
 
   // Focus bridging state
   bool _isSyncingFocus = false;
@@ -911,32 +914,34 @@ $customCss
   ///    does not use native html/body scrolling.
   void _setupParentViewportFixes() {
     // --- Visual Viewport keyboard height detection ---
-    _fullViewportHeight = web.window.innerHeight.toDouble();
     final vv = web.window.visualViewport;
     if (vv != null) {
       _viewportResizeHandlerJs = ((web.Event _) {
-        // On iOS Safari, visualViewport can both shrink and shift vertically
-        // during keyboard transitions. Using visible-bottom avoids transient
-        // overestimation when offsetTop changes.
+        final layoutHeight = web.window.innerHeight.toDouble();
         final currentVisibleBottom = vv.height + vv.offsetTop;
+        final kbByHeight = math.max(0.0, layoutHeight - vv.height);
+        final kbByVisibleBottom = math.max(0.0, layoutHeight - currentVisibleBottom);
+        final kb = math.max(kbByHeight, kbByVisibleBottom);
         final hasFocusIntent =
             _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
-        // When editor is not focused, always treat keyboard as closed and
-        // keep baseline in sync with current viewport.
+
+        // When editor is not focused, always treat keyboard as closed.
         if (!hasFocusIntent) {
-          _fullViewportHeight = currentVisibleBottom;
+          _lowKeyboardFramesWhileFocused = 0;
           widget.controller.keyboardHeight.value = 0.0;
           return;
         }
 
-        final kb = math.max(0.0, _fullViewportHeight - currentVisibleBottom);
-
-        // Ignore small differences (< 50px) caused by browser chrome toggling.
-        if (kb > 50) {
+        // Fail-safe: while focused, require multiple consecutive low readings
+        // before closing, so one bad frame cannot drop the inset to zero.
+        if (kb > _keyboardOpenThresholdPx) {
+          _lowKeyboardFramesWhileFocused = 0;
           widget.controller.keyboardHeight.value = kb;
         } else {
-          _fullViewportHeight = currentVisibleBottom;
-          widget.controller.keyboardHeight.value = 0.0;
+          _lowKeyboardFramesWhileFocused++;
+          if (_lowKeyboardFramesWhileFocused >= _keyboardCloseConfirmFrames) {
+            widget.controller.keyboardHeight.value = 0.0;
+          }
         }
       }).toJS;
       vv.addEventListener('resize', _viewportResizeHandlerJs);
