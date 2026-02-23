@@ -417,6 +417,18 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   static const double _keyboardOpenThresholdPx = 50.0;
   static const int _keyboardCloseConfirmFrames = 3;
 
+  void _scheduleKeyboardRefreshRetries([int retries = 2]) {
+    for (var i = 1; i <= retries; i++) {
+      Future<void>.delayed(
+        Duration(milliseconds: 16 * i),
+        () {
+          if (!mounted) return;
+          _refreshKeyboardHeightFromViewport();
+        },
+      );
+    }
+  }
+
   void _refreshKeyboardHeightFromViewport() {
     final vv = web.window.visualViewport;
     if (vv == null) return;
@@ -1106,6 +1118,8 @@ $customCss
     // selection updates that would incorrectly re-focus the editor on mobile.
     if (_isHandlingLinkTapAction && source != 'user') {
       _editorHasFocus = false;
+      _refreshKeyboardHeightFromViewport();
+      _scheduleKeyboardRefreshRetries();
       return;
     }
 
@@ -1593,6 +1607,10 @@ $customCss
       }
     } finally {
       _isHandlingLinkTapAction = false;
+      if (mounted) {
+        _refreshKeyboardHeightFromViewport();
+        _scheduleKeyboardRefreshRetries();
+      }
     }
   }
 
