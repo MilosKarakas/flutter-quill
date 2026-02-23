@@ -391,6 +391,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   double _fullViewportHeight = 0;
   String? _savedHtmlOverflow;
   String? _savedBodyOverflow;
+  String? _savedHtmlOverscrollBehavior;
+  String? _savedBodyOverscrollBehavior;
 
   // Focus bridging state
   bool _isSyncingFocus = false;
@@ -535,8 +537,12 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
         'resize',
         _viewportResizeHandlerJs,
       );
+      web.window.visualViewport?.removeEventListener(
+        'scroll',
+        _viewportResizeHandlerJs,
+      );
     }
-    widget.controller.keyboardHeight.value = 0;
+    widget.controller.keyboardHeight.value = 0.0;
 
     if (_parentScrollResetJs != null) {
       web.window.removeEventListener('scroll', _parentScrollResetJs, true.toJS);
@@ -901,6 +907,7 @@ $customCss
         }
       }).toJS;
       vv.addEventListener('resize', _viewportResizeHandlerJs);
+      vv.addEventListener('scroll', _viewportResizeHandlerJs);
     }
 
     // --- Permanent parent-page scroll lock ---
@@ -927,9 +934,15 @@ $customCss
     // Save current overflow so we can restore in dispose.
     _savedHtmlOverflow = html?.style.getPropertyValue('overflow') ?? '';
     _savedBodyOverflow = body?.style.getPropertyValue('overflow') ?? '';
+    _savedHtmlOverscrollBehavior =
+        html?.style.getPropertyValue('overscroll-behavior') ?? '';
+    _savedBodyOverscrollBehavior =
+        body?.style.getPropertyValue('overscroll-behavior') ?? '';
 
     html?.style.setProperty('overflow', 'hidden');
     body?.style.setProperty('overflow', 'hidden');
+    html?.style.setProperty('overscroll-behavior', 'none');
+    body?.style.setProperty('overscroll-behavior', 'none');
 
     // Reset any existing scroll offset.
     html?.scrollTop = 0;
@@ -941,6 +954,14 @@ $customCss
     final html = web.document.documentElement as web.HTMLElement?;
     html?.style.setProperty('overflow', _savedHtmlOverflow ?? '');
     web.document.body?.style.setProperty('overflow', _savedBodyOverflow ?? '');
+    html?.style.setProperty(
+      'overscroll-behavior',
+      _savedHtmlOverscrollBehavior ?? '',
+    );
+    web.document.body?.style.setProperty(
+      'overscroll-behavior',
+      _savedBodyOverscrollBehavior ?? '',
+    );
   }
 
   // ------------------------------------------------------------------
