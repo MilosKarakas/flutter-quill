@@ -233,6 +233,23 @@ class QuillJsEditorConfiguration {
   /// Defaults to `true`.
   final bool unfocusOnTapOutside;
 
+  /// Enables scroll handoff from the inner editor to outer Flutter scrollables.
+  ///
+  /// When enabled, wheel/touch deltas that cannot be consumed by the editor
+  /// (already at top/bottom bounds or not scrollable) are forwarded to:
+  /// 1) [onOuterScrollDelta], if provided; otherwise
+  /// 2) the nearest ancestor [Scrollable] found by [QuillJsEditorView].
+  ///
+  /// Defaults to `false`.
+  final bool enableOuterScrollHandoff;
+
+  /// Optional callback receiving residual vertical scroll delta from the editor.
+  ///
+  /// Positive values mean scrolling down; negative means up.
+  /// If null, [QuillJsEditorView] applies deltas to the nearest ancestor
+  /// [Scrollable] when [enableOuterScrollHandoff] is true.
+  final ValueChanged<double>? onOuterScrollDelta;
+
   /// Enables editor self-sizing based on content with [minLines] and [maxLines].
   ///
   /// When enabled, [QuillJsEditorView] computes its own height from text style,
@@ -275,6 +292,8 @@ class QuillJsEditorConfiguration {
     this.style,
     this.moveCursorToEndOnFirstFocus = false,
     this.unfocusOnTapOutside = true,
+    this.enableOuterScrollHandoff = false,
+    this.onOuterScrollDelta,
     this.autoResizeToContent = false,
     this.minLines = 1,
     this.maxLines = 1,

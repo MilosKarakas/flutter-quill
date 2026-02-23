@@ -407,6 +407,16 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   JSFunction? _pasteHandlerJs;
   JSFunction? _copyHandlerJs;
   JSFunction? _cutHandlerJs;
+  JSFunction? _outerScrollWheelHandlerJs;
+  JSFunction? _outerScrollTouchStartHandlerJs;
+  JSFunction? _outerScrollTouchMoveHandlerJs;
+  JSFunction? _outerScrollTouchEndHandlerJs;
+  JSFunction? _outerScrollTouchCancelHandlerJs;
+  JSFunction? _outerScrollPointerDownHandlerJs;
+  JSFunction? _outerScrollPointerUpHandlerJs;
+  JSFunction? _outerScrollPointerCancelHandlerJs;
+  JSFunction? _outerScrollCompositionStartHandlerJs;
+  JSFunction? _outerScrollCompositionEndHandlerJs;
 
   // Parent-window viewport fix listeners
   JSFunction? _viewportResizeHandlerJs;
@@ -494,6 +504,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   bool _isHandlingLinkTapAction = false;
   bool _skipNextLinkClick = false;
   Delta _contentForAutoResize = Delta()..insert('\n');
+  bool _isImeComposing = false;
+  bool _isSelectionGestureActive = false;
+  int _lastSelectionLength = 0;
+  double? _touchLastClientY;
 
   // ------------------------------------------------------------------
   // Lifecycle
@@ -617,6 +631,54 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       }
       if (_cutHandlerJs != null) {
         _editorDiv!.removeEventListener('cut', _cutHandlerJs, true.toJS);
+      }
+      if (_outerScrollWheelHandlerJs != null) {
+        _editorDiv!.removeEventListener('wheel', _outerScrollWheelHandlerJs);
+      }
+      if (_outerScrollTouchStartHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'touchstart',
+          _outerScrollTouchStartHandlerJs,
+        );
+      }
+      if (_outerScrollTouchMoveHandlerJs != null) {
+        _editorDiv!.removeEventListener('touchmove', _outerScrollTouchMoveHandlerJs);
+      }
+      if (_outerScrollTouchEndHandlerJs != null) {
+        _editorDiv!.removeEventListener('touchend', _outerScrollTouchEndHandlerJs);
+      }
+      if (_outerScrollTouchCancelHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'touchcancel',
+          _outerScrollTouchCancelHandlerJs,
+        );
+      }
+      if (_outerScrollPointerDownHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'pointerdown',
+          _outerScrollPointerDownHandlerJs,
+        );
+      }
+      if (_outerScrollPointerUpHandlerJs != null) {
+        _editorDiv!.removeEventListener('pointerup', _outerScrollPointerUpHandlerJs);
+      }
+      if (_outerScrollPointerCancelHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'pointercancel',
+          _outerScrollPointerCancelHandlerJs,
+        );
+      }
+      if (_outerScrollCompositionStartHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'compositionstart',
+          _outerScrollCompositionStartHandlerJs,
+        );
+      }
+      if (_outerScrollCompositionEndHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'compositionend',
+          _outerScrollCompositionEndHandlerJs,
+        );
       }
     }
 
@@ -813,6 +875,7 @@ $customCss
     _setupEnterKeyHandler();
     _setupEscapeKeyHandler();
     _setupClipboardInterceptors();
+    _setupOuterScrollHandoff();
 
     if (config.preventOrphanListNesting) {
       _setupTabKeyHandler();
@@ -1129,11 +1192,16 @@ $customCss
   void _onSelectionChanged(JSObject? range, String? source) {
     // range == null means the editor lost focus
     if (range == null) {
+      _lastSelectionLength = 0;
+      _isSelectionGestureActive = false;
       widget.controller.keyboardHeight.value = 0.0;
       _editorHasFocus = false;
       _onJsFocusChanged(hasFocus: false);
       return;
     }
+
+    final jsRange = _JsRange._(range);
+    _lastSelectionLength = jsRange.length;
 
     // While a link action sheet/dialog is active, Quill can emit non-user
     // selection updates that would incorrectly re-focus the editor on mobile.
@@ -1806,6 +1874,159 @@ $customCss
 
     // Use capture phase to handle escape before Quill/browser defaults.
     _editorDiv!.addEventListener('keydown', _escapeKeyHandlerJs, true.toJS);
+  }
+
+  // ------------------------------------------------------------------
+  // Optional inner->outer scroll handoff
+  // ------------------------------------------------------------------
+
+  void _setupOuterScrollHandoff() {
+    if (!widget.configuration.enableOuterScrollHandoff) {
+      return;
+    }
+    final editorDiv = _editorDiv;
+    if (editorDiv == null) return;
+
+    _outerScrollWheelHandlerJs = ((web.Event event) {
+      final wheelEvent = event as web.WheelEvent;
+      final dy = wheelEvent.deltaY.toDouble();
+      _tryHandoffOuterScroll(event: event, deltaY: dy);
+    }).toJS;
+
+    _outerScrollTouchStartHandlerJs = ((web.Event event) {
+      final touchEvent = event as web.TouchEvent;
+      final touches = touchEvent.changedTouches;
+      if (touches.length <= 0) return;
+      final touch = touches.item(0);
+      if (touch == null) return;
+      _touchLastClientY = touch.clientY.toDouble();
+      _isSelectionGestureActive = _lastSelectionLength > 0;
+    }).toJS;
+
+    _outerScrollTouchMoveHandlerJs = ((web.Event event) {
+      final touchEvent = event as web.TouchEvent;
+      final touches = touchEvent.changedTouches;
+      if (touches.length <= 0) return;
+      final touch = touches.item(0);
+      if (touch == null) return;
+      final currentY = touch.clientY.toDouble();
+      final previousY = _touchLastClientY;
+      _touchLastClientY = currentY;
+      if (previousY == null) return;
+      final dy = previousY - currentY;
+      _tryHandoffOuterScroll(event: event, deltaY: dy);
+    }).toJS;
+
+    _outerScrollTouchEndHandlerJs = ((web.Event _) {
+      _touchLastClientY = null;
+      _isSelectionGestureActive = false;
+    }).toJS;
+
+    _outerScrollTouchCancelHandlerJs = ((web.Event _) {
+      _touchLastClientY = null;
+      _isSelectionGestureActive = false;
+    }).toJS;
+
+    _outerScrollPointerDownHandlerJs = ((web.Event _) {
+      _isSelectionGestureActive = _lastSelectionLength > 0;
+    }).toJS;
+
+    _outerScrollPointerUpHandlerJs = ((web.Event _) {
+      _isSelectionGestureActive = false;
+    }).toJS;
+
+    _outerScrollPointerCancelHandlerJs = ((web.Event _) {
+      _isSelectionGestureActive = false;
+    }).toJS;
+
+    _outerScrollCompositionStartHandlerJs = ((web.Event _) {
+      _isImeComposing = true;
+    }).toJS;
+
+    _outerScrollCompositionEndHandlerJs = ((web.Event _) {
+      _isImeComposing = false;
+    }).toJS;
+
+    editorDiv.addEventListener('wheel', _outerScrollWheelHandlerJs!);
+    editorDiv.addEventListener('touchstart', _outerScrollTouchStartHandlerJs!);
+    editorDiv.addEventListener('touchmove', _outerScrollTouchMoveHandlerJs!);
+    editorDiv.addEventListener('touchend', _outerScrollTouchEndHandlerJs!);
+    editorDiv.addEventListener('touchcancel', _outerScrollTouchCancelHandlerJs!);
+    editorDiv.addEventListener('pointerdown', _outerScrollPointerDownHandlerJs!);
+    editorDiv.addEventListener('pointerup', _outerScrollPointerUpHandlerJs!);
+    editorDiv.addEventListener(
+      'pointercancel',
+      _outerScrollPointerCancelHandlerJs!,
+    );
+    editorDiv.addEventListener(
+      'compositionstart',
+      _outerScrollCompositionStartHandlerJs!,
+    );
+    editorDiv.addEventListener(
+      'compositionend',
+      _outerScrollCompositionEndHandlerJs!,
+    );
+  }
+
+  bool _innerEditorCanConsumeScroll(double deltaY) {
+    final editor = _quillEditorElement();
+    if (editor == null) return false;
+
+    final maxScroll = math.max(
+      0.0,
+      editor.scrollHeight.toDouble() - editor.clientHeight.toDouble(),
+    );
+    if (maxScroll <= 0.5) {
+      return false;
+    }
+
+    final scrollTop = editor.scrollTop.toDouble();
+    const epsilon = 0.5;
+    if (deltaY > 0) {
+      return scrollTop < maxScroll - epsilon;
+    }
+    if (deltaY < 0) {
+      return scrollTop > epsilon;
+    }
+    return true;
+  }
+
+  bool _dispatchOuterScrollDelta(double deltaY) {
+    final callback = widget.configuration.onOuterScrollDelta;
+    if (callback != null) {
+      callback(deltaY);
+      return true;
+    }
+
+    final scrollableState = Scrollable.maybeOf(context);
+    final position = scrollableState?.position;
+    if (position == null) return false;
+
+    final target = (position.pixels + deltaY).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if ((target - position.pixels).abs() <= 0.5) {
+      return false;
+    }
+    position.jumpTo(target);
+    return true;
+  }
+
+  void _tryHandoffOuterScroll({
+    required web.Event event,
+    required double deltaY,
+  }) {
+    if (!widget.configuration.enableOuterScrollHandoff) return;
+    if (deltaY.abs() <= 0.01) return;
+    if (_isImeComposing || _isSelectionGestureActive) return;
+    if (_innerEditorCanConsumeScroll(deltaY)) return;
+
+    final handled = _dispatchOuterScrollDelta(deltaY);
+    if (!handled) return;
+
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   // ------------------------------------------------------------------
