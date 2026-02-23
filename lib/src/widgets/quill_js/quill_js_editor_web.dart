@@ -86,6 +86,26 @@ extension type _QuillJsConstructor._(JSObject _) implements JSObject {
   external JSObject? find(JSObject node, [bool bubble]);
 }
 
+/// Minimal wrappers for browser caret APIs used to map a tap point to a
+/// text/caret offset before we trigger programmatic focus.
+extension type _JsDomRange._(JSObject _) implements JSObject {
+  external JSObject? get startContainer;
+  external int get startOffset;
+}
+
+extension type _JsCaretPosition._(JSObject _) implements JSObject {
+  external JSObject? get offsetNode;
+  external int get offset;
+}
+
+extension type _DocumentCaretInterop._(JSObject _) implements JSObject {
+  @JS('caretRangeFromPoint')
+  external JSObject? caretRangeFromPoint(num x, num y);
+
+  @JS('caretPositionFromPoint')
+  external JSObject? caretPositionFromPoint(num x, num y);
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -380,6 +400,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   JSFunction? _linkClickHandlerJs;
   JSFunction? _linkTouchStartHandlerJs;
   JSFunction? _linkPointerDownHandlerJs;
+  JSFunction? _tapFocusTouchStartHandlerJs;
+  JSFunction? _tapFocusPointerDownHandlerJs;
   JSFunction? _iframeLoadHandlerJs;
   JSFunction? _pasteHandlerJs;
   JSFunction? _copyHandlerJs;
@@ -391,8 +413,6 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   double _fullViewportHeight = 0;
   String? _savedHtmlOverflow;
   String? _savedBodyOverflow;
-  String? _savedHtmlOverscrollBehavior;
-  String? _savedBodyOverscrollBehavior;
 
   // Focus bridging state
   bool _isSyncingFocus = false;
@@ -520,6 +540,20 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
           true.toJS,
         );
       }
+      if (_tapFocusTouchStartHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'touchstart',
+          _tapFocusTouchStartHandlerJs,
+          true.toJS,
+        );
+      }
+      if (_tapFocusPointerDownHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'pointerdown',
+          _tapFocusPointerDownHandlerJs,
+          true.toJS,
+        );
+      }
       if (_pasteHandlerJs != null) {
         _editorDiv!.removeEventListener('paste', _pasteHandlerJs, true.toJS);
       }
@@ -535,10 +569,6 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     if (_viewportResizeHandlerJs != null) {
       web.window.visualViewport?.removeEventListener(
         'resize',
-        _viewportResizeHandlerJs,
-      );
-      web.window.visualViewport?.removeEventListener(
-        'scroll',
         _viewportResizeHandlerJs,
       );
     }
@@ -716,6 +746,7 @@ $customCss
     }
 
     _setupEventListeners();
+    _setupTapFocusInterception();
     _setupLinkClickHandler();
     _setupEnterKeyHandler();
     _setupEscapeKeyHandler();
@@ -907,7 +938,6 @@ $customCss
         }
       }).toJS;
       vv.addEventListener('resize', _viewportResizeHandlerJs);
-      vv.addEventListener('scroll', _viewportResizeHandlerJs);
     }
 
     // --- Permanent parent-page scroll lock ---
@@ -934,15 +964,9 @@ $customCss
     // Save current overflow so we can restore in dispose.
     _savedHtmlOverflow = html?.style.getPropertyValue('overflow') ?? '';
     _savedBodyOverflow = body?.style.getPropertyValue('overflow') ?? '';
-    _savedHtmlOverscrollBehavior =
-        html?.style.getPropertyValue('overscroll-behavior') ?? '';
-    _savedBodyOverscrollBehavior =
-        body?.style.getPropertyValue('overscroll-behavior') ?? '';
 
     html?.style.setProperty('overflow', 'hidden');
     body?.style.setProperty('overflow', 'hidden');
-    html?.style.setProperty('overscroll-behavior', 'none');
-    body?.style.setProperty('overscroll-behavior', 'none');
 
     // Reset any existing scroll offset.
     html?.scrollTop = 0;
@@ -954,14 +978,6 @@ $customCss
     final html = web.document.documentElement as web.HTMLElement?;
     html?.style.setProperty('overflow', _savedHtmlOverflow ?? '');
     web.document.body?.style.setProperty('overflow', _savedBodyOverflow ?? '');
-    html?.style.setProperty(
-      'overscroll-behavior',
-      _savedHtmlOverscrollBehavior ?? '',
-    );
-    web.document.body?.style.setProperty(
-      'overscroll-behavior',
-      _savedBodyOverscrollBehavior ?? '',
-    );
   }
 
   // ------------------------------------------------------------------
@@ -1124,6 +1140,163 @@ $customCss
     }
 
     _didApplyInitialCursorPlacement = true;
+  }
+
+  // ------------------------------------------------------------------
+  // Tap-focus interception (iOS Safari tap-pan workaround)
+  // ------------------------------------------------------------------
+
+  void _setupTapFocusInterception() {
+    final editorDiv = _editorDiv!;
+
+    _tapFocusTouchStartHandlerJs = ((web.Event event) {
+      _interceptTapFocus(event);
+    }).toJS;
+
+    _tapFocusPointerDownHandlerJs = ((web.Event event) {
+      final pointerEvent = event as web.PointerEvent;
+      // Touch/pen paths can trigger iOS focus-scroll assist. Mouse focus is
+      // typically stable and should keep native behaviour.
+      if (pointerEvent.pointerType.toLowerCase() == 'mouse') {
+        return;
+      }
+      _interceptTapFocus(event);
+    }).toJS;
+
+    editorDiv.addEventListener(
+      'touchstart',
+      _tapFocusTouchStartHandlerJs!,
+      true.toJS,
+    );
+    editorDiv.addEventListener(
+      'pointerdown',
+      _tapFocusPointerDownHandlerJs!,
+      true.toJS,
+    );
+  }
+
+  void _interceptTapFocus(web.Event event) {
+    final quill = _quill;
+    final editorDiv = _editorDiv;
+    if (quill == null || editorDiv == null) return;
+    if (_editorHasFocus) return;
+
+    // Keep existing link-tap behaviour (dialog callback path) untouched.
+    if (_findTappedAnchorFromEvent(event, editorDiv) != null) {
+      return;
+    }
+
+    final clientPoint = _extractClientPoint(event);
+    if (clientPoint == null) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    final tapIndex = _resolveTapIndex(clientPoint.$1, clientPoint.$2);
+    _focusEditorFromInterceptedTap(tapIndex);
+  }
+
+  (double, double)? _extractClientPoint(web.Event event) {
+    if (event is web.PointerEvent) {
+      return (event.clientX.toDouble(), event.clientY.toDouble());
+    }
+    if (event is web.TouchEvent) {
+      final touches = event.changedTouches;
+      if (touches.length <= 0) return null;
+      final touch = touches.item(0);
+      if (touch == null) return null;
+      return (touch.clientX.toDouble(), touch.clientY.toDouble());
+    }
+    return null;
+  }
+
+  int? _resolveTapIndex(double clientX, double clientY) {
+    final doc = _iframe.contentDocument;
+    final quill = _quill;
+    final quillConstructor = _quillConstructor;
+    if (doc == null || quill == null || quillConstructor == null) return null;
+    final docJs = doc as JSObject;
+    final docInterop = _DocumentCaretInterop._(docJs);
+
+    web.Node? node;
+    int offset = 0;
+
+    if (docJs['caretRangeFromPoint'].isDefinedAndNotNull) {
+      try {
+        final rangeObj = docInterop.caretRangeFromPoint(clientX, clientY);
+        if (rangeObj != null) {
+          final range = _JsDomRange._(rangeObj);
+          final startNode = range.startContainer;
+          if (startNode != null) {
+            node = startNode as web.Node;
+            offset = range.startOffset;
+          }
+        }
+      } catch (_) {
+        // Ignore and try the alternate caret API below.
+      }
+    }
+
+    if (node == null && docJs['caretPositionFromPoint'].isDefinedAndNotNull) {
+      try {
+        final caretObj = docInterop.caretPositionFromPoint(clientX, clientY);
+        if (caretObj != null) {
+          final caret = _JsCaretPosition._(caretObj);
+          final offsetNode = caret.offsetNode;
+          if (offsetNode != null) {
+            node = offsetNode as web.Node;
+            offset = caret.offset;
+          }
+        }
+      } catch (_) {
+        // No usable caret API in this browser/iframe path.
+      }
+    }
+
+    if (node == null) return null;
+    final blot = quillConstructor.find(node as JSObject, true);
+    if (blot == null) return null;
+
+    final baseIndex = quill.getIndex(blot);
+    if (baseIndex < 0) return null;
+
+    if (node is web.Text) {
+      final localOffset = offset.clamp(0, node.data.length);
+      return baseIndex + localOffset;
+    }
+    return baseIndex;
+  }
+
+  void _focusEditorFromInterceptedTap(int? tapIndex) {
+    final quill = _quill;
+    if (quill == null) return;
+
+    // Mark this as user-driven so first-focus move-to-end does not override
+    // the tapped caret placement.
+    _didUserInteractWithSelection = true;
+
+    quill.focus();
+    _editorHasFocus = true;
+    _onJsFocusChanged(hasFocus: true);
+
+    if (tapIndex == null) return;
+
+    void applySelection() {
+      if (!mounted || _quill == null) return;
+      final length = _quill!.getLength();
+      final maxIndex = length > 0 ? length - 1 : 0;
+      final clamped = tapIndex.clamp(0, maxIndex).toInt();
+      _quill!.setSelection(clamped, 0);
+    }
+
+    // Apply now and retry briefly so selection wins over async focus settling.
+    applySelection();
+    for (var i = 1; i <= 2; i++) {
+      Future<void>.delayed(
+        Duration(milliseconds: 16 * i),
+        applySelection,
+      );
+    }
   }
 
   // ------------------------------------------------------------------
