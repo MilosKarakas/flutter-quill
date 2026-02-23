@@ -749,6 +749,7 @@ $customCss
     if (!node.hasFocus) {
       _pendingDomFocusSync = false;
       _focusSyncEpoch++;
+      widget.controller.keyboardHeight.value = 0.0;
       if (!widget.controller.isAttached) return;
       _withFocusSyncGuard(widget.controller.blur);
       return;
@@ -877,10 +878,23 @@ $customCss
     if (vv != null) {
       _viewportResizeHandlerJs = ((web.Event _) {
         final currentHeight = vv.height;
+        // When editor is not focused, always treat keyboard as closed and
+        // keep baseline in sync with current viewport.
+        if (!_editorHasFocus) {
+          _fullViewportHeight = currentHeight;
+          widget.controller.keyboardHeight.value = 0.0;
+          return;
+        }
+
         final kb = _fullViewportHeight - currentHeight;
-        // Ignore small differences (< 50px) caused by browser chrome
-        // toggling (e.g. address bar hide/show).
-        widget.controller.keyboardHeight.value = kb > 50 ? kb : 0.0;
+
+        // Ignore small differences (< 50px) caused by browser chrome toggling.
+        if (kb > 50) {
+          widget.controller.keyboardHeight.value = kb;
+        } else {
+          _fullViewportHeight = currentHeight;
+          widget.controller.keyboardHeight.value = 0.0;
+        }
       }).toJS;
       vv.addEventListener('resize', _viewportResizeHandlerJs);
     }
@@ -1028,6 +1042,7 @@ $customCss
   void _onSelectionChanged(JSObject? range, String? source) {
     // range == null means the editor lost focus
     if (range == null) {
+      widget.controller.keyboardHeight.value = 0.0;
       _editorHasFocus = false;
       _onJsFocusChanged(hasFocus: false);
       return;
