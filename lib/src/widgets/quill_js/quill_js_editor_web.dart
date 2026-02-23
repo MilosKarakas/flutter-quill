@@ -70,6 +70,7 @@ extension type _QuillJsInstance._(JSObject _) implements JSObject {
     JSAny? formatValue,
   ]);
   external void setSelection(int index, int length);
+  external void scrollSelectionIntoView();
 
   /// Like [setSelection] but with an explicit Quill source string.
   ///
@@ -452,6 +453,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     if (kb > _keyboardOpenThresholdPx) {
       _lowKeyboardFramesWhileFocused = 0;
       widget.controller.keyboardHeight.value = kb;
+      _scheduleEnsureSelectionVisible(const Duration(milliseconds: 24));
     } else {
       _lowKeyboardFramesWhileFocused++;
       if (_lowKeyboardFramesWhileFocused >= _keyboardCloseConfirmFrames) {
@@ -491,6 +493,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   bool _isHandlingLinkRequest = false;
   bool _isHandlingLinkTapAction = false;
   bool _skipNextLinkClick = false;
+  Delta _contentForAutoResize = Delta()..insert('\n');
 
   // ------------------------------------------------------------------
   // Lifecycle
@@ -499,6 +502,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   @override
   void initState() {
     super.initState();
+    _contentForAutoResize = widget.configuration.initialContent ?? (Delta()..insert('\n'));
 
     _viewType = 'quill-js-editor-${_nextId++}';
 
@@ -537,6 +541,11 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       _focusSyncEpoch++;
       _pendingDomFocusSync = false;
       _setupFocusBridge();
+    }
+
+    if (widget.configuration.initialContent != oldWidget.configuration.initialContent) {
+      _contentForAutoResize =
+          widget.configuration.initialContent ?? (Delta()..insert('\n'));
     }
   }
 
@@ -670,7 +679,14 @@ html, body {
   overflow: hidden;
 }
 .ql-container.ql-snow { border: none !important; font-size: 16px; }
-.ql-editor { padding: 12px 16px; min-height: 100%; outline: none; }
+.ql-editor {
+  padding: 12px 16px;
+  min-height: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+  outline: none;
+}
 .ql-editor.ql-blank::before { font-style: normal; color: rgba(0,0,0,0.38); }
 .ql-editor a { cursor: pointer; color: #1a73e8; text-decoration: underline; }
 $dynamicCss
@@ -1102,7 +1118,12 @@ $customCss
   void _onTextChanged() {
     if (_suppressContentChanged) return;
     final delta = _getContentsDelta();
+    _contentForAutoResize = delta;
+    if (widget.configuration.autoResizeToContent && mounted) {
+      setState(() {});
+    }
     widget.configuration.onContentChanged?.call(delta);
+    _scheduleEnsureSelectionVisible();
   }
 
   void _onSelectionChanged(JSObject? range, String? source) {
@@ -1143,6 +1164,9 @@ $customCss
 
     // Sync format state whenever selection changes (cursor moves, text selected, etc.)
     _syncFormatState();
+    if (source == 'user') {
+      _scheduleEnsureSelectionVisible();
+    }
   }
 
   /// One-shot: moves the cursor to the end of the document on first focus gain,
@@ -1788,6 +1812,31 @@ $customCss
   // Cursor / scroll helpers
   // ------------------------------------------------------------------
 
+  bool _pendingEnsureSelectionVisible = false;
+
+  void _scheduleEnsureSelectionVisible([
+    Duration delay = const Duration(milliseconds: 12),
+  ]) {
+    if (_pendingEnsureSelectionVisible) return;
+    _pendingEnsureSelectionVisible = true;
+    Future<void>.delayed(delay, () {
+      _pendingEnsureSelectionVisible = false;
+      if (!mounted) return;
+      _ensureSelectionVisible();
+    });
+  }
+
+  /// Scrolls the editor just enough to keep the active selection visible.
+  void _ensureSelectionVisible() {
+    final quill = _quill;
+    if (quill == null) return;
+    try {
+      quill.scrollSelectionIntoView();
+    } catch (_) {
+      // Best-effort only. If unsupported in runtime Quill build, ignore.
+    }
+  }
+
   /// Moves the cursor to the very end of the document and scrolls the
   /// Quill container so the cursor is visible.
   void _moveCursorToEndAndScroll() {
@@ -1871,12 +1920,22 @@ $customCss
         _suppressContentChanged = true;
         _quill!.setContents(_deltaToJs(delta));
         _suppressContentChanged = false;
+        _contentForAutoResize = delta;
+        if (widget.configuration.autoResizeToContent && mounted) {
+          setState(() {});
+        }
       },
       scrollToEnd: _moveCursorToEndAndScroll,
+      ensureSelectionVisible: _ensureSelectionVisible,
       clear: () {
         _suppressContentChanged = true;
-        _quill!.setContents(_deltaToJs(Delta()..insert('\n')));
+        final cleared = Delta()..insert('\n');
+        _quill!.setContents(_deltaToJs(cleared));
         _suppressContentChanged = false;
+        _contentForAutoResize = cleared;
+        if (widget.configuration.autoResizeToContent && mounted) {
+          setState(() {});
+        }
         _moveCursorToEndAndScroll();
       },
       setSelection: (index, length) {
@@ -2172,6 +2231,58 @@ $customCss
     return Delta.fromJson(map['ops'] as List);
   }
 
+  static String _plainTextFromDelta(Delta delta) {
+    final buffer = StringBuffer();
+    for (final op in delta.toList()) {
+      if (!op.isInsert) continue;
+      final data = op.data;
+      if (data is String) {
+        buffer.write(data);
+      } else {
+        buffer.write('\uFFFC');
+      }
+    }
+    final text = buffer.toString();
+    return text.isEmpty ? '\n' : text;
+  }
+
+  double _resolveAutoResizeHeight(double maxWidth, TextDirection textDirection) {
+    final cfg = widget.configuration;
+    final style = cfg.style;
+    final fontSize = style?.fontSize ?? 16.0;
+    final lineHeightMultiplier = style?.lineHeight ?? 1.5;
+    final lineHeightPx = fontSize * lineHeightMultiplier;
+    final contentWidth = math.max(0.0, maxWidth - cfg.autoResizeHorizontalPadding);
+
+    if (contentWidth <= 0) {
+      return lineHeightPx * cfg.minLines + cfg.autoResizeVerticalPadding;
+    }
+
+    final text = _plainTextFromDelta(_contentForAutoResize);
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontSize: fontSize,
+          height: lineHeightMultiplier,
+          letterSpacing: style?.letterSpacing,
+          fontFamily: style?.fontFamily,
+        ),
+      ),
+      textDirection: textDirection,
+      maxLines: null,
+    )..layout(maxWidth: contentWidth);
+
+    final wrappedLineCount = textPainter.computeLineMetrics().length;
+    final explicitLineCount = '\n'.allMatches(text).length + 1;
+    final lineCount = math.max(wrappedLineCount, explicitLineCount).clamp(
+      cfg.minLines,
+      cfg.maxLines,
+    );
+
+    return lineHeightPx * lineCount + cfg.autoResizeVerticalPadding;
+  }
+
   // ------------------------------------------------------------------
   // Tap-outside handling
   // ------------------------------------------------------------------
@@ -2224,6 +2335,20 @@ $customCss
       // Ensure the provided FocusNode is attached to Flutter's focus tree.
       // Without this, requestFocus() from client code can be a no-op.
       child = Focus(focusNode: node, child: child);
+    }
+
+    if (widget.configuration.autoResizeToContent) {
+      final wrappedChild = child;
+      child = LayoutBuilder(
+        builder: (context, constraints) {
+          final direction = Directionality.maybeOf(context) ?? TextDirection.ltr;
+          final height = _resolveAutoResizeHeight(
+            constraints.maxWidth,
+            direction,
+          );
+          return SizedBox(height: height, child: wrappedChild);
+        },
+      );
     }
 
     return child;

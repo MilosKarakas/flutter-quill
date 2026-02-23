@@ -233,6 +233,29 @@ class QuillJsEditorConfiguration {
   /// Defaults to `true`.
   final bool unfocusOnTapOutside;
 
+  /// Enables editor self-sizing based on content with [minLines] and [maxLines].
+  ///
+  /// When enabled, [QuillJsEditorView] computes its own height from text style,
+  /// content, and available width; once [maxLines] is reached, internal editor
+  /// scrolling is used.
+  final bool autoResizeToContent;
+
+  /// Minimum visible line count when [autoResizeToContent] is enabled.
+  final int minLines;
+
+  /// Maximum visible line count when [autoResizeToContent] is enabled.
+  final int maxLines;
+
+  /// Horizontal text padding used by auto-resize measurements.
+  ///
+  /// Should match the editor's CSS horizontal padding for accurate wrapping.
+  final double autoResizeHorizontalPadding;
+
+  /// Vertical text padding used by auto-resize measurements.
+  ///
+  /// Should match top + bottom editor CSS padding.
+  final double autoResizeVerticalPadding;
+
   const QuillJsEditorConfiguration({
     required this.quillJsUrl,
     this.quillCssUrl,
@@ -252,7 +275,15 @@ class QuillJsEditorConfiguration {
     this.style,
     this.moveCursorToEndOnFirstFocus = false,
     this.unfocusOnTapOutside = true,
-  });
+    this.autoResizeToContent = false,
+    this.minLines = 1,
+    this.maxLines = 1,
+    this.autoResizeHorizontalPadding = 32,
+    this.autoResizeVerticalPadding = 24,
+  }) : assert(minLines > 0),
+       assert(maxLines >= minLines),
+       assert(autoResizeHorizontalPadding >= 0),
+       assert(autoResizeVerticalPadding >= 0);
 }
 
 /// Represents the current formatting state at the cursor/selection in
@@ -382,6 +413,11 @@ class QuillJsEditorController extends ChangeNotifier {
   /// at the very end. Useful after setting initial content.
   void scrollToEnd() => _callbacks?.scrollToEnd.call();
 
+  /// Ensures the current selection/caret is visible in the editor viewport.
+  ///
+  /// Unlike [scrollToEnd], this preserves the current cursor/selection.
+  void ensureSelectionVisible() => _callbacks?.ensureSelectionVisible.call();
+
   /// Clears all editor content and resets to an empty document.
   /// Equivalent to [QuillController.clear].
   void clear() => _callbacks?.clear.call();
@@ -436,6 +472,7 @@ class QuillJsEditorController extends ChangeNotifier {
     required Delta Function() getContents,
     required void Function(Delta) setContents,
     required VoidCallback scrollToEnd,
+    required VoidCallback ensureSelectionVisible,
     required VoidCallback clear,
     required void Function(int index, int length) setSelection,
     required void Function(int index, String text, Map<String, dynamic>?)
@@ -456,6 +493,7 @@ class QuillJsEditorController extends ChangeNotifier {
       getContents: getContents,
       setContents: setContents,
       scrollToEnd: scrollToEnd,
+      ensureSelectionVisible: ensureSelectionVisible,
       clear: clear,
       setSelection: setSelection,
       insertText: insertText,
@@ -490,6 +528,7 @@ class _EditorCallbacks {
   final Delta Function() getContents;
   final void Function(Delta) setContents;
   final VoidCallback scrollToEnd;
+  final VoidCallback ensureSelectionVisible;
   final VoidCallback clear;
   final void Function(int index, int length) setSelection;
   final void Function(int index, String text, Map<String, dynamic>?) insertText;
@@ -508,6 +547,7 @@ class _EditorCallbacks {
     required this.getContents,
     required this.setContents,
     required this.scrollToEnd,
+    required this.ensureSelectionVisible,
     required this.clear,
     required this.setSelection,
     required this.insertText,
