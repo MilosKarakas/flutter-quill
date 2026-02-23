@@ -417,6 +417,37 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   static const double _keyboardOpenThresholdPx = 50.0;
   static const int _keyboardCloseConfirmFrames = 3;
 
+  void _refreshKeyboardHeightFromViewport() {
+    final vv = web.window.visualViewport;
+    if (vv == null) return;
+
+    final layoutHeight = web.window.innerHeight.toDouble();
+    final currentVisibleBottom = vv.height + vv.offsetTop;
+    final kbByHeight = math.max(0.0, layoutHeight - vv.height);
+    final kbByVisibleBottom = math.max(0.0, layoutHeight - currentVisibleBottom);
+    final kb = math.max(kbByHeight, kbByVisibleBottom);
+    final hasFocusIntent = _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
+
+    // When editor is not focused, always treat keyboard as closed.
+    if (!hasFocusIntent) {
+      _lowKeyboardFramesWhileFocused = 0;
+      widget.controller.keyboardHeight.value = 0.0;
+      return;
+    }
+
+    // Fail-safe: while focused, require multiple consecutive low readings
+    // before closing, so one bad frame cannot drop the inset to zero.
+    if (kb > _keyboardOpenThresholdPx) {
+      _lowKeyboardFramesWhileFocused = 0;
+      widget.controller.keyboardHeight.value = kb;
+    } else {
+      _lowKeyboardFramesWhileFocused++;
+      if (_lowKeyboardFramesWhileFocused >= _keyboardCloseConfirmFrames) {
+        widget.controller.keyboardHeight.value = 0.0;
+      }
+    }
+  }
+
   // Focus bridging state
   bool _isSyncingFocus = false;
   bool _editorHasFocus = false;
@@ -917,32 +948,7 @@ $customCss
     final vv = web.window.visualViewport;
     if (vv != null) {
       _viewportResizeHandlerJs = ((web.Event _) {
-        final layoutHeight = web.window.innerHeight.toDouble();
-        final currentVisibleBottom = vv.height + vv.offsetTop;
-        final kbByHeight = math.max(0.0, layoutHeight - vv.height);
-        final kbByVisibleBottom = math.max(0.0, layoutHeight - currentVisibleBottom);
-        final kb = math.max(kbByHeight, kbByVisibleBottom);
-        final hasFocusIntent =
-            _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
-
-        // When editor is not focused, always treat keyboard as closed.
-        if (!hasFocusIntent) {
-          _lowKeyboardFramesWhileFocused = 0;
-          widget.controller.keyboardHeight.value = 0.0;
-          return;
-        }
-
-        // Fail-safe: while focused, require multiple consecutive low readings
-        // before closing, so one bad frame cannot drop the inset to zero.
-        if (kb > _keyboardOpenThresholdPx) {
-          _lowKeyboardFramesWhileFocused = 0;
-          widget.controller.keyboardHeight.value = kb;
-        } else {
-          _lowKeyboardFramesWhileFocused++;
-          if (_lowKeyboardFramesWhileFocused >= _keyboardCloseConfirmFrames) {
-            widget.controller.keyboardHeight.value = 0.0;
-          }
-        }
+        _refreshKeyboardHeightFromViewport();
       }).toJS;
       vv.addEventListener('resize', _viewportResizeHandlerJs);
     }
@@ -1106,6 +1112,7 @@ $customCss
     final wasFocused = _editorHasFocus;
     _editorHasFocus = true;
     _onJsFocusChanged(hasFocus: true);
+    _refreshKeyboardHeightFromViewport();
 
     // Track user-originated selection/caret changes (pointer-down, keyboard
     // navigation, explicit range selections). Programmatic changes tagged as
@@ -1285,6 +1292,7 @@ $customCss
     quill.focus();
     _editorHasFocus = true;
     _onJsFocusChanged(hasFocus: true);
+    _refreshKeyboardHeightFromViewport();
 
     if (tapIndex == null) return;
 
@@ -1301,7 +1309,10 @@ $customCss
     for (var i = 1; i <= 2; i++) {
       Future<void>.delayed(
         Duration(milliseconds: 16 * i),
-        applySelection,
+        () {
+          applySelection();
+          _refreshKeyboardHeightFromViewport();
+        },
       );
     }
   }
