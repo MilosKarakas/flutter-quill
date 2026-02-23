@@ -894,10 +894,7 @@ $customCss
 
         // Ignore small differences (< 50px) caused by browser chrome toggling.
         if (kb > 50) {
-          final prev = widget.controller.keyboardHeight.value;
-          // Limit per-event inset jumps to smooth transient viewport jitter.
-          final delta = (kb - prev).clamp(-72.0, 72.0).toDouble();
-          widget.controller.keyboardHeight.value = prev + delta;
+          widget.controller.keyboardHeight.value = kb;
         } else {
           _fullViewportHeight = currentVisibleBottom;
           widget.controller.keyboardHeight.value = 0.0;
