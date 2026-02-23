@@ -877,22 +877,25 @@ $customCss
     final vv = web.window.visualViewport;
     if (vv != null) {
       _viewportResizeHandlerJs = ((web.Event _) {
-        final currentHeight = vv.height;
+        // On iOS Safari, visualViewport can both shrink and shift vertically
+        // during keyboard transitions. Using visible-bottom avoids transient
+        // overestimation when offsetTop changes.
+        final currentVisibleBottom = vv.height + vv.offsetTop;
         // When editor is not focused, always treat keyboard as closed and
         // keep baseline in sync with current viewport.
         if (!_editorHasFocus) {
-          _fullViewportHeight = currentHeight;
+          _fullViewportHeight = currentVisibleBottom;
           widget.controller.keyboardHeight.value = 0.0;
           return;
         }
 
-        final kb = _fullViewportHeight - currentHeight;
+        final kb = _fullViewportHeight - currentVisibleBottom;
 
         // Ignore small differences (< 50px) caused by browser chrome toggling.
         if (kb > 50) {
           widget.controller.keyboardHeight.value = kb;
         } else {
-          _fullViewportHeight = currentHeight;
+          _fullViewportHeight = currentVisibleBottom;
           widget.controller.keyboardHeight.value = 0.0;
         }
       }).toJS;
