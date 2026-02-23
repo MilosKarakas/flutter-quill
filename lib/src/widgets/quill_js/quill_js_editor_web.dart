@@ -1605,6 +1605,12 @@ $customCss
           );
         }
       }
+
+      // Ensure editing focus is restored after the async link action flow so
+      // keyboard-height synchronization has a reliable focused state.
+      _quill!.focus();
+      _editorHasFocus = true;
+      _onJsFocusChanged(hasFocus: true);
     } finally {
       _isHandlingLinkTapAction = false;
       if (mounted) {
