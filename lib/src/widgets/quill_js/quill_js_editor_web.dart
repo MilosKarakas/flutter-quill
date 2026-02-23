@@ -1832,8 +1832,37 @@ $customCss
     if (quill == null) return;
     try {
       quill.scrollSelectionIntoView();
+      _snapEditorScrollToLineBoundaryIfOverflowing();
     } catch (_) {
       // Best-effort only. If unsupported in runtime Quill build, ignore.
+    }
+  }
+
+  void _snapEditorScrollToLineBoundaryIfOverflowing() {
+    final editor = _quillEditorElement();
+    if (editor == null) return;
+
+    final clientHeight = editor.clientHeight.toDouble();
+    final scrollHeight = editor.scrollHeight.toDouble();
+    if (scrollHeight <= clientHeight + 0.5) {
+      return;
+    }
+
+    final styles = web.window.getComputedStyle(editor);
+    final lineHeight = _parseCssPx(styles.getPropertyValue('line-height'));
+    if (lineHeight == null || lineHeight <= 0) {
+      return;
+    }
+
+    final topPadding = _parseCssPx(styles.getPropertyValue('padding-top')) ?? 0.0;
+    final current = editor.scrollTop.toDouble();
+    final effective = math.max(0.0, current - topPadding);
+    final snapped = (effective / lineHeight).ceilToDouble() * lineHeight + topPadding;
+    final maxScroll = math.max(0.0, scrollHeight - clientHeight);
+    final target = snapped.clamp(0.0, maxScroll);
+
+    if ((target - current).abs() > 0.5) {
+      editor.scrollTop = target;
     }
   }
 
