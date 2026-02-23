@@ -2283,14 +2283,28 @@ $customCss
       maxLines: null,
     )..layout(maxWidth: contentWidth);
 
-    final wrappedLineCount = textPainter.computeLineMetrics().length;
+    final lineMetrics = textPainter.computeLineMetrics();
+    final wrappedLineCount = lineMetrics.length;
     final explicitLineCount = text.isEmpty ? 1 : '\n'.allMatches(text).length + 1;
-    final lineCount = math.max(wrappedLineCount, explicitLineCount).clamp(
+    final visibleLineCount = math.max(wrappedLineCount, explicitLineCount).clamp(
       cfg.minLines,
       cfg.maxLines,
     );
 
-    return lineHeightPx * lineCount + cfg.autoResizeVerticalPadding;
+    double visibleTextHeight = 0;
+    if (lineMetrics.isNotEmpty) {
+      for (var i = 0; i < visibleLineCount; i++) {
+        if (i < lineMetrics.length) {
+          visibleTextHeight += lineMetrics[i].height;
+        } else {
+          visibleTextHeight += textPainter.preferredLineHeight;
+        }
+      }
+    } else {
+      visibleTextHeight = textPainter.preferredLineHeight * visibleLineCount;
+    }
+
+    return visibleTextHeight + cfg.autoResizeVerticalPadding;
   }
 
   // ------------------------------------------------------------------
