@@ -919,9 +919,11 @@ $customCss
         // during keyboard transitions. Using visible-bottom avoids transient
         // overestimation when offsetTop changes.
         final currentVisibleBottom = vv.height + vv.offsetTop;
+        final hasFocusIntent =
+            _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
         // When editor is not focused, always treat keyboard as closed and
         // keep baseline in sync with current viewport.
-        if (!_editorHasFocus) {
+        if (!hasFocusIntent) {
           _fullViewportHeight = currentVisibleBottom;
           widget.controller.keyboardHeight.value = 0.0;
           return;
