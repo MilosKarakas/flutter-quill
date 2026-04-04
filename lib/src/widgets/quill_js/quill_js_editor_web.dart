@@ -5,6 +5,7 @@
 //
 // This file is only loaded on web via conditional export.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
@@ -115,6 +116,9 @@ typedef _QuillSelection = ({int index, int length});
 typedef _LinkRange = ({int index, int length});
 typedef _LinkEditContext = ({_LinkRange range, String url});
 typedef _TappedAnchor = ({web.HTMLAnchorElement anchor, String href});
+typedef _ScrollTransfer = ({double innerConsumed, double outerRemainder});
+
+enum _TouchScrollOwner { undecided, inner, outer }
 
 /// Converts a Flutter [Color] to a CSS `rgba(...)` string.
 String _colorToCss(Color c) {
@@ -508,6 +512,15 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   bool _isSelectionGestureActive = false;
   int _lastSelectionLength = 0;
   double? _touchLastClientY;
+  _TouchScrollOwner _touchScrollOwner = _TouchScrollOwner.undecided;
+  double _touchGestureDistancePx = 0.0;
+  double _pendingOuterTouchDelta = 0.0;
+  Timer? _touchOuterFlushTimer;
+
+  static const double _touchHandoffDecisionThresholdPx = 10.0;
+  static const double _touchBoundaryHysteresisPx = 8.0;
+  static const double _touchMaxOuterStepPerFramePx = 32.0;
+  static const Duration _touchOuterFlushInterval = Duration(milliseconds: 16);
 
   // ------------------------------------------------------------------
   // Lifecycle
@@ -567,6 +580,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   void dispose() {
     _teardownFocusBridge();
     _detachController();
+    _touchOuterFlushTimer?.cancel();
+    _touchOuterFlushTimer = null;
 
     // Remove iframe load listener
     if (_iframeLoadHandlerJs != null) {
@@ -747,6 +762,9 @@ html, body {
   height: 100%;
   box-sizing: border-box;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   outline: none;
 }
 .ql-editor.ql-blank::before { font-style: normal; color: rgba(0,0,0,0.38); }
@@ -1888,7 +1906,7 @@ $customCss
     _outerScrollWheelHandlerJs = ((web.Event event) {
       final wheelEvent = event as web.WheelEvent;
       final dy = wheelEvent.deltaY.toDouble();
-      _tryHandoffOuterScroll(event: event, deltaY: dy);
+      _tryHandoffOuterScroll(event: event, deltaY: dy, isTouch: false);
     }).toJS;
 
     _outerScrollTouchStartHandlerJs = ((web.Event event) {
@@ -1897,6 +1915,7 @@ $customCss
       if (touches.length <= 0) return;
       final touch = touches.item(0);
       if (touch == null) return;
+      _resetTouchHandoffState();
       _touchLastClientY = touch.clientY.toDouble();
       _isSelectionGestureActive = _lastSelectionLength > 0;
     }).toJS;
@@ -1912,16 +1931,19 @@ $customCss
       _touchLastClientY = currentY;
       if (previousY == null) return;
       final dy = previousY - currentY;
-      _tryHandoffOuterScroll(event: event, deltaY: dy);
+      _touchGestureDistancePx += dy.abs();
+      _tryHandoffOuterScroll(event: event, deltaY: dy, isTouch: true);
     }).toJS;
 
     _outerScrollTouchEndHandlerJs = ((web.Event _) {
-      _touchLastClientY = null;
+      _flushQueuedOuterTouchDelta();
+      _resetTouchHandoffState();
       _isSelectionGestureActive = false;
     }).toJS;
 
     _outerScrollTouchCancelHandlerJs = ((web.Event _) {
-      _touchLastClientY = null;
+      _flushQueuedOuterTouchDelta();
+      _resetTouchHandoffState();
       _isSelectionGestureActive = false;
     }).toJS;
 
@@ -1945,9 +1967,17 @@ $customCss
       _isImeComposing = false;
     }).toJS;
 
-    editorDiv.addEventListener('wheel', _outerScrollWheelHandlerJs!);
+    editorDiv.addEventListener(
+      'wheel',
+      _outerScrollWheelHandlerJs!,
+      _eventListenerOptions(passive: false),
+    );
     editorDiv.addEventListener('touchstart', _outerScrollTouchStartHandlerJs!);
-    editorDiv.addEventListener('touchmove', _outerScrollTouchMoveHandlerJs!);
+    editorDiv.addEventListener(
+      'touchmove',
+      _outerScrollTouchMoveHandlerJs!,
+      _eventListenerOptions(passive: false),
+    );
     editorDiv.addEventListener('touchend', _outerScrollTouchEndHandlerJs!);
     editorDiv.addEventListener('touchcancel', _outerScrollTouchCancelHandlerJs!);
     editorDiv.addEventListener('pointerdown', _outerScrollPointerDownHandlerJs!);
@@ -1966,27 +1996,104 @@ $customCss
     );
   }
 
-  bool _innerEditorCanConsumeScroll(double deltaY) {
+  JSObject _eventListenerOptions({required bool passive, bool capture = false}) {
+    return <String, dynamic>{
+          'passive': passive,
+          'capture': capture,
+        }.jsify()
+        as JSObject;
+  }
+
+  _ScrollTransfer _computeScrollTransfer(
+    double deltaY, {
+    double edgeEpsilon = 0.5,
+  }) {
+    if (deltaY.abs() <= 0.01) {
+      return (innerConsumed: 0.0, outerRemainder: 0.0);
+    }
     final editor = _quillEditorElement();
-    if (editor == null) return false;
+    if (editor == null) {
+      return (innerConsumed: 0.0, outerRemainder: deltaY);
+    }
 
     final maxScroll = math.max(
       0.0,
       editor.scrollHeight.toDouble() - editor.clientHeight.toDouble(),
     );
-    if (maxScroll <= 0.5) {
-      return false;
+    if (maxScroll <= edgeEpsilon) {
+      return (innerConsumed: 0.0, outerRemainder: deltaY);
     }
 
-    final scrollTop = editor.scrollTop.toDouble();
-    const epsilon = 0.5;
+    final scrollTop = editor.scrollTop.toDouble().clamp(0.0, maxScroll);
+    final downCapacity = math.max(0.0, maxScroll - scrollTop - edgeEpsilon);
+    final upCapacity = math.max(0.0, scrollTop - edgeEpsilon);
+    double innerConsumed = 0.0;
     if (deltaY > 0) {
-      return scrollTop < maxScroll - epsilon;
+      innerConsumed = math.min(deltaY, downCapacity);
+    } else {
+      innerConsumed = -math.min(-deltaY, upCapacity);
     }
-    if (deltaY < 0) {
-      return scrollTop > epsilon;
-    }
+    return (
+      innerConsumed: innerConsumed,
+      outerRemainder: deltaY - innerConsumed,
+    );
+  }
+
+  bool _applyInnerScrollDelta(double deltaY) {
+    if (deltaY.abs() <= 0.01) return false;
+    final editor = _quillEditorElement();
+    if (editor == null) return false;
+    final maxScroll = math.max(
+      0.0,
+      editor.scrollHeight.toDouble() - editor.clientHeight.toDouble(),
+    );
+    if (maxScroll <= 0.5) return false;
+    final current = editor.scrollTop.toDouble().clamp(0.0, maxScroll);
+    final target = (current + deltaY).clamp(0.0, maxScroll).toDouble();
+    if ((target - current).abs() <= 0.01) return false;
+    editor.scrollTop = target;
     return true;
+  }
+
+  void _queueOuterTouchDelta(double deltaY) {
+    if (deltaY.abs() <= 0.01) return;
+    _pendingOuterTouchDelta += deltaY;
+    if (_touchOuterFlushTimer != null) return;
+    _touchOuterFlushTimer = Timer(_touchOuterFlushInterval, () {
+      _touchOuterFlushTimer = null;
+      _flushQueuedOuterTouchDelta();
+    });
+  }
+
+  void _flushQueuedOuterTouchDelta() {
+    if (_pendingOuterTouchDelta.abs() <= 0.01) return;
+    final raw = _pendingOuterTouchDelta;
+    _pendingOuterTouchDelta = 0.0;
+    final step = raw
+        .clamp(-_touchMaxOuterStepPerFramePx, _touchMaxOuterStepPerFramePx)
+        .toDouble();
+    final handled = _dispatchOuterScrollDelta(step);
+    if (!handled) return;
+
+    final remainder = raw - step;
+    if (remainder.abs() > 0.01) {
+      _pendingOuterTouchDelta += remainder;
+      if (_touchOuterFlushTimer == null) {
+        _touchOuterFlushTimer = Timer(_touchOuterFlushInterval, () {
+          _touchOuterFlushTimer = null;
+          _flushQueuedOuterTouchDelta();
+        });
+      }
+    }
+  }
+
+  void _resetTouchHandoffState() {
+    _touchLastClientY = null;
+    _touchScrollOwner = _TouchScrollOwner.undecided;
+    _touchGestureDistancePx = 0.0;
+    _pendingOuterTouchDelta = 0.0;
+    _touchOuterFlushTimer?.cancel();
+    _touchOuterFlushTimer = null;
   }
 
   bool _dispatchOuterScrollDelta(double deltaY) {
@@ -2014,15 +2121,53 @@ $customCss
   void _tryHandoffOuterScroll({
     required web.Event event,
     required double deltaY,
+    required bool isTouch,
   }) {
     if (!widget.configuration.enableOuterScrollHandoff) return;
     if (deltaY.abs() <= 0.01) return;
     if (_isImeComposing || _isSelectionGestureActive) return;
-    if (_innerEditorCanConsumeScroll(deltaY)) return;
 
-    final handled = _dispatchOuterScrollDelta(deltaY);
-    if (!handled) return;
+    if (!isTouch) {
+      final transfer = _computeScrollTransfer(deltaY);
+      if (transfer.outerRemainder.abs() <= 0.01) return;
 
+      final innerApplied = _applyInnerScrollDelta(transfer.innerConsumed);
+      final outerHandled = _dispatchOuterScrollDelta(transfer.outerRemainder);
+      if (!(innerApplied || outerHandled)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    if (_touchScrollOwner == _TouchScrollOwner.undecided &&
+        _touchGestureDistancePx < _touchHandoffDecisionThresholdPx) {
+      return;
+    }
+
+    final transferWithHysteresis = _computeScrollTransfer(
+      deltaY,
+      edgeEpsilon: _touchBoundaryHysteresisPx,
+    );
+    if (_touchScrollOwner == _TouchScrollOwner.undecided) {
+      _touchScrollOwner = transferWithHysteresis.outerRemainder.abs() > 0.01
+          ? _TouchScrollOwner.outer
+          : _TouchScrollOwner.inner;
+    } else if (_touchScrollOwner == _TouchScrollOwner.inner &&
+        transferWithHysteresis.outerRemainder.abs() > 0.01) {
+      _touchScrollOwner = _TouchScrollOwner.outer;
+    } else if (_touchScrollOwner == _TouchScrollOwner.outer &&
+        transferWithHysteresis.outerRemainder.abs() <= 0.01) {
+      _touchScrollOwner = _TouchScrollOwner.inner;
+    }
+
+    final transfer = _computeScrollTransfer(deltaY);
+    var consumedAny = _applyInnerScrollDelta(transfer.innerConsumed);
+    if (transfer.outerRemainder.abs() > 0.01) {
+      _queueOuterTouchDelta(transfer.outerRemainder);
+      consumedAny = true;
+    }
+    if (!consumedAny) return;
     event.preventDefault();
     event.stopPropagation();
   }
