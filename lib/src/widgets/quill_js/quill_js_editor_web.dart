@@ -1560,9 +1560,7 @@ $customCss
           ...pasteOps,
         ];
         final combined = Delta.fromJson(combinedOps);
-        _suppressContentChanged = true;
         _quill!.updateContents(_deltaToJs(combined), 'api'.toJS);
-        _suppressContentChanged = false;
 
         final pasteLength = _deltaLength(pasteDelta);
         _quill!.setSelection(index + pasteLength, 0);
