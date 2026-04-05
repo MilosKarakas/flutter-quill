@@ -517,10 +517,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   double _touchGestureDistancePx = 0.0;
   double _pendingOuterTouchDelta = 0.0;
   Timer? _touchOuterFlushTimer;
+  int _outerTouchDeltaDirection = 0;
 
   static const double _touchHandoffDecisionThresholdPx = 10.0;
   static const double _touchBoundaryHysteresisPx = 8.0;
   static const double _touchMaxOuterStepPerFramePx = 32.0;
+  static const double _touchOuterDeltaMinPx = 0.75;
+  static const double _touchOuterDirectionFlipGuardPx = 1.5;
   static const Duration _touchOuterFlushInterval = Duration(milliseconds: 16);
 
   // ------------------------------------------------------------------
@@ -1937,6 +1940,9 @@ $customCss
       _resetTouchHandoffState();
       _touchGestureActive = true;
       _touchLastClientY = touch.clientY.toDouble();
+      if (!_isEditorVerticallyScrollable()) {
+        _touchScrollOwner = _TouchScrollOwner.outer;
+      }
       _isSelectionGestureActive = _lastSelectionLength > 0;
     }).toJS;
 
@@ -2077,6 +2083,30 @@ $customCss
     return true;
   }
 
+  bool _isEditorVerticallyScrollable({double epsilon = 0.5}) {
+    final editor = _quillEditorElement();
+    if (editor == null) return false;
+    final maxScroll = math.max(
+      0.0,
+      editor.scrollHeight.toDouble() - editor.clientHeight.toDouble(),
+    );
+    return maxScroll > epsilon;
+  }
+
+  double _filterOuterTouchDelta(double deltaY) {
+    if (deltaY.abs() < _touchOuterDeltaMinPx) {
+      return 0.0;
+    }
+    final direction = deltaY > 0 ? 1 : -1;
+    if (_outerTouchDeltaDirection != 0 &&
+        direction != _outerTouchDeltaDirection &&
+        deltaY.abs() < _touchOuterDirectionFlipGuardPx) {
+      return 0.0;
+    }
+    _outerTouchDeltaDirection = direction;
+    return deltaY;
+  }
+
   void _queueOuterTouchDelta(double deltaY) {
     if (deltaY.abs() <= 0.01) return;
     _pendingOuterTouchDelta += deltaY;
@@ -2114,6 +2144,7 @@ $customCss
     _touchScrollOwner = _TouchScrollOwner.undecided;
     _touchGestureDistancePx = 0.0;
     _pendingOuterTouchDelta = 0.0;
+    _outerTouchDeltaDirection = 0;
     _touchOuterFlushTimer?.cancel();
     _touchOuterFlushTimer = null;
   }
@@ -2164,6 +2195,20 @@ $customCss
 
     if (_touchScrollOwner == _TouchScrollOwner.undecided &&
         _touchGestureDistancePx < _touchHandoffDecisionThresholdPx) {
+      if (!_isEditorVerticallyScrollable()) {
+        _touchScrollOwner = _TouchScrollOwner.outer;
+      } else {
+        return;
+      }
+    }
+
+    if (_touchScrollOwner == _TouchScrollOwner.undecided &&
+        !_isEditorVerticallyScrollable()) {
+      _touchScrollOwner = _TouchScrollOwner.outer;
+    }
+
+    if (_touchScrollOwner == _TouchScrollOwner.undecided &&
+        _touchGestureDistancePx < _touchHandoffDecisionThresholdPx) {
       return;
     }
 
@@ -2197,7 +2242,7 @@ $customCss
       return;
     }
 
-    final outerDelta = transfer.outerRemainder;
+    final outerDelta = _filterOuterTouchDelta(transfer.outerRemainder);
     if (outerDelta.abs() <= 0.01) return;
     _queueOuterTouchDelta(outerDelta);
     event.preventDefault();
