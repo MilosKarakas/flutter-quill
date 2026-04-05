@@ -1,11 +1,18 @@
 import '../../../quill_delta.dart';
 
+/// Custom clipboard MIME type used for Quill Delta JSON payloads.
+const kQuillDeltaJsonClipboardMime = 'application/vnd.quill.delta+json';
+
 /// Data to be placed on the clipboard during a copy operation.
 ///
 /// Used with [CopyInterceptor] to provide both plain text and HTML content
 /// for rich text clipboard operations.
 class CopyClipboardData {
-  const CopyClipboardData({required this.plainText, this.html});
+  const CopyClipboardData({
+    required this.plainText,
+    this.html,
+    this.quillDeltaJson,
+  });
 
   /// The plain text content to place on the clipboard.
   final String plainText;
@@ -13,6 +20,12 @@ class CopyClipboardData {
   /// Optional HTML content to place on the clipboard.
   /// When provided, applications that support rich text paste will use this.
   final String? html;
+
+  /// Optional Quill Delta payload serialized as JSON.
+  ///
+  /// When provided, this is written with [kQuillDeltaJsonClipboardMime] and can
+  /// be used for lossless in-app rich paste.
+  final String? quillDeltaJson;
 }
 
 /// Callback type for intercepting copy operations.
@@ -43,5 +56,5 @@ class CopyClipboardData {
 ///   },
 /// )
 /// ```
-typedef CopyInterceptor = CopyClipboardData? Function(
-    String plainText, Delta delta);
+typedef CopyInterceptor =
+    CopyClipboardData? Function(String plainText, Delta delta);

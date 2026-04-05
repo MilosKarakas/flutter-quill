@@ -30,7 +30,8 @@ class WebTextEditingStyleInjector {
 
     final cssBuffer = StringBuffer();
     cssBuffer.write(
-        'flt-text-editing-host, flt-text-editing-host *, [data-flt-text-editing], .flt-text-editing {');
+      'flt-text-editing-host, flt-text-editing-host *, [data-flt-text-editing], .flt-text-editing {',
+    );
     if (fontFamily != null && fontFamily.isNotEmpty) {
       cssBuffer.write('font-family: ${_cssValue(fontFamily)};');
     }
@@ -54,7 +55,8 @@ class WebTextEditingStyleInjector {
         paddingBottomPx != null &&
         paddingLeftPx != null) {
       cssBuffer.write(
-          'padding: ${paddingTopPx}px ${paddingRightPx}px ${paddingBottomPx}px ${paddingLeftPx}px;');
+        'padding: ${paddingTopPx}px ${paddingRightPx}px ${paddingBottomPx}px ${paddingLeftPx}px;',
+      );
     }
     cssBuffer.write('background: transparent;');
     cssBuffer.write('}');
@@ -86,7 +88,7 @@ class WebTextEditingStyleInjector {
 /// from interfering with the editor's custom selection controls.
 class WebNativeSelectionSuppressor {
   WebNativeSelectionSuppressor({required bool Function() shouldSuppress})
-      : _shouldSuppress = shouldSuppress;
+    : _shouldSuppress = shouldSuppress;
 
   final bool Function() _shouldSuppress;
   web.EventListener? _contextMenuListener;
@@ -122,8 +124,10 @@ class WebNativeSelectionSuppressor {
       _pointerDownListener = null;
     }
     if (_selectionChangeListener != null) {
-      web.document
-          .removeEventListener('selectionchange', _selectionChangeListener);
+      web.document.removeEventListener(
+        'selectionchange',
+        _selectionChangeListener,
+      );
       _selectionChangeListener = null;
     }
   }
@@ -164,10 +168,12 @@ class WebPasteEventData {
     required this.timestamp,
     this.plainText,
     this.html,
+    this.quillDeltaJson,
   });
 
   final String? plainText;
   final String? html;
+  final String? quillDeltaJson;
   final DateTime timestamp;
 }
 
@@ -209,11 +215,13 @@ class WebClipboardListener {
     // Extract plain text and HTML from clipboard
     final plainText = clipboardData.getData('text/plain');
     final htmlContent = clipboardData.getData('text/html');
+    final quillDeltaJson = clipboardData.getData(kQuillDeltaJsonClipboardMime);
 
     // Create event data with timestamp
     final data = WebPasteEventData(
       plainText: plainText.isNotEmpty ? plainText : null,
       html: htmlContent.isNotEmpty ? htmlContent : null,
+      quillDeltaJson: quillDeltaJson.isNotEmpty ? quillDeltaJson : null,
       timestamp: DateTime.now(),
     );
 
@@ -277,6 +285,9 @@ class WebClipboardCopyListener {
     clipboardData.setData('text/plain', data.plainText);
     if (data.html != null) {
       clipboardData.setData('text/html', data.html!);
+    }
+    if (data.quillDeltaJson != null) {
+      clipboardData.setData(kQuillDeltaJsonClipboardMime, data.quillDeltaJson!);
     }
   }
 }

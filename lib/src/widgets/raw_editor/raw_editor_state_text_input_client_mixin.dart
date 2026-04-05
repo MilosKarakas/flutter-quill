@@ -448,11 +448,14 @@ mixin RawEditorStateTextInputClientMixin on EditorState
 
       if (shouldCheckPaste) {
         final webPasteData = consumeMatchingWebPasteData(diff.inserted);
-        if (webPasteData != null && webPasteData.html != null) {
+        if (webPasteData != null &&
+            (webPasteData.html != null ||
+                webPasteData.quillDeltaJson != null)) {
           // Try to apply paste with formatting using the interceptor
           final delta = tryApplyPasteInterceptor(
             diff.inserted,
             webPasteData.html,
+            webPasteData.quillDeltaJson,
           );
 
           if (delta != null) {

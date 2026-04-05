@@ -103,7 +103,13 @@ abstract class EditorState extends State<RawEditor>
   ///
   /// [pastedPlainText] is the plain text that was pasted (from the browser)
   /// [html] is the HTML captured from the paste event
-  Delta? tryApplyPasteInterceptor(String? pastedPlainText, String? html);
+  /// [quillDeltaJson] is the JSON captured from
+  /// [kQuillDeltaJsonClipboardMime], when present.
+  Delta? tryApplyPasteInterceptor(
+    String? pastedPlainText,
+    String? html,
+    String? quillDeltaJson,
+  );
 }
 
 /// Base interface for editable render objects.
@@ -209,9 +215,14 @@ abstract class RenderAbstractEditor implements TextLayoutMetrics {
 ///
 /// [plainText] - Plain text from clipboard (always available)
 /// [html] - HTML from clipboard (available on web, may be null on mobile)
+/// [quillDeltaJson] - Delta JSON from [kQuillDeltaJsonClipboardMime], if present.
 ///
 /// Return a [Delta] to apply formatted content, or null to fall back to plain text.
-typedef PasteInterceptor = Delta? Function(String? plainText, String? html);
+typedef PasteInterceptor = Delta? Function(
+  String? plainText,
+  String? html,
+  String? quillDeltaJson,
+);
 
 class QuillEditor extends StatefulWidget {
   const QuillEditor({

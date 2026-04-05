@@ -53,10 +53,12 @@ class WebPasteEventData {
     required this.timestamp,
     this.plainText,
     this.html,
+    this.quillDeltaJson,
   });
 
   final String? plainText;
   final String? html;
+  final String? quillDeltaJson;
   final DateTime timestamp;
 }
 

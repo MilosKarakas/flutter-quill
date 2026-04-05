@@ -313,13 +313,14 @@ class RawEditor extends StatefulWidget {
   /// For web paste with HTML formatting, use [onPasteInterceptor] instead.
   final Future<PasteData> Function()? onPaste;
 
-  /// Intercepts paste operations on web, providing both plain text and HTML content.
+  /// Intercepts paste operations on web.
   ///
-  /// **Web only**: HTML is automatically captured from the browser's paste event.
-  /// On mobile platforms, the HTML parameter will always be `null`.
+  /// **Web only**: HTML and Quill Delta JSON
+  /// ([kQuillDeltaJsonClipboardMime]) are captured from the browser paste event.
+  /// On mobile platforms, [html] and [quillDeltaJson] will always be `null`.
   ///
   /// Return a [Delta] to apply formatted content, or `null` to fall back to plain text.
-  final Delta? Function(String? plainText, String? html)? onPasteInterceptor;
+  final PasteInterceptor? onPasteInterceptor;
 
   /// Intercepts copy operations to enable rich text clipboard support.
   ///
@@ -1935,18 +1936,47 @@ class RawEditorState extends EditorState
       _consumeMatchingWebPasteData(plainText);
 
   @override
-  Delta? tryApplyPasteInterceptor(String? pastedPlainText, String? html) {
+  Delta? tryApplyPasteInterceptor(
+    String? pastedPlainText,
+    String? html,
+    String? quillDeltaJson,
+  ) {
     final interceptor = widget.onPasteInterceptor;
+    final deltaFromClipboard = _deltaFromClipboardJson(quillDeltaJson);
+    if (deltaFromClipboard != null) {
+      return deltaFromClipboard;
+    }
     if (interceptor == null) return null;
-    if (html == null || html.isEmpty) return null;
+    if ((html == null || html.isEmpty) &&
+        (quillDeltaJson == null || quillDeltaJson.isEmpty)) {
+      return null;
+    }
 
-    // Call the interceptor to convert HTML to Delta
+    // Call the interceptor to convert HTML/clipboard content to Delta.
     try {
-      return interceptor(pastedPlainText, html);
+      return interceptor(pastedPlainText, html, quillDeltaJson);
     } catch (e) {
       debugPrint('[QuillEditor] onPasteInterceptor threw an exception: $e');
       return null;
     }
+  }
+
+  Delta? _deltaFromClipboardJson(String? quillDeltaJson) {
+    if (quillDeltaJson == null || quillDeltaJson.isEmpty) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(quillDeltaJson);
+      if (decoded is List) {
+        final delta = Delta.fromJson(decoded);
+        if (!delta.isEmpty) {
+          return delta;
+        }
+      }
+    } catch (_) {
+      // Fall back to HTML/plain text when clipboard JSON is invalid.
+    }
+    return null;
   }
 
   void _replaceText(ReplaceTextIntent intent) {

@@ -181,7 +181,12 @@ class QuillJsEditorConfiguration {
   /// Called when the user pastes into the editor. Return a [Delta] to apply
   /// custom formatted content, or `null` to let Quill handle the paste as usual.
   /// Matches [QuillEditor.onPasteInterceptor] API.
-  final Delta? Function(String? plainText, String? html)? onPasteInterceptor;
+  final Delta? Function(
+    String? plainText,
+    String? html,
+    String? quillDeltaJson,
+  )?
+  onPasteInterceptor;
 
   /// Intercepts copy operations inside the iframe.
   ///

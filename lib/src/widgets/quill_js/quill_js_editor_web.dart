@@ -17,6 +17,7 @@ import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 
+import '../../models/structs/copy_data.dart';
 import '../default_styles.dart';
 import 'inline_mark_css.dart';
 import 'link_range_resolution.dart';
@@ -1662,10 +1663,13 @@ $customCss
 
         final plainText = data.getData('text/plain');
         final html = data.getData('text/html');
+        final quillDeltaJson = data.getData(kQuillDeltaJsonClipboardMime);
         final plain = plainText.isNotEmpty ? plainText : null;
         final htmlContent = html.isNotEmpty ? html : null;
+        final deltaJson = quillDeltaJson.isNotEmpty ? quillDeltaJson : null;
 
-        final pasteDelta = pasteInterceptor(plain, htmlContent);
+        final pasteDelta = _deltaFromClipboardJson(deltaJson) ??
+            pasteInterceptor(plain, htmlContent, deltaJson);
         if (pasteDelta == null || pasteDelta.isEmpty) return;
 
         event.preventDefault();
@@ -1710,6 +1714,12 @@ $customCss
           if (result.html != null) {
             data.setData('text/html', result.html!);
           }
+          if (result.quillDeltaJson != null) {
+            data.setData(
+              kQuillDeltaJsonClipboardMime,
+              result.quillDeltaJson!,
+            );
+          }
         }
       }).toJS;
       editorDiv.addEventListener('copy', _copyHandlerJs!, true.toJS);
@@ -1735,12 +1745,36 @@ $customCss
           if (result.html != null) {
             data.setData('text/html', result.html!);
           }
+          if (result.quillDeltaJson != null) {
+            data.setData(
+              kQuillDeltaJsonClipboardMime,
+              result.quillDeltaJson!,
+            );
+          }
         }
         _quill!.deleteText(sel.index, sel.length);
         _quill!.setSelection(sel.index, 0);
       }).toJS;
       editorDiv.addEventListener('cut', _cutHandlerJs!, true.toJS);
     }
+  }
+
+  Delta? _deltaFromClipboardJson(String? quillDeltaJson) {
+    if (quillDeltaJson == null || quillDeltaJson.isEmpty) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(quillDeltaJson);
+      if (decoded is List) {
+        final delta = Delta.fromJson(decoded);
+        if (!delta.isEmpty) {
+          return delta;
+        }
+      }
+    } catch (_) {
+      // Fall back to HTML/plain text when clipboard JSON is invalid.
+    }
+    return null;
   }
 
   Future<void> _handleLinkTapped(
