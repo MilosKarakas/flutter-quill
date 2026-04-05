@@ -1441,14 +1441,14 @@ $customCss
     _editorHasFocus = true;
     _onJsFocusChanged(hasFocus: true);
     _refreshKeyboardHeightFromViewport();
-
-    if (tapIndex == null) return;
+    final fallbackSelection = _getQuillSelection(focus: false);
+    final resolvedTapIndex = tapIndex ?? fallbackSelection?.index ?? 0;
 
     void applySelection() {
       if (!mounted || _quill == null) return;
       final length = _quill!.getLength();
       final maxIndex = length > 0 ? length - 1 : 0;
-      final clamped = tapIndex.clamp(0, maxIndex).toInt();
+      final clamped = resolvedTapIndex.clamp(0, maxIndex).toInt();
       _quill!.setSelection(clamped, 0);
     }
 
