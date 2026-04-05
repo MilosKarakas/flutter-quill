@@ -406,6 +406,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   JSFunction? _linkTouchStartHandlerJs;
   JSFunction? _linkPointerDownHandlerJs;
   JSFunction? _tapFocusTouchStartHandlerJs;
+  JSFunction? _tapFocusTouchEndHandlerJs;
+  JSFunction? _tapFocusTouchCancelHandlerJs;
   JSFunction? _tapFocusPointerDownHandlerJs;
   JSFunction? _iframeLoadHandlerJs;
   JSFunction? _pasteHandlerJs;
@@ -519,6 +521,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   Timer? _touchOuterFlushTimer;
   int _outerTouchDeltaDirection = 0;
   DateTime? _ignoreTapOutsideUntil;
+  bool _pendingEmptyTouchTapFocus = false;
+  (double, double)? _pendingEmptyTouchTapPoint;
 
   static const double _touchHandoffDecisionThresholdPx = 10.0;
   static const double _touchBoundaryHysteresisPx = 8.0;
@@ -638,6 +642,20 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
         _editorDiv!.removeEventListener(
           'touchstart',
           _tapFocusTouchStartHandlerJs,
+          true.toJS,
+        );
+      }
+      if (_tapFocusTouchEndHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'touchend',
+          _tapFocusTouchEndHandlerJs,
+          true.toJS,
+        );
+      }
+      if (_tapFocusTouchCancelHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'touchcancel',
+          _tapFocusTouchCancelHandlerJs,
           true.toJS,
         );
       }
@@ -1303,6 +1321,27 @@ $customCss
       _interceptTapFocus(event);
     }).toJS;
 
+    _tapFocusTouchEndHandlerJs = ((web.Event event) {
+      if (!_pendingEmptyTouchTapFocus) return;
+      _pendingEmptyTouchTapFocus = false;
+
+      event.preventDefault();
+      event.stopPropagation();
+      _ignoreTapOutsideUntil = DateTime.now().add(_tapOutsideIgnoreAfterIntercept);
+
+      final clientPoint = _extractClientPoint(event) ?? _pendingEmptyTouchTapPoint;
+      _pendingEmptyTouchTapPoint = null;
+      final tapIndex = clientPoint == null
+          ? null
+          : _resolveTapIndex(clientPoint.$1, clientPoint.$2);
+      _focusEditorFromInterceptedTap(tapIndex);
+    }).toJS;
+
+    _tapFocusTouchCancelHandlerJs = ((web.Event _) {
+      _pendingEmptyTouchTapFocus = false;
+      _pendingEmptyTouchTapPoint = null;
+    }).toJS;
+
     _tapFocusPointerDownHandlerJs = ((web.Event event) {
       final pointerEvent = event as web.PointerEvent;
       // Touch/pen paths can trigger iOS focus-scroll assist. Mouse focus is
@@ -1318,6 +1357,12 @@ $customCss
       _tapFocusTouchStartHandlerJs!,
       true.toJS,
     );
+    editorDiv.addEventListener('touchend', _tapFocusTouchEndHandlerJs!, true.toJS);
+    editorDiv.addEventListener(
+      'touchcancel',
+      _tapFocusTouchCancelHandlerJs!,
+      true.toJS,
+    );
     editorDiv.addEventListener(
       'pointerdown',
       _tapFocusPointerDownHandlerJs!,
@@ -1329,6 +1374,11 @@ $customCss
     final quill = _quill;
     final editorDiv = _editorDiv;
     if (quill == null || editorDiv == null) return;
+    if (_pendingEmptyTouchTapFocus &&
+        event is web.PointerEvent &&
+        event.pointerType.toLowerCase() != 'mouse') {
+      return;
+    }
     if (_editorHasFocus && _hasDomEditorFocus()) {
       return;
     }
@@ -1345,19 +1395,21 @@ $customCss
     final clientPoint = _extractClientPoint(event);
     if (clientPoint == null) return;
     final tapIndex = _resolveTapIndex(clientPoint.$1, clientPoint.$2);
-    final isLikelyTouchTap =
-        event is web.TouchEvent ||
-        (event is web.PointerEvent &&
-            event.pointerType.toLowerCase() != 'mouse');
 
     // iOS Safari can drop keyboard open if a touch-start focus path is fully
     // cancelled via preventDefault on an empty editor. Prefer a native tap
     // completion path in that case while still forcing explicit focus/selection.
-    if (isLikelyTouchTap && _isEditorEffectivelyEmpty()) {
+    if (event is web.TouchEvent && _isEditorEffectivelyEmpty()) {
+      _pendingEmptyTouchTapFocus = true;
+      _pendingEmptyTouchTapPoint = clientPoint;
+      event.preventDefault();
+      event.stopPropagation();
       _ignoreTapOutsideUntil = DateTime.now().add(_tapOutsideIgnoreAfterIntercept);
-      _focusEditorFromInterceptedTap(tapIndex);
       return;
     }
+
+    _pendingEmptyTouchTapFocus = false;
+    _pendingEmptyTouchTapPoint = null;
 
     event.preventDefault();
     event.stopPropagation();
