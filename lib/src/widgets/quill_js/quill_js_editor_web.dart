@@ -512,6 +512,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   bool _isSelectionGestureActive = false;
   int _lastSelectionLength = 0;
   double? _touchLastClientY;
+  bool _touchGestureActive = false;
   _TouchScrollOwner _touchScrollOwner = _TouchScrollOwner.undecided;
   double _touchGestureDistancePx = 0.0;
   double _pendingOuterTouchDelta = 0.0;
@@ -763,7 +764,6 @@ html, body {
   box-sizing: border-box;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
   outline: none;
 }
@@ -1240,6 +1240,9 @@ $customCss
     // 'api' or 'silent' are ignored so they don't poison the guard.
     if (source == 'user') {
       _didUserInteractWithSelection = true;
+      if (_touchGestureActive) {
+        _isSelectionGestureActive = true;
+      }
     }
 
     // On focus transition (was blurred, now focused), attempt first-focus
@@ -1317,7 +1320,13 @@ $customCss
     final quill = _quill;
     final editorDiv = _editorDiv;
     if (quill == null || editorDiv == null) return;
-    if (_editorHasFocus) return;
+    if (_editorHasFocus && _hasDomEditorFocus()) {
+      return;
+    }
+    if (_editorHasFocus && !_hasDomEditorFocus()) {
+      _editorHasFocus = false;
+      _onJsFocusChanged(hasFocus: false);
+    }
 
     // Keep existing link-tap behaviour (dialog callback path) untouched.
     if (_findTappedAnchorFromEvent(event, editorDiv) != null) {
@@ -1332,6 +1341,16 @@ $customCss
 
     final tapIndex = _resolveTapIndex(clientPoint.$1, clientPoint.$2);
     _focusEditorFromInterceptedTap(tapIndex);
+  }
+
+  bool _hasDomEditorFocus() {
+    final doc = _iframe.contentDocument;
+    final editor = _quillEditorElement();
+    if (doc == null || editor == null) return false;
+    final active = doc.activeElement;
+    if (active == null) return false;
+    if (identical(active, editor)) return true;
+    return editor.contains(active);
   }
 
   (double, double)? _extractClientPoint(web.Event event) {
@@ -1916,6 +1935,7 @@ $customCss
       final touch = touches.item(0);
       if (touch == null) return;
       _resetTouchHandoffState();
+      _touchGestureActive = true;
       _touchLastClientY = touch.clientY.toDouble();
       _isSelectionGestureActive = _lastSelectionLength > 0;
     }).toJS;
@@ -1938,12 +1958,14 @@ $customCss
     _outerScrollTouchEndHandlerJs = ((web.Event _) {
       _flushQueuedOuterTouchDelta();
       _resetTouchHandoffState();
+      _touchGestureActive = false;
       _isSelectionGestureActive = false;
     }).toJS;
 
     _outerScrollTouchCancelHandlerJs = ((web.Event _) {
       _flushQueuedOuterTouchDelta();
       _resetTouchHandoffState();
+      _touchGestureActive = false;
       _isSelectionGestureActive = false;
     }).toJS;
 
@@ -2162,12 +2184,22 @@ $customCss
     }
 
     final transfer = _computeScrollTransfer(deltaY);
-    var consumedAny = _applyInnerScrollDelta(transfer.innerConsumed);
-    if (transfer.outerRemainder.abs() > 0.01) {
-      _queueOuterTouchDelta(transfer.outerRemainder);
-      consumedAny = true;
+    if (_touchScrollOwner == _TouchScrollOwner.inner &&
+        transferWithHysteresis.outerRemainder.abs() <= 0.01) {
+      // Let the browser perform native inner scrolling.
+      return;
     }
-    if (!consumedAny) return;
+
+    if (_touchScrollOwner == _TouchScrollOwner.outer &&
+        transferWithHysteresis.outerRemainder.abs() <= 0.01) {
+      // Boundary hysteresis says inner can reliably consume again.
+      _touchScrollOwner = _TouchScrollOwner.inner;
+      return;
+    }
+
+    final outerDelta = transfer.outerRemainder;
+    if (outerDelta.abs() <= 0.01) return;
+    _queueOuterTouchDelta(outerDelta);
     event.preventDefault();
     event.stopPropagation();
   }
