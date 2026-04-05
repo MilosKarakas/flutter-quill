@@ -524,6 +524,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   static const double _touchMaxOuterStepPerFramePx = 32.0;
   static const double _touchOuterDeltaMinPx = 0.75;
   static const double _touchOuterDirectionFlipGuardPx = 1.5;
+  static const double _touchOuterPendingDropOnFlipPx = 2.5;
+  static const double _touchOuterEndFlushMinPx = 1.0;
   static const Duration _touchOuterFlushInterval = Duration(milliseconds: 16);
 
   // ------------------------------------------------------------------
@@ -1962,14 +1964,18 @@ $customCss
     }).toJS;
 
     _outerScrollTouchEndHandlerJs = ((web.Event _) {
-      _flushQueuedOuterTouchDelta();
+      if (_pendingOuterTouchDelta.abs() >= _touchOuterEndFlushMinPx) {
+        _flushQueuedOuterTouchDelta();
+      }
       _resetTouchHandoffState();
       _touchGestureActive = false;
       _isSelectionGestureActive = false;
     }).toJS;
 
     _outerScrollTouchCancelHandlerJs = ((web.Event _) {
-      _flushQueuedOuterTouchDelta();
+      if (_pendingOuterTouchDelta.abs() >= _touchOuterEndFlushMinPx) {
+        _flushQueuedOuterTouchDelta();
+      }
       _resetTouchHandoffState();
       _touchGestureActive = false;
       _isSelectionGestureActive = false;
@@ -2109,6 +2115,15 @@ $customCss
 
   void _queueOuterTouchDelta(double deltaY) {
     if (deltaY.abs() <= 0.01) return;
+    final incomingDirection = deltaY > 0 ? 1 : -1;
+    final queuedDirection = _pendingOuterTouchDelta == 0
+        ? 0
+        : (_pendingOuterTouchDelta > 0 ? 1 : -1);
+    if (queuedDirection != 0 &&
+        incomingDirection != queuedDirection &&
+        deltaY.abs() < _touchOuterPendingDropOnFlipPx) {
+      _pendingOuterTouchDelta = 0.0;
+    }
     _pendingOuterTouchDelta += deltaY;
     if (_touchOuterFlushTimer != null) return;
     _touchOuterFlushTimer = Timer(_touchOuterFlushInterval, () {
