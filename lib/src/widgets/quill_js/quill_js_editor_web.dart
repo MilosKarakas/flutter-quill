@@ -531,6 +531,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   static const double _touchOuterDirectionFlipGuardPx = 2.0;
   static const double _touchOuterPendingDropOnFlipPx = 3.0;
   static const double _touchOuterEndFlushMinPx = 1.0;
+  static const double _emptyTapFocusSlopPx = 8.0;
   static const Duration _touchOuterFlushInterval = Duration(milliseconds: 16);
   static const Duration _tapOutsideIgnoreAfterIntercept = Duration(
     milliseconds: 350,
@@ -2031,6 +2032,26 @@ $customCss
       if (touches.length <= 0) return;
       final touch = touches.item(0);
       if (touch == null) return;
+
+      if (_pendingEmptyTouchTapFocus) {
+        final pendingPoint = _pendingEmptyTouchTapPoint;
+        if (pendingPoint != null) {
+          final dx = touch.clientX.toDouble() - pendingPoint.$1;
+          final dy = touch.clientY.toDouble() - pendingPoint.$2;
+          final distance = math.sqrt(dx * dx + dy * dy);
+          if (distance <= _emptyTapFocusSlopPx) {
+            // Keep this gesture in tap-focus mode; do not let tiny movement
+            // leak into scroll handoff and cause focus-time wobble.
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+        }
+        // User dragged beyond tap slop -> treat as scroll gesture.
+        _pendingEmptyTouchTapFocus = false;
+        _pendingEmptyTouchTapPoint = null;
+      }
+
       final currentY = touch.clientY.toDouble();
       final previousY = _touchLastClientY;
       _touchLastClientY = currentY;
