@@ -523,8 +523,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   static const double _touchBoundaryHysteresisPx = 8.0;
   static const double _touchMaxOuterStepPerFramePx = 32.0;
   static const double _touchOuterDeltaMinPx = 0.75;
-  static const double _touchOuterDirectionFlipGuardPx = 1.5;
-  static const double _touchOuterPendingDropOnFlipPx = 2.5;
+  static const double _touchOuterDirectionFlipGuardPx = 2.0;
+  static const double _touchOuterPendingDropOnFlipPx = 3.0;
   static const double _touchOuterEndFlushMinPx = 1.0;
   static const Duration _touchOuterFlushInterval = Duration(milliseconds: 16);
 
@@ -2123,6 +2123,8 @@ $customCss
         incomingDirection != queuedDirection &&
         deltaY.abs() < _touchOuterPendingDropOnFlipPx) {
       _pendingOuterTouchDelta = 0.0;
+      _touchOuterFlushTimer?.cancel();
+      _touchOuterFlushTimer = null;
     }
     _pendingOuterTouchDelta += deltaY;
     if (_touchOuterFlushTimer != null) return;
@@ -2257,11 +2259,19 @@ $customCss
       return;
     }
 
+    if (_touchScrollOwner == _TouchScrollOwner.outer) {
+      // While outer owns this gesture, always prevent native page handling on
+      // touchmove frames (including tiny filtered deltas) to avoid pull-to-
+      // refresh/page takeover on fast swipes.
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
     final outerDelta = _filterOuterTouchDelta(transfer.outerRemainder);
-    if (outerDelta.abs() <= 0.01) return;
+    if (outerDelta.abs() <= 0.01) {
+      return;
+    }
     _queueOuterTouchDelta(outerDelta);
-    event.preventDefault();
-    event.stopPropagation();
   }
 
   // ------------------------------------------------------------------
