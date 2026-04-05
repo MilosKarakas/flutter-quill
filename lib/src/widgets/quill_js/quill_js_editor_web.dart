@@ -518,6 +518,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   double _pendingOuterTouchDelta = 0.0;
   Timer? _touchOuterFlushTimer;
   int _outerTouchDeltaDirection = 0;
+  DateTime? _ignoreTapOutsideUntil;
 
   static const double _touchHandoffDecisionThresholdPx = 10.0;
   static const double _touchBoundaryHysteresisPx = 8.0;
@@ -527,6 +528,9 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   static const double _touchOuterPendingDropOnFlipPx = 3.0;
   static const double _touchOuterEndFlushMinPx = 1.0;
   static const Duration _touchOuterFlushInterval = Duration(milliseconds: 16);
+  static const Duration _tapOutsideIgnoreAfterIntercept = Duration(
+    milliseconds: 350,
+  );
 
   // ------------------------------------------------------------------
   // Lifecycle
@@ -1343,6 +1347,7 @@ $customCss
 
     event.preventDefault();
     event.stopPropagation();
+    _ignoreTapOutsideUntil = DateTime.now().add(_tapOutsideIgnoreAfterIntercept);
 
     final tapIndex = _resolveTapIndex(clientPoint.$1, clientPoint.$2);
     _focusEditorFromInterceptedTap(tapIndex);
@@ -2852,6 +2857,10 @@ $customCss
   // ------------------------------------------------------------------
 
   void _onTapOutside(PointerDownEvent _) {
+    final ignoreUntil = _ignoreTapOutsideUntil;
+    if (ignoreUntil != null && DateTime.now().isBefore(ignoreUntil)) {
+      return;
+    }
     if (!_editorHasFocus || _quill == null) return;
     _blurEditorAndSyncFlutterFocus();
   }
