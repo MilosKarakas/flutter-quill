@@ -1344,13 +1344,33 @@ $customCss
 
     final clientPoint = _extractClientPoint(event);
     if (clientPoint == null) return;
+    final tapIndex = _resolveTapIndex(clientPoint.$1, clientPoint.$2);
+    final isLikelyTouchTap =
+        event is web.TouchEvent ||
+        (event is web.PointerEvent &&
+            event.pointerType.toLowerCase() != 'mouse');
+
+    // iOS Safari can drop keyboard open if a touch-start focus path is fully
+    // cancelled via preventDefault on an empty editor. Prefer a native tap
+    // completion path in that case while still forcing explicit focus/selection.
+    if (isLikelyTouchTap && _isEditorEffectivelyEmpty()) {
+      _ignoreTapOutsideUntil = DateTime.now().add(_tapOutsideIgnoreAfterIntercept);
+      _focusEditorFromInterceptedTap(tapIndex);
+      return;
+    }
 
     event.preventDefault();
     event.stopPropagation();
     _ignoreTapOutsideUntil = DateTime.now().add(_tapOutsideIgnoreAfterIntercept);
-
-    final tapIndex = _resolveTapIndex(clientPoint.$1, clientPoint.$2);
     _focusEditorFromInterceptedTap(tapIndex);
+  }
+
+  bool _isEditorEffectivelyEmpty() {
+    final quill = _quill;
+    if (quill == null) return true;
+    final length = quill.getLength();
+    // Quill docs always include a terminal newline sentinel.
+    return length <= 1;
   }
 
   bool _hasDomEditorFocus() {
