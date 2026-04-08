@@ -1675,13 +1675,20 @@ $customCss
         event.preventDefault();
         event.stopPropagation();
 
-        final sel = _getQuillSelection(focus: true);
-        final index = sel?.index ?? 0;
+        // Read current selection without forcing focus first, so we don't
+        // accidentally collapse a non-collapsed range before applying paste.
+        var sel = _getQuillSelection();
+        sel ??= _getQuillSelection(focus: true);
+        final index =
+            sel?.index ??
+            ((_quill!.getLength() > 1) ? _quill!.getLength() - 1 : 0);
+        final selectionLength = sel?.length ?? 0;
 
         final pasteOps = pasteDelta.toJson() as List;
-        final combinedOps = [
-          {'retain': index},
-          ...pasteOps,
+        final combinedOps = <Map<String, Object>>[
+          if (index > 0) {'retain': index},
+          if (selectionLength > 0) {'delete': selectionLength},
+          ...pasteOps.cast<Map<String, Object>>(),
         ];
         final combined = Delta.fromJson(combinedOps);
         _quill!.updateContents(_deltaToJs(combined), 'api'.toJS);
