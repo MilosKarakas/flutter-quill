@@ -1685,10 +1685,10 @@ $customCss
         final selectionLength = sel?.length ?? 0;
 
         final pasteOps = pasteDelta.toJson() as List;
-        final combinedOps = <Map<String, Object>>[
+        final combinedOps = <dynamic>[
           if (index > 0) {'retain': index},
           if (selectionLength > 0) {'delete': selectionLength},
-          ...pasteOps.cast<Map<String, Object>>(),
+          ...pasteOps,
         ];
         final combined = Delta.fromJson(combinedOps);
         _quill!.updateContents(_deltaToJs(combined), 'api'.toJS);
