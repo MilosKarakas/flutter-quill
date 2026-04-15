@@ -479,6 +479,27 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     }
   }
 
+  /// Like [_refreshKeyboardHeightFromViewport] but only writes a **positive**
+  /// keyboard height — never resets to 0. Used by the startup probes so they
+  /// can detect a keyboard that was already open before the resize listener
+  /// was registered, without fighting the listener or zeroing out the height
+  /// when the editor doesn't yet have focus.
+  void _probeKeyboardHeight() {
+    final vv = web.window.visualViewport;
+    if (vv == null) return;
+
+    final layoutHeight = web.window.innerHeight.toDouble();
+    final currentVisibleBottom = vv.height + vv.offsetTop;
+    final kbByHeight = math.max(0, layoutHeight - vv.height);
+    final kbByVisibleBottom = math.max(0, layoutHeight - currentVisibleBottom);
+    final kb = math.max(kbByHeight, kbByVisibleBottom);
+
+    if (kb > _keyboardOpenThresholdPx) {
+      _lowKeyboardFramesWhileFocused = 0;
+      widget.controller.keyboardHeight.value = kb.toDouble();
+    }
+  }
+
   // Focus bridging state
   bool _isSyncingFocus = false;
   bool _editorHasFocus = false;
@@ -1091,13 +1112,13 @@ $customCss
       vv.addEventListener('resize', _viewportResizeHandlerJs);
 
       // Catch the case where the keyboard is already open when the listener
-      // is registered. Also retry at increasing intervals for viewports that
-      // settle late (e.g. iOS Safari animation).
-      _refreshKeyboardHeightFromViewport();
+      // is registered. Use a read-only probe that only writes a positive
+      // value — never resets to 0 — so it cannot fight the resize listener.
+      _probeKeyboardHeight();
       for (final delayMs in <int>[100, 200, 400]) {
         Future<void>.delayed(Duration(milliseconds: delayMs), () {
           if (!mounted) return;
-          _refreshKeyboardHeightFromViewport();
+          _probeKeyboardHeight();
         });
       }
     }
