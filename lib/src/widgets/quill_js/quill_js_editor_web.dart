@@ -447,6 +447,21 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     }
   }
 
+  /// Schedules keyboard-height refreshes at longer intervals to catch
+  /// keyboards that are still animating open when focus is first established.
+  /// The resize listener may have been registered after the initial viewport
+  /// resize, so these retries re-read the viewport once the animation settles.
+  static const List<int> _keyboardSettleDelaysMs = [100, 200, 400];
+
+  void _scheduleKeyboardSettleRetries() {
+    for (final delayMs in _keyboardSettleDelaysMs) {
+      Future<void>.delayed(Duration(milliseconds: delayMs), () {
+        if (!mounted) return;
+        _refreshKeyboardHeightFromViewport();
+      });
+    }
+  }
+
   void _refreshKeyboardHeightFromViewport() {
     final vv = web.window.visualViewport;
     if (vv == null) return;
@@ -476,27 +491,6 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       if (_lowKeyboardFramesWhileFocused >= _keyboardCloseConfirmFrames) {
         widget.controller.keyboardHeight.value = 0.0;
       }
-    }
-  }
-
-  /// Like [_refreshKeyboardHeightFromViewport] but only writes a **positive**
-  /// keyboard height — never resets to 0. Used by the startup probes so they
-  /// can detect a keyboard that was already open before the resize listener
-  /// was registered, without fighting the listener or zeroing out the height
-  /// when the editor doesn't yet have focus.
-  void _probeKeyboardHeight() {
-    final vv = web.window.visualViewport;
-    if (vv == null) return;
-
-    final layoutHeight = web.window.innerHeight.toDouble();
-    final currentVisibleBottom = vv.height + vv.offsetTop;
-    final kbByHeight = math.max(0, layoutHeight - vv.height);
-    final kbByVisibleBottom = math.max(0, layoutHeight - currentVisibleBottom);
-    final kb = math.max(kbByHeight, kbByVisibleBottom);
-
-    if (kb > _keyboardOpenThresholdPx) {
-      _lowKeyboardFramesWhileFocused = 0;
-      widget.controller.keyboardHeight.value = kb.toDouble();
     }
   }
 
@@ -1110,17 +1104,6 @@ $customCss
         _refreshKeyboardHeightFromViewport();
       }).toJS;
       vv.addEventListener('resize', _viewportResizeHandlerJs);
-
-      // Catch the case where the keyboard is already open when the listener
-      // is registered. Use a read-only probe that only writes a positive
-      // value — never resets to 0 — so it cannot fight the resize listener.
-      _probeKeyboardHeight();
-      for (final delayMs in <int>[100, 200, 400]) {
-        Future<void>.delayed(Duration(milliseconds: delayMs), () {
-          if (!mounted) return;
-          _probeKeyboardHeight();
-        });
-      }
     }
 
     // --- Permanent parent-page scroll lock ---
@@ -1307,9 +1290,12 @@ $customCss
     }
 
     // On focus transition (was blurred, now focused), attempt first-focus
-    // cursor placement if the feature is enabled.
+    // cursor placement if the feature is enabled.  Also schedule longer-
+    // interval keyboard retries: the resize listener may have been registered
+    // after the keyboard opened, so we re-read the viewport once it settles.
     if (!wasFocused) {
       _maybeMoveCursorToEndOnFirstFocus();
+      _scheduleKeyboardSettleRetries();
     }
 
     // Sync format state whenever selection changes (cursor moves, text selected, etc.)
@@ -1552,6 +1538,7 @@ $customCss
     _editorHasFocus = true;
     _onJsFocusChanged(hasFocus: true);
     _refreshKeyboardHeightFromViewport();
+    _scheduleKeyboardSettleRetries();
     final fallbackSelection = _getQuillSelection(focus: false);
     final resolvedTapIndex = tapIndex ?? fallbackSelection?.index ?? 0;
 
