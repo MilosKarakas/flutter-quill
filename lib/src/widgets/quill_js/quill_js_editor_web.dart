@@ -431,6 +431,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   String? _savedHtmlOverflow;
   String? _savedBodyOverflow;
   int _lowKeyboardFramesWhileFocused = 0;
+  double _maxInnerHeight = 0;
 
   static const double _keyboardOpenThresholdPx = 50.0;
   static const int _keyboardCloseConfirmFrames = 3;
@@ -467,11 +468,21 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     if (vv == null) return;
 
     final layoutHeight = web.window.innerHeight.toDouble();
+    // Track the largest innerHeight ever observed. In-app browsers that
+    // apply native keyboard avoidance resize the WKWebView frame when the
+    // keyboard opens, causing innerHeight to shrink alongside
+    // visualViewport.height (making their difference ~0). Using the
+    // pre-keyboard maximum as a stable reference keeps detection working
+    // regardless of whether the host app resizes the WebView.
+    _maxInnerHeight = math.max(_maxInnerHeight, layoutHeight);
+
     final currentVisibleBottom = vv.height + vv.offsetTop;
-    final kbByHeight = math.max(0.0, layoutHeight - vv.height);
-    final kbByVisibleBottom = math.max(0.0, layoutHeight - currentVisibleBottom);
+    final kbByHeight = math.max(0, _maxInnerHeight - vv.height);
+    final kbByVisibleBottom =
+        math.max(0, _maxInnerHeight - currentVisibleBottom);
     final kb = math.max(kbByHeight, kbByVisibleBottom);
-    final hasFocusIntent = _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
+    final hasFocusIntent =
+        _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
 
     // When editor is not focused, always treat keyboard as closed.
     if (!hasFocusIntent) {
