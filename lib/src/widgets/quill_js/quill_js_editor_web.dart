@@ -495,7 +495,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     // before closing, so one bad frame cannot drop the inset to zero.
     if (kb > _keyboardOpenThresholdPx) {
       _lowKeyboardFramesWhileFocused = 0;
-      widget.controller.keyboardHeight.value = kb;
+      widget.controller.keyboardHeight.value = kb.toDouble();
       _scheduleEnsureSelectionVisible(const Duration(milliseconds: 24));
     } else {
       _lowKeyboardFramesWhileFocused++;
