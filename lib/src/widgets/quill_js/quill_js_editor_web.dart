@@ -431,6 +431,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   String? _savedHtmlOverflow;
   String? _savedBodyOverflow;
   int _lowKeyboardFramesWhileFocused = 0;
+  double _maxInnerHeight = 0.0;
 
   static const double _keyboardOpenThresholdPx = 50.0;
   static const int _keyboardCloseConfirmFrames = 3;
@@ -467,10 +468,22 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     if (vv == null) return;
 
     final layoutHeight = web.window.innerHeight.toDouble();
+
+    // Track the largest innerHeight we've seen, capped at screen.height to
+    // filter out bogus inflated values Flutter may report during init.
+    final screenHeight = web.window.screen.height.toDouble();
+    _maxInnerHeight = math.min(
+      math.max(_maxInnerHeight, layoutHeight),
+      screenHeight,
+    );
+
     final currentVisibleBottom = vv.height + vv.offsetTop;
     final kbByHeight = math.max(0.0, layoutHeight - vv.height);
     final kbByVisibleBottom = math.max(0.0, layoutHeight - currentVisibleBottom);
-    final kb = math.max(kbByHeight, kbByVisibleBottom);
+    // Also detect native-resize keyboards: if innerHeight shrank from
+    // the known maximum, the difference is the keyboard.
+    final kbByNativeResize = math.max(0.0, _maxInnerHeight - layoutHeight);
+    final kb = math.max(kbByHeight, math.max(kbByVisibleBottom, kbByNativeResize));
     final hasFocusIntent = _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
 
     // When editor is not focused, always treat keyboard as closed.
