@@ -1089,6 +1089,17 @@ $customCss
         _refreshKeyboardHeightFromViewport();
       }).toJS;
       vv.addEventListener('resize', _viewportResizeHandlerJs);
+
+      // Catch the case where the keyboard is already open when the listener
+      // is registered. Also retry at increasing intervals for viewports that
+      // settle late (e.g. iOS Safari animation).
+      _refreshKeyboardHeightFromViewport();
+      for (final delayMs in <int>[100, 200, 400]) {
+        Future<void>.delayed(Duration(milliseconds: delayMs), () {
+          if (!mounted) return;
+          _refreshKeyboardHeightFromViewport();
+        });
+      }
     }
 
     // --- Permanent parent-page scroll lock ---
