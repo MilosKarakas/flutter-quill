@@ -510,14 +510,12 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     final flutterHeight = MediaQuery.sizeOf(context).height;
     final kbByFlutter = math.max(0.0, flutterHeight - vv.height);
 
-    final rawKb = math.max(kbByHeight, math.max(kbByVisibleBottom, kbByFlutter));
+    final kb = math.max(kbByHeight, math.max(kbByVisibleBottom, kbByFlutter));
 
-    // With `interactive-widget=resizes-visual`, the browser may pan the visual
-    // viewport upward (vv.offsetTop > 0) to keep the focused element visible.
-    // The consumer applies keyboardHeight as bottom padding, so we subtract
-    // the browser's own pan to avoid double-compensating.
-    final browserPan = math.max(0.0, vv.offsetTop);
-    final kb = math.max(0.0, rawKb - browserPan);
+    // ignore: avoid_print
+    print('[KB DEBUG] layoutH=$layoutHeight vvH=${vv.height} vvOffT=${vv.offsetTop} '
+        'flutterH=$flutterHeight | kbByH=$kbByHeight kbByVB=$kbByVisibleBottom '
+        'kbByF=$kbByFlutter => kb=$kb');
 
     final hasFocusIntent = _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
 
