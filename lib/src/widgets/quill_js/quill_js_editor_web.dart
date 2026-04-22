@@ -431,6 +431,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   String? _savedHtmlOverflow;
   String? _savedBodyOverflow;
   int _lowKeyboardFramesWhileFocused = 0;
+  Timer? _nullSelectionFocusLossTimer;
 
   static const double _keyboardOpenThresholdPx = 50.0;
   static const int _keyboardCloseConfirmFrames = 3;
@@ -460,6 +461,35 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
         _refreshKeyboardHeightFromViewport();
       });
     }
+  }
+
+  /// Delays focus-loss processing when Quill reports a null selection.
+  ///
+  /// On Android mobile web, the browser can emit transient null-selection
+  /// events during keyboard/viewport resize animation even though the editor
+  /// is still logically focused. Immediately treating these as focus loss
+  /// tears down keyboard height and syncs [FocusNode.unfocus], which closes
+  /// the keyboard before the user can type.
+  ///
+  /// If a non-null selection arrives within the window the timer is cancelled,
+  /// preventing the false focus loss.
+  void _scheduleNullSelectionFocusLoss() {
+    if (_nullSelectionFocusLossTimer?.isActive ?? false) return;
+
+    _nullSelectionFocusLossTimer = Timer(
+      const Duration(milliseconds: 80),
+      () {
+        if (!mounted) return;
+        widget.controller.keyboardHeight.value = 0.0;
+        _editorHasFocus = false;
+        _onJsFocusChanged(hasFocus: false);
+      },
+    );
+  }
+
+  void _cancelPendingNullSelectionFocusLoss() {
+    _nullSelectionFocusLossTimer?.cancel();
+    _nullSelectionFocusLossTimer = null;
   }
 
   void _refreshKeyboardHeightFromViewport() {
@@ -752,6 +782,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       }
     }
 
+    _nullSelectionFocusLossTimer?.cancel();
+
     // Remove parent-window viewport / scroll-lock listeners
     if (_viewportResizeHandlerJs != null) {
       web.window.visualViewport?.removeEventListener(
@@ -801,7 +833,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,interactive-widget=resizes-visual">
 $cssLink
 <style>
 html, body {
@@ -1262,15 +1294,15 @@ $customCss
   }
 
   void _onSelectionChanged(JSObject? range, String? source) {
-    // range == null means the editor lost focus
     if (range == null) {
       _lastSelectionLength = 0;
       _isSelectionGestureActive = false;
-      widget.controller.keyboardHeight.value = 0.0;
-      _editorHasFocus = false;
-      _onJsFocusChanged(hasFocus: false);
+      _scheduleNullSelectionFocusLoss();
       return;
     }
+
+    // A valid range arrived — cancel any pending debounced focus loss.
+    _cancelPendingNullSelectionFocusLoss();
 
     final jsRange = _JsRange._(range);
     _lastSelectionLength = jsRange.length;
