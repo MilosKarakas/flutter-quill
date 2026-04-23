@@ -511,12 +511,6 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     final kbByFlutter = math.max(0.0, flutterHeight - vv.height);
 
     final kb = math.max(kbByHeight, math.max(kbByVisibleBottom, kbByFlutter));
-
-    // ignore: avoid_print
-    print('[KB DEBUG] layoutH=$layoutHeight vvH=${vv.height} vvOffT=${vv.offsetTop} '
-        'flutterH=$flutterHeight | kbByH=$kbByHeight kbByVB=$kbByVisibleBottom '
-        'kbByF=$kbByFlutter => kb=$kb');
-
     final hasFocusIntent = _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
 
     // When editor is not focused, always treat keyboard as closed.
