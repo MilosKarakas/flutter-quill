@@ -643,13 +643,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       _quillJsSource = await _quillJsSourceFuture!;
     }
     if (!mounted) return;
-    // Set srcdoc in a post-frame callback so the iframe's load event fires
-    // between frames (not during layout/paint), matching the original
-    // synchronous-srcdoc timing where setState is safe.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _iframe.setAttribute('srcdoc', _buildSrcdoc());
-    });
+    _iframe.setAttribute('srcdoc', _buildSrcdoc());
   }
 
   @override
