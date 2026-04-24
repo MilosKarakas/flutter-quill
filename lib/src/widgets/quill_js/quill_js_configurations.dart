@@ -106,8 +106,11 @@ class QuillJsEditorStyle {
 
 /// Configuration for the Quill.js-based web editor.
 class QuillJsEditorConfiguration {
-  /// URL to your self-hosted quill.js (or quill.min.js) file.
-  final String quillJsUrl;
+  /// URL to a self-hosted quill.js (or quill.min.js) file.
+  ///
+  /// When null (the default), the bundled quill.min.js shipped with
+  /// this package is inlined into the iframe — no external fetch needed.
+  final String? quillJsUrl;
 
   /// URL to your self-hosted Quill CSS theme file (e.g., quill.snow.css).
   /// If null, no theme CSS is loaded (you can include it in your index.html).
@@ -279,7 +282,7 @@ class QuillJsEditorConfiguration {
   final double autoResizeVerticalPadding;
 
   const QuillJsEditorConfiguration({
-    required this.quillJsUrl,
+    this.quillJsUrl,
     this.quillCssUrl,
     this.customCss,
     this.initialContent,

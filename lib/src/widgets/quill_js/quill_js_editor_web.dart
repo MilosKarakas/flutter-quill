@@ -15,6 +15,7 @@ import 'dart:ui_web' as ui_web;
 
 import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:web/web.dart' as web;
 
 import '../../models/structs/copy_data.dart';
@@ -582,6 +583,11 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   bool _pendingEmptyTouchTapFocus = false;
   (double, double)? _pendingEmptyTouchTapPoint;
 
+  static const String _bundledQuillJsAsset =
+      'packages/flutter_quill/assets/js/quill.min.js';
+  static Future<String>? _quillJsSourceFuture;
+  String? _quillJsSource;
+
   static const double _touchHandoffDecisionThresholdPx = 10.0;
   static const double _touchBoundaryHysteresisPx = 8.0;
   static const double _touchMaxOuterStepPerFramePx = 32.0;
@@ -606,12 +612,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
     _viewType = 'quill-js-editor-${_nextId++}';
 
-    // Build the iframe element with srcdoc containing the editor HTML.
     _iframe = web.document.createElement('iframe') as web.HTMLIFrameElement
       ..style.setProperty('width', '100%')
       ..style.setProperty('height', '100%')
-      ..style.setProperty('border', 'none')
-      ..setAttribute('srcdoc', _buildSrcdoc());
+      ..style.setProperty('border', 'none');
 
     // Register platform view factory
     ui_web.platformViewRegistry.registerViewFactory(
@@ -626,6 +630,22 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     _iframe.addEventListener('load', _iframeLoadHandlerJs);
 
     _setupFocusBridge();
+    _loadQuillJsAndBuildSrcdoc();
+  }
+
+  Future<void> _loadQuillJsAndBuildSrcdoc() async {
+    final externalUrl = widget.configuration.quillJsUrl;
+    if (externalUrl != null) {
+      // Fetch from the provided URL via an XHR from the parent page,
+      // bypassing any srcdoc iframe CSP restrictions.
+      final response = await web.window.fetch(externalUrl.toJS).toDart;
+      _quillJsSource = (await response.text().toDart).toDart;
+    } else {
+      _quillJsSourceFuture ??= rootBundle.loadString(_bundledQuillJsAsset);
+      _quillJsSource = await _quillJsSourceFuture!;
+    }
+    if (!mounted) return;
+    _iframe.setAttribute('srcdoc', _buildSrcdoc());
   }
 
   @override
@@ -810,8 +830,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   // ------------------------------------------------------------------
 
   /// Builds the full HTML document that will be loaded into the iframe via
-  /// `srcdoc`. Quill.js and its CSS are loaded via `<script>` and `<link>`
-  /// tags inside this document.
+  /// `srcdoc`. Quill.js is inlined as a `<script>` block to avoid CSP
+  /// restrictions on `srcdoc` iframes (e.g. Firefox).
   String _buildSrcdoc() {
     final config = widget.configuration;
     final dynamicCss = StringBuffer();
@@ -1132,7 +1152,7 @@ $customCss
 </head>
 <body>
 <div id="editor"></div>
-<script src="${_escapeHtml(config.quillJsUrl)}"></script>
+<script>${_quillJsSource!.replaceAll('</script>', r'<\/script>')}</script>
 </body>
 </html>''';
   }
