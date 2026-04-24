@@ -1167,6 +1167,7 @@ $customCss
 
   void _onIframeLoaded() {
     if (!mounted) return;
+    if (_loadState == _LoadState.ready) return;
 
     try {
       final contentWindow = _iframe.contentWindow;
@@ -1191,24 +1192,31 @@ $customCss
 
       _setupQuill(contentWindow as JSObject);
 
-      setState(() => _loadState = _LoadState.ready);
-      _scheduleOnEditorReadyCallback();
-      _scheduleDeferredDomFocusSync();
+      // The load event can fire during platform view composition (layout/paint),
+      // where setState is forbidden. Defer the state transition.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _loadState = _LoadState.ready);
+        _scheduleOnEditorReadyCallback();
+        _scheduleDeferredDomFocusSync();
 
-      // Auto-focus after the build pass so the HtmlElementView is visible.
-      if (widget.autoFocus) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || _quill == null) return;
-          _quill!.focus();
-          _editorHasFocus = true;
-          _onJsFocusChanged(hasFocus: true);
-        });
-      }
+        if (widget.autoFocus) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || _quill == null) return;
+            _quill!.focus();
+            _editorHasFocus = true;
+            _onJsFocusChanged(hasFocus: true);
+          });
+        }
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _loadState = _LoadState.error;
-        _errorMessage = e.toString();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _loadState = _LoadState.error;
+          _errorMessage = e.toString();
+        });
       });
     }
   }
