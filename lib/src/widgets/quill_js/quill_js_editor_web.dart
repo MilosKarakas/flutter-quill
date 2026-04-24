@@ -1168,6 +1168,7 @@ $customCss
   void _onIframeLoaded() {
     if (!mounted) return;
     if (_loadState == _LoadState.ready) return;
+    if (_quillJsSource == null) return;
 
     try {
       final contentWindow = _iframe.contentWindow;
