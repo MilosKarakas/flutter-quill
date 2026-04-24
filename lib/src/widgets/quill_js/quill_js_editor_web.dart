@@ -1194,23 +1194,23 @@ $customCss
       _setupQuill(contentWindow as JSObject);
 
       _loadState = _LoadState.ready;
-      _scheduleOnEditorReadyCallback();
-      _scheduleDeferredDomFocusSync();
-
-      if (widget.autoFocus) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || _quill == null) return;
-          _quill!.focus();
-          _editorHasFocus = true;
-          _onJsFocusChanged(hasFocus: true);
-        });
-      }
 
       // The load event can fire during platform view composition (layout/paint),
-      // where setState is forbidden. Defer the rebuild.
+      // where setState is forbidden. Defer the rebuild, then schedule focus
+      // and ready callbacks after the widget tree has been updated.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         setState(() {});
+        _scheduleOnEditorReadyCallback();
+        _scheduleDeferredDomFocusSync();
+        if (widget.autoFocus) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || _quill == null) return;
+            _quill!.focus();
+            _editorHasFocus = true;
+            _onJsFocusChanged(hasFocus: true);
+          });
+        }
       });
     } catch (e) {
       if (!mounted) return;
