@@ -432,6 +432,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   String? _savedBodyOverflow;
   int _lowKeyboardFramesWhileFocused = 0;
   Timer? _nullSelectionFocusLossTimer;
+  bool _isPasteInProgress = false;
 
   static const double _keyboardOpenThresholdPx = 50.0;
   static const int _keyboardCloseConfirmFrames = 3;
@@ -475,11 +476,12 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   /// preventing the false focus loss.
   void _scheduleNullSelectionFocusLoss() {
     if (_nullSelectionFocusLossTimer?.isActive ?? false) return;
+    if (_isPasteInProgress) return;
 
     _nullSelectionFocusLossTimer = Timer(
       const Duration(milliseconds: 80),
       () {
-        if (!mounted) return;
+        if (!mounted || _isPasteInProgress) return;
         widget.controller.keyboardHeight.value = 0.0;
         _editorHasFocus = false;
         _onJsFocusChanged(hasFocus: false);
@@ -1283,6 +1285,10 @@ $customCss
     if (node == null) return;
 
     if (!node.hasFocus) {
+      // On Android, context-menu paste briefly removes platform-view focus
+      // before the paste event arrives. Don't tear down keyboard state
+      // while a paste operation is in flight.
+      if (_isPasteInProgress) return;
       _pendingDomFocusSync = false;
       _focusSyncEpoch++;
       widget.controller.keyboardHeight.value = 0.0;
@@ -1987,16 +1993,16 @@ $customCss
 
     if (pasteInterceptor != null) {
       _pasteHandlerJs = ((web.Event event) {
-        // The paste event may arrive after the context menu's dismiss
-        // animation has already caused a transient null-selection, which
-        // starts the 80ms focus-loss timer. Cancel it immediately so the
-        // clipboard processing time doesn't cause a false keyboard close.
+        _isPasteInProgress = true;
         _cancelPendingNullSelectionFocusLoss();
         _editorHasFocus = true;
 
         final clipEvent = event as web.ClipboardEvent;
         final data = clipEvent.clipboardData;
-        if (data == null) return;
+        if (data == null) {
+          _isPasteInProgress = false;
+          return;
+        }
 
         final plainText = data.getData('text/plain');
         final html = data.getData('text/html');
@@ -2007,7 +2013,10 @@ $customCss
 
         final pasteDelta = _deltaFromClipboardJson(deltaJson) ??
             pasteInterceptor(plain, htmlContent, deltaJson);
-        if (pasteDelta == null || pasteDelta.isEmpty) return;
+        if (pasteDelta == null || pasteDelta.isEmpty) {
+          _isPasteInProgress = false;
+          return;
+        }
 
         event.preventDefault();
         event.stopPropagation();
@@ -2032,6 +2041,17 @@ $customCss
 
         final pasteLength = _deltaLength(pasteDelta);
         _quill!.setSelection(index + pasteLength, 0);
+
+        // Re-assert focus after paste and clear the guard. The short
+        // delay lets the browser finish processing the DOM mutation
+        // before we re-sync Flutter's focus state.
+        Future<void>.delayed(const Duration(milliseconds: 16), () {
+          _isPasteInProgress = false;
+          if (!mounted || _quill == null) return;
+          _editorHasFocus = true;
+          _onJsFocusChanged(hasFocus: true);
+          _refreshKeyboardHeightFromViewport();
+        });
       }).toJS;
       editorDiv.addEventListener('paste', _pasteHandlerJs!, true.toJS);
     }
