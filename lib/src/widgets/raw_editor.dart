@@ -543,17 +543,48 @@ class RawEditorState extends EditorState
 
   /// Returns the anchor points for the default context menu.
   ///
-  /// Copied from [EditableTextState].
+  /// Copied from [EditableTextState], with a clamping step so endpoints that
+  /// lie off-screen (e.g. after Select all in a long document) are projected
+  /// into the visible band. This avoids a toolbar pinned to a clamped screen
+  /// edge that looks attached to the invisible end of the content.
   TextSelectionToolbarAnchors get contextMenuAnchors {
     final glyphHeights = _getGlyphHeights();
     final selection = textEditingValue.selection;
-    final points = renderEditor.getEndpointsForSelection(selection);
+    var points = renderEditor.getEndpointsForSelection(selection);
+    points = _clampTextSelectionPointsToVisibleViewport(points);
     return TextSelectionToolbarAnchors.fromSelection(
       renderBox: renderEditor,
       startGlyphHeight: glyphHeights.startGlyphHeight,
       endGlyphHeight: glyphHeights.endGlyphHeight,
       selectionEndpoints: points,
     );
+  }
+
+  /// Clamps each selection endpoint's Y to the current vertical viewport into
+  /// [RenderEditor] so the selection toolbar is anchored to on-screen
+  /// geometry.
+  List<TextSelectionPoint> _clampTextSelectionPointsToVisibleViewport(
+    List<TextSelectionPoint> points,
+  ) {
+    if (points.isEmpty || !scrollController.hasClients) {
+      return points;
+    }
+    final position = scrollController.position;
+    if (!position.hasViewportDimension) {
+      return points;
+    }
+    final top = position.pixels;
+    final bottom = top + position.viewportDimension;
+    return <TextSelectionPoint>[
+      for (final p in points)
+        TextSelectionPoint(
+          Offset(
+            p.point.dx,
+            p.point.dy.clamp(top, bottom),
+          ),
+          p.direction,
+        ),
+    ];
   }
 
   /// Gets the line heights at the start and end of the selection for the given
@@ -2500,10 +2531,6 @@ class RawEditorState extends EditorState
       ),
       cause,
     );
-
-    if (cause == SelectionChangedCause.toolbar) {
-      bringIntoView(textEditingValue.selection.extent);
-    }
   }
 
   @override

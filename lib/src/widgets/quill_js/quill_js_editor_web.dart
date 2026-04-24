@@ -440,13 +440,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
   void _scheduleKeyboardRefreshRetries([int retries = 2]) {
     for (var i = 1; i <= retries; i++) {
-      Future<void>.delayed(
-        Duration(milliseconds: 16 * i),
-        () {
-          if (!mounted) return;
-          _refreshKeyboardHeightFromViewport();
-        },
-      );
+      Future<void>.delayed(Duration(milliseconds: 16 * i), () {
+        if (!mounted) return;
+        _refreshKeyboardHeightFromViewport();
+      });
     }
   }
 
@@ -479,15 +476,12 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     if (_nullSelectionFocusLossTimer?.isActive ?? false) return;
     if (_isPasteInProgress) return;
 
-    _nullSelectionFocusLossTimer = Timer(
-      const Duration(milliseconds: 80),
-      () {
-        if (!mounted || _isPasteInProgress) return;
-        widget.controller.keyboardHeight.value = 0.0;
-        _editorHasFocus = false;
-        _onJsFocusChanged(hasFocus: false);
-      },
-    );
+    _nullSelectionFocusLossTimer = Timer(const Duration(milliseconds: 80), () {
+      if (!mounted || _isPasteInProgress) return;
+      widget.controller.keyboardHeight.value = 0.0;
+      _editorHasFocus = false;
+      _onJsFocusChanged(hasFocus: false);
+    });
   }
 
   void _cancelPendingNullSelectionFocusLoss() {
@@ -502,7 +496,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     final layoutHeight = web.window.innerHeight.toDouble();
     final currentVisibleBottom = vv.height + vv.offsetTop;
     final kbByHeight = math.max(0.0, layoutHeight - vv.height);
-    final kbByVisibleBottom = math.max(0.0, layoutHeight - currentVisibleBottom);
+    final kbByVisibleBottom = math.max(
+      0.0,
+      layoutHeight - currentVisibleBottom,
+    );
 
     // Use Flutter's own layout height as the reference. This avoids
     // double-handling when a native container (e.g. WKWebView) resizes for
@@ -514,7 +511,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     final kbByFlutter = math.max(0.0, flutterHeight - vv.height);
 
     final kb = math.max(kbByHeight, math.max(kbByVisibleBottom, kbByFlutter));
-    final hasFocusIntent = _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
+    final hasFocusIntent =
+        _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
 
     // When editor is not focused, always treat keyboard as closed.
     if (!hasFocusIntent) {
@@ -608,7 +606,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   @override
   void initState() {
     super.initState();
-    _contentForAutoResize = widget.configuration.initialContent ?? (Delta()..insert('\n'));
+    _contentForAutoResize =
+        widget.configuration.initialContent ?? (Delta()..insert('\n'));
 
     _viewType = 'quill-js-editor-${_nextId++}';
 
@@ -661,7 +660,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       _setupFocusBridge();
     }
 
-    if (widget.configuration.initialContent != oldWidget.configuration.initialContent) {
+    if (widget.configuration.initialContent !=
+        oldWidget.configuration.initialContent) {
       _contentForAutoResize =
           widget.configuration.initialContent ?? (Delta()..insert('\n'));
     }
@@ -762,10 +762,16 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
         );
       }
       if (_outerScrollTouchMoveHandlerJs != null) {
-        _editorDiv!.removeEventListener('touchmove', _outerScrollTouchMoveHandlerJs);
+        _editorDiv!.removeEventListener(
+          'touchmove',
+          _outerScrollTouchMoveHandlerJs,
+        );
       }
       if (_outerScrollTouchEndHandlerJs != null) {
-        _editorDiv!.removeEventListener('touchend', _outerScrollTouchEndHandlerJs);
+        _editorDiv!.removeEventListener(
+          'touchend',
+          _outerScrollTouchEndHandlerJs,
+        );
       }
       if (_outerScrollTouchCancelHandlerJs != null) {
         _editorDiv!.removeEventListener(
@@ -780,7 +786,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
         );
       }
       if (_outerScrollPointerUpHandlerJs != null) {
-        _editorDiv!.removeEventListener('pointerup', _outerScrollPointerUpHandlerJs);
+        _editorDiv!.removeEventListener(
+          'pointerup',
+          _outerScrollPointerUpHandlerJs,
+        );
       }
       if (_outerScrollPointerCancelHandlerJs != null) {
         _editorDiv!.removeEventListener(
@@ -1683,9 +1692,12 @@ $customCss
 
       event.preventDefault();
       event.stopPropagation();
-      _ignoreTapOutsideUntil = DateTime.now().add(_tapOutsideIgnoreAfterIntercept);
+      _ignoreTapOutsideUntil = DateTime.now().add(
+        _tapOutsideIgnoreAfterIntercept,
+      );
 
-      final clientPoint = _extractClientPoint(event) ?? _pendingEmptyTouchTapPoint;
+      final clientPoint =
+          _extractClientPoint(event) ?? _pendingEmptyTouchTapPoint;
       _pendingEmptyTouchTapPoint = null;
       final tapIndex = clientPoint == null
           ? null
@@ -1713,7 +1725,11 @@ $customCss
       _tapFocusTouchStartHandlerJs!,
       true.toJS,
     );
-    editorDiv.addEventListener('touchend', _tapFocusTouchEndHandlerJs!, true.toJS);
+    editorDiv.addEventListener(
+      'touchend',
+      _tapFocusTouchEndHandlerJs!,
+      true.toJS,
+    );
     editorDiv.addEventListener(
       'touchcancel',
       _tapFocusTouchCancelHandlerJs!,
@@ -1760,7 +1776,9 @@ $customCss
       _pendingEmptyTouchTapPoint = clientPoint;
       event.preventDefault();
       event.stopPropagation();
-      _ignoreTapOutsideUntil = DateTime.now().add(_tapOutsideIgnoreAfterIntercept);
+      _ignoreTapOutsideUntil = DateTime.now().add(
+        _tapOutsideIgnoreAfterIntercept,
+      );
       return;
     }
 
@@ -1769,7 +1787,9 @@ $customCss
 
     event.preventDefault();
     event.stopPropagation();
-    _ignoreTapOutsideUntil = DateTime.now().add(_tapOutsideIgnoreAfterIntercept);
+    _ignoreTapOutsideUntil = DateTime.now().add(
+      _tapOutsideIgnoreAfterIntercept,
+    );
     _focusEditorFromInterceptedTap(tapIndex);
   }
 
@@ -1889,13 +1909,10 @@ $customCss
     // Apply now and retry briefly so selection wins over async focus settling.
     applySelection();
     for (var i = 1; i <= 2; i++) {
-      Future<void>.delayed(
-        Duration(milliseconds: 16 * i),
-        () {
-          applySelection();
-          _refreshKeyboardHeightFromViewport();
-        },
-      );
+      Future<void>.delayed(Duration(milliseconds: 16 * i), () {
+        applySelection();
+        _refreshKeyboardHeightFromViewport();
+      });
     }
   }
 
@@ -2030,7 +2047,8 @@ $customCss
         final htmlContent = html.isNotEmpty ? html : null;
         final deltaJson = quillDeltaJson.isNotEmpty ? quillDeltaJson : null;
 
-        final pasteDelta = _deltaFromClipboardJson(deltaJson) ??
+        final pasteDelta =
+            _deltaFromClipboardJson(deltaJson) ??
             pasteInterceptor(plain, htmlContent, deltaJson);
         if (pasteDelta == null || pasteDelta.isEmpty) {
           _isPasteInProgress = false;
@@ -2098,10 +2116,7 @@ $customCss
             data.setData('text/html', result.html!);
           }
           if (result.quillDeltaJson != null) {
-            data.setData(
-              kQuillDeltaJsonClipboardMime,
-              result.quillDeltaJson!,
-            );
+            data.setData(kQuillDeltaJsonClipboardMime, result.quillDeltaJson!);
           }
         }
       }).toJS;
@@ -2129,10 +2144,7 @@ $customCss
             data.setData('text/html', result.html!);
           }
           if (result.quillDeltaJson != null) {
-            data.setData(
-              kQuillDeltaJsonClipboardMime,
-              result.quillDeltaJson!,
-            );
+            data.setData(kQuillDeltaJsonClipboardMime, result.quillDeltaJson!);
           }
         }
         _quill!.deleteText(sel.index, sel.length);
@@ -2528,8 +2540,14 @@ $customCss
       _eventListenerOptions(passive: false),
     );
     editorDiv.addEventListener('touchend', _outerScrollTouchEndHandlerJs!);
-    editorDiv.addEventListener('touchcancel', _outerScrollTouchCancelHandlerJs!);
-    editorDiv.addEventListener('pointerdown', _outerScrollPointerDownHandlerJs!);
+    editorDiv.addEventListener(
+      'touchcancel',
+      _outerScrollTouchCancelHandlerJs!,
+    );
+    editorDiv.addEventListener(
+      'pointerdown',
+      _outerScrollPointerDownHandlerJs!,
+    );
     editorDiv.addEventListener('pointerup', _outerScrollPointerUpHandlerJs!);
     editorDiv.addEventListener(
       'pointercancel',
@@ -2545,11 +2563,11 @@ $customCss
     );
   }
 
-  JSObject _eventListenerOptions({required bool passive, bool capture = false}) {
-    return <String, dynamic>{
-          'passive': passive,
-          'capture': capture,
-        }.jsify()
+  JSObject _eventListenerOptions({
+    required bool passive,
+    bool capture = false,
+  }) {
+    return <String, dynamic>{'passive': passive, 'capture': capture}.jsify()
         as JSObject;
   }
 
@@ -2835,10 +2853,12 @@ $customCss
       return;
     }
 
-    final topPadding = _parseCssPx(styles.getPropertyValue('padding-top')) ?? 0.0;
+    final topPadding =
+        _parseCssPx(styles.getPropertyValue('padding-top')) ?? 0.0;
     final current = editor.scrollTop.toDouble();
     final effective = math.max(0.0, current - topPadding);
-    final snapped = (effective / lineHeight).ceilToDouble() * lineHeight + topPadding;
+    final snapped =
+        (effective / lineHeight).ceilToDouble() * lineHeight + topPadding;
     final maxScroll = math.max(0.0, scrollHeight - clientHeight);
     final target = snapped.clamp(0.0, maxScroll);
 
@@ -3298,13 +3318,19 @@ $customCss
     return (top: top, bottom: bottom);
   }
 
-  double _resolveAutoResizeHeight(double maxWidth, TextDirection textDirection) {
+  double _resolveAutoResizeHeight(
+    double maxWidth,
+    TextDirection textDirection,
+  ) {
     final cfg = widget.configuration;
     final style = cfg.style;
     final fontSize = style?.fontSize ?? 16.0;
     final lineHeightMultiplier = style?.lineHeight ?? 1.5;
     final lineHeightPx = fontSize * lineHeightMultiplier;
-    final contentWidth = math.max(0.0, maxWidth - cfg.autoResizeHorizontalPadding);
+    final contentWidth = math.max(
+      0.0,
+      maxWidth - cfg.autoResizeHorizontalPadding,
+    );
 
     if (contentWidth <= 0) {
       return lineHeightPx * cfg.minLines + cfg.autoResizeVerticalPadding;
@@ -3328,11 +3354,12 @@ $customCss
 
     final lineMetrics = textPainter.computeLineMetrics();
     final wrappedLineCount = lineMetrics.length;
-    final explicitLineCount = text.isEmpty ? 1 : '\n'.allMatches(text).length + 1;
-    final visibleLineCount = math.max(wrappedLineCount, explicitLineCount).clamp(
-      cfg.minLines,
-      cfg.maxLines,
-    );
+    final explicitLineCount = text.isEmpty
+        ? 1
+        : '\n'.allMatches(text).length + 1;
+    final visibleLineCount = math
+        .max(wrappedLineCount, explicitLineCount)
+        .clamp(cfg.minLines, cfg.maxLines);
     final domLineHeightPx = _computedEditorLineHeightPx() ?? lineHeightPx;
     final domPadding = _computedEditorVerticalPaddingPx();
     final topPaddingPx = domPadding?.top ?? (cfg.autoResizeVerticalPadding / 2);
@@ -3424,7 +3451,8 @@ $customCss
       final wrappedChild = child;
       child = LayoutBuilder(
         builder: (context, constraints) {
-          final direction = Directionality.maybeOf(context) ?? TextDirection.ltr;
+          final direction =
+              Directionality.maybeOf(context) ?? TextDirection.ltr;
           final height = _resolveAutoResizeHeight(
             constraints.maxWidth,
             direction,
