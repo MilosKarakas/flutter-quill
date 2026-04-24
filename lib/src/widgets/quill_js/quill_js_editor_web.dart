@@ -1987,6 +1987,13 @@ $customCss
 
     if (pasteInterceptor != null) {
       _pasteHandlerJs = ((web.Event event) {
+        // The paste event may arrive after the context menu's dismiss
+        // animation has already caused a transient null-selection, which
+        // starts the 80ms focus-loss timer. Cancel it immediately so the
+        // clipboard processing time doesn't cause a false keyboard close.
+        _cancelPendingNullSelectionFocusLoss();
+        _editorHasFocus = true;
+
         final clipEvent = event as web.ClipboardEvent;
         final data = clipEvent.clipboardData;
         if (data == null) return;
