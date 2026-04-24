@@ -636,8 +636,6 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   Future<void> _loadQuillJsAndBuildSrcdoc() async {
     final externalUrl = widget.configuration.quillJsUrl;
     if (externalUrl != null) {
-      // Fetch from the provided URL via an XHR from the parent page,
-      // bypassing any srcdoc iframe CSP restrictions.
       final response = await web.window.fetch(externalUrl.toJS).toDart;
       _quillJsSource = (await response.text().toDart).toDart;
     } else {
@@ -645,7 +643,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
       _quillJsSource = await _quillJsSourceFuture!;
     }
     if (!mounted) return;
-    _iframe.setAttribute('srcdoc', _buildSrcdoc());
+    // Set srcdoc in a post-frame callback so the iframe's load event fires
+    // between frames (not during layout/paint), matching the original
+    // synchronous-srcdoc timing where setState is safe.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _iframe.setAttribute('srcdoc', _buildSrcdoc());
+    });
   }
 
   @override
@@ -1193,32 +1197,23 @@ $customCss
 
       _setupQuill(contentWindow as JSObject);
 
-      _loadState = _LoadState.ready;
+      setState(() => _loadState = _LoadState.ready);
+      _scheduleOnEditorReadyCallback();
+      _scheduleDeferredDomFocusSync();
 
-      // The load event can fire during platform view composition (layout/paint),
-      // where setState is forbidden. Defer the rebuild, then schedule focus
-      // and ready callbacks after the widget tree has been updated.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        setState(() {});
-        _scheduleOnEditorReadyCallback();
-        _scheduleDeferredDomFocusSync();
-        if (widget.autoFocus) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted || _quill == null) return;
-            _quill!.focus();
-            _editorHasFocus = true;
-            _onJsFocusChanged(hasFocus: true);
-          });
-        }
-      });
+      if (widget.autoFocus) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _quill == null) return;
+          _quill!.focus();
+          _editorHasFocus = true;
+          _onJsFocusChanged(hasFocus: true);
+        });
+      }
     } catch (e) {
       if (!mounted) return;
-      _loadState = _LoadState.error;
-      _errorMessage = e.toString();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        setState(() {});
+      setState(() {
+        _loadState = _LoadState.error;
+        _errorMessage = e.toString();
       });
     }
   }
