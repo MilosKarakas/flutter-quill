@@ -1193,31 +1193,32 @@ $customCss
 
       _setupQuill(contentWindow as JSObject);
 
+      _loadState = _LoadState.ready;
+      _scheduleOnEditorReadyCallback();
+      _scheduleDeferredDomFocusSync();
+
+      if (widget.autoFocus) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _quill == null) return;
+          _quill!.focus();
+          _editorHasFocus = true;
+          _onJsFocusChanged(hasFocus: true);
+        });
+      }
+
       // The load event can fire during platform view composition (layout/paint),
-      // where setState is forbidden. Defer the state transition.
+      // where setState is forbidden. Defer the rebuild.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        setState(() => _loadState = _LoadState.ready);
-        _scheduleOnEditorReadyCallback();
-        _scheduleDeferredDomFocusSync();
-
-        if (widget.autoFocus) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted || _quill == null) return;
-            _quill!.focus();
-            _editorHasFocus = true;
-            _onJsFocusChanged(hasFocus: true);
-          });
-        }
+        setState(() {});
       });
     } catch (e) {
       if (!mounted) return;
+      _loadState = _LoadState.error;
+      _errorMessage = e.toString();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        setState(() {
-          _loadState = _LoadState.error;
-          _errorMessage = e.toString();
-        });
+        setState(() {});
       });
     }
   }
