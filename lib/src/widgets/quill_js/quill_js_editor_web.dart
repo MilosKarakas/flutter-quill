@@ -2890,7 +2890,13 @@ $customCss
     if (outerDelta.abs() <= 0.01) {
       return;
     }
-    _queueOuterTouchDelta(outerDelta);
+    if (_isEditorVerticallyScrollable()) {
+      _queueOuterTouchDelta(outerDelta);
+    } else {
+      // Non-scrollable content: 100% of delta goes through the manual pipeline.
+      // Dispatch synchronously to avoid rAF batching jitter.
+      _dispatchOuterScrollDelta(outerDelta);
+    }
   }
 
   // ------------------------------------------------------------------
