@@ -1129,6 +1129,7 @@ class RenderEditor extends RenderEditableContainerBox
     required TextDirection textDirection,
     required bool hasFocus,
     required this.selection,
+    required this.plainTextLength,
     required this.scrollable,
     required LayerLink startHandleLayerLink,
     required LayerLink endHandleLayerLink,
@@ -1163,6 +1164,11 @@ class RenderEditor extends RenderEditableContainerBox
 
   Document document;
   TextSelection selection;
+
+  /// Character length of the plain [TextEditingValue.text] in sync with
+  /// [selection] offsets. Used in [getOffsetToRevealCursor] to detect a full
+  /// selection without building [Document.toPlainText].
+  int plainTextLength; // set via constructor; updated in [updateRenderObject]
   bool _hasFocus = false;
   LayerLink _startHandleLayerLink;
   LayerLink _endHandleLayerLink;
@@ -1726,26 +1732,35 @@ class RenderEditor extends RenderEditableContainerBox
   ///
   /// Returns `null` if the cursor is currently visible.
   ///
-  /// Also returns `null` when the selection spans the entire document (e.g.
-  /// Select all). Scrolling to show only the first endpoint would jump the
-  /// viewport away from where the user was; [Document.length] matches the same
-  /// offset space as [selection] without building [Document.toPlainText].
+  /// Also returns `null` when the selection spans the entire plain string
+  /// (e.g. Select all) or when the selection is taller than the viewport
+  /// (in that case scrolling to the first endpoint would jump the scroll view
+  /// to the top while the user was reading the end).
+  ///
+  /// [plainTextLength] is [TextEditingValue.text.length] and matches
+  /// [selection] code-unit offsets, which may not equal [Document.length].
   double? getOffsetToRevealCursor(
       double viewportHeight, double scrollOffset, double offsetInViewport) {
-    if (!selection.isCollapsed) {
-      final fullLen = document.length;
-      if (fullLen > 0 &&
-          selection.start == 0 &&
-          selection.end == fullLen) {
-        return null;
-      }
-    }
-
     // Endpoints coordinates represents lower left or lower right corner of
     // the selection. If we want to scroll up to reveal the caret we need to
     // adjust the dy value by the height of the line. We also add a small margin
     // so that the caret is not too close to the edge of the viewport.
     final endpoints = getEndpointsForSelection(selection);
+
+    if (!selection.isCollapsed && selection is! DragTextSelection) {
+      if (endpoints.length >= 2) {
+        final y0 = endpoints.first.point.dy;
+        final y1 = endpoints.last.point.dy;
+        if ((y1 - y0).abs() >= viewportHeight) {
+          return null;
+        }
+      }
+      if (plainTextLength > 0 &&
+          selection.start == 0 &&
+          selection.end == plainTextLength) {
+        return null;
+      }
+    }
 
     // when we drag the right handle, we should get the last point
     TextSelectionPoint endpoint;

@@ -686,6 +686,7 @@ class RawEditorState extends EditorState
             key: _editorKey,
             document: _doc,
             selection: controller.selection,
+            plainTextLength: textEditingValue.text.length,
             hasFocus: _hasFocus,
             scrollable: widget.scrollable,
             cursorController: _cursorCont,
@@ -748,6 +749,7 @@ class RawEditorState extends EditorState
                   offset: offset,
                   document: _doc,
                   selection: controller.selection,
+                  plainTextLength: textEditingValue.text.length,
                   hasFocus: _hasFocus,
                   scrollable: widget.scrollable,
                   textDirection: _textDirection,
@@ -2775,6 +2777,7 @@ class _Editor extends MultiChildRenderObjectWidget {
     required this.hasFocus,
     required this.scrollable,
     required this.selection,
+    required this.plainTextLength,
     required this.startHandleLayerLink,
     required this.endHandleLayerLink,
     required this.onSelectionChanged,
@@ -2793,6 +2796,7 @@ class _Editor extends MultiChildRenderObjectWidget {
   final bool hasFocus;
   final bool scrollable;
   final TextSelection selection;
+  final int plainTextLength;
   final LayerLink startHandleLayerLink;
   final LayerLink endHandleLayerLink;
   final TextSelectionChangedHandler onSelectionChanged;
@@ -2812,6 +2816,7 @@ class _Editor extends MultiChildRenderObjectWidget {
         hasFocus: hasFocus,
         scrollable: scrollable,
         selection: selection,
+        plainTextLength: plainTextLength,
         startHandleLayerLink: startHandleLayerLink,
         endHandleLayerLink: endHandleLayerLink,
         onSelectionChanged: onSelectionChanged,
@@ -2833,6 +2838,7 @@ class _Editor extends MultiChildRenderObjectWidget {
       ..textDirection = textDirection
       ..setHasFocus(hasFocus)
       ..setSelection(selection)
+      ..plainTextLength = plainTextLength
       ..setStartHandleLayerLink(startHandleLayerLink)
       ..setEndHandleLayerLink(endHandleLayerLink)
       ..onSelectionChanged = onSelectionChanged
