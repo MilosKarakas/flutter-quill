@@ -1725,8 +1725,22 @@ class RenderEditor extends RenderEditableContainerBox
   /// this editor from above it.
   ///
   /// Returns `null` if the cursor is currently visible.
+  ///
+  /// Also returns `null` when the selection spans the entire document (e.g.
+  /// Select all). Scrolling to show only the first endpoint would jump the
+  /// viewport away from where the user was; [Document.length] matches the same
+  /// offset space as [selection] without building [Document.toPlainText].
   double? getOffsetToRevealCursor(
       double viewportHeight, double scrollOffset, double offsetInViewport) {
+    if (!selection.isCollapsed) {
+      final fullLen = document.length;
+      if (fullLen > 0 &&
+          selection.start == 0 &&
+          selection.end == fullLen) {
+        return null;
+      }
+    }
+
     // Endpoints coordinates represents lower left or lower right corner of
     // the selection. If we want to scroll up to reveal the caret we need to
     // adjust the dy value by the height of the line. We also add a small margin
