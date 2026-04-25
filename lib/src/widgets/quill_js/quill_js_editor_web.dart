@@ -15,6 +15,7 @@ import 'dart:ui_web' as ui_web;
 
 import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:web/web.dart' as web;
 
@@ -384,7 +385,8 @@ class QuillJsEditorView extends StatefulWidget {
   State<QuillJsEditorView> createState() => _QuillJsEditorViewState();
 }
 
-class _QuillJsEditorViewState extends State<QuillJsEditorView> {
+class _QuillJsEditorViewState extends State<QuillJsEditorView>
+    with TickerProviderStateMixin {
   static int _nextId = 0;
 
   late final String _viewType;
@@ -575,8 +577,18 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   _TouchScrollOwner _touchScrollOwner = _TouchScrollOwner.undecided;
   double _touchGestureDistancePx = 0.0;
   double _pendingOuterTouchDelta = 0.0;
-  Timer? _touchOuterFlushTimer;
+  int? _touchOuterFlushRafId;
   int _outerTouchDeltaDirection = 0;
+
+  // Velocity tracking for touch fling (outer scroll momentum after lift)
+  final List<(double timestampMs, double clientY)> _touchVelocitySamples = [];
+  static const int _maxVelocitySamples = 5;
+  static const double _flingVelocityThreshold = 50.0; // px/s
+
+  // Fling animation state
+  Ticker? _outerFlingTicker;
+  ClampingScrollSimulation? _outerFlingSimulation;
+  double _outerFlingLastPosition = 0.0;
   DateTime? _ignoreTapOutsideUntil;
   bool _pendingEmptyTouchTapFocus = false;
   (double, double)? _pendingEmptyTouchTapPoint;
@@ -588,13 +600,11 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
 
   static const double _touchHandoffDecisionThresholdPx = 10.0;
   static const double _touchBoundaryHysteresisPx = 8.0;
-  static const double _touchMaxOuterStepPerFramePx = 32.0;
   static const double _touchOuterDeltaMinPx = 0.75;
   static const double _touchOuterDirectionFlipGuardPx = 2.0;
   static const double _touchOuterPendingDropOnFlipPx = 3.0;
   static const double _touchOuterEndFlushMinPx = 1.0;
   static const double _emptyTapFocusSlopPx = 8.0;
-  static const Duration _touchOuterFlushInterval = Duration(milliseconds: 16);
   static const Duration _tapOutsideIgnoreAfterIntercept = Duration(
     milliseconds: 350,
   );
@@ -671,8 +681,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
   void dispose() {
     _teardownFocusBridge();
     _detachController();
-    _touchOuterFlushTimer?.cancel();
-    _touchOuterFlushTimer = null;
+    _cancelOuterFlushRaf();
 
     // Remove iframe load listener
     if (_iframeLoadHandlerJs != null) {
@@ -812,6 +821,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView> {
     }
 
     _nullSelectionFocusLossTimer?.cancel();
+    _stopOuterFling();
+    _cancelOuterFlushRaf();
 
     // Remove parent-window viewport / scroll-lock listeners
     if (_viewportResizeHandlerJs != null) {
@@ -2446,9 +2457,12 @@ $customCss
       if (touches.length <= 0) return;
       final touch = touches.item(0);
       if (touch == null) return;
+      _stopOuterFling();
       _resetTouchHandoffState();
       _touchGestureActive = true;
-      _touchLastClientY = touch.clientY.toDouble();
+      final clientY = touch.clientY.toDouble();
+      _touchLastClientY = clientY;
+      _recordVelocitySample(clientY);
       if (!_isEditorVerticallyScrollable()) {
         _touchScrollOwner = _TouchScrollOwner.outer;
       }
@@ -2485,6 +2499,7 @@ $customCss
       final previousY = _touchLastClientY;
       _touchLastClientY = currentY;
       if (previousY == null) return;
+      _recordVelocitySample(currentY);
       final dy = previousY - currentY;
       _touchGestureDistancePx += dy.abs();
       _tryHandoffOuterScroll(event: event, deltaY: dy, isTouch: true);
@@ -2494,9 +2509,14 @@ $customCss
       if (_pendingOuterTouchDelta.abs() >= _touchOuterEndFlushMinPx) {
         _flushQueuedOuterTouchDelta();
       }
+      final wasOuter = _touchScrollOwner == _TouchScrollOwner.outer;
+      final velocity = wasOuter ? _computeTouchVelocity() : 0.0;
       _resetTouchHandoffState();
       _touchGestureActive = false;
       _isSelectionGestureActive = false;
+      if (wasOuter) {
+        _startOuterFling(velocity);
+      }
     }).toJS;
 
     _outerScrollTouchCancelHandlerJs = ((web.Event _) {
@@ -2656,37 +2676,35 @@ $customCss
         incomingDirection != queuedDirection &&
         deltaY.abs() < _touchOuterPendingDropOnFlipPx) {
       _pendingOuterTouchDelta = 0.0;
-      _touchOuterFlushTimer?.cancel();
-      _touchOuterFlushTimer = null;
+      _cancelOuterFlushRaf();
     }
     _pendingOuterTouchDelta += deltaY;
-    if (_touchOuterFlushTimer != null) return;
-    _touchOuterFlushTimer = Timer(_touchOuterFlushInterval, () {
-      _touchOuterFlushTimer = null;
-      _flushQueuedOuterTouchDelta();
-    });
+    _scheduleOuterFlushRaf();
+  }
+
+  void _scheduleOuterFlushRaf() {
+    if (_touchOuterFlushRafId != null) return;
+    _touchOuterFlushRafId = web.window.requestAnimationFrame(
+      ((JSAny _) {
+        _touchOuterFlushRafId = null;
+        _flushQueuedOuterTouchDelta();
+      }).toJS,
+    );
+  }
+
+  void _cancelOuterFlushRaf() {
+    final rafId = _touchOuterFlushRafId;
+    if (rafId != null) {
+      web.window.cancelAnimationFrame(rafId);
+      _touchOuterFlushRafId = null;
+    }
   }
 
   void _flushQueuedOuterTouchDelta() {
     if (_pendingOuterTouchDelta.abs() <= 0.01) return;
-    final raw = _pendingOuterTouchDelta;
+    final delta = _pendingOuterTouchDelta;
     _pendingOuterTouchDelta = 0.0;
-    final step = raw
-        .clamp(-_touchMaxOuterStepPerFramePx, _touchMaxOuterStepPerFramePx)
-        .toDouble();
-    final handled = _dispatchOuterScrollDelta(step);
-    if (!handled) return;
-
-    final remainder = raw - step;
-    if (remainder.abs() > 0.01) {
-      _pendingOuterTouchDelta += remainder;
-      if (_touchOuterFlushTimer == null) {
-        _touchOuterFlushTimer = Timer(_touchOuterFlushInterval, () {
-          _touchOuterFlushTimer = null;
-          _flushQueuedOuterTouchDelta();
-        });
-      }
-    }
+    _dispatchOuterScrollDelta(delta);
   }
 
   void _resetTouchHandoffState() {
@@ -2695,8 +2713,8 @@ $customCss
     _touchGestureDistancePx = 0.0;
     _pendingOuterTouchDelta = 0.0;
     _outerTouchDeltaDirection = 0;
-    _touchOuterFlushTimer?.cancel();
-    _touchOuterFlushTimer = null;
+    _cancelOuterFlushRaf();
+    _touchVelocitySamples.clear();
   }
 
   bool _dispatchOuterScrollDelta(double deltaY) {
@@ -2719,6 +2737,79 @@ $customCss
     }
     position.jumpTo(target);
     return true;
+  }
+
+  // ------------------------------------------------------------------
+  // Touch velocity tracking & fling
+  // ------------------------------------------------------------------
+
+  void _recordVelocitySample(double clientY) {
+    final now = web.window.performance.now();
+    _touchVelocitySamples.add((now, clientY));
+    if (_touchVelocitySamples.length > _maxVelocitySamples) {
+      _touchVelocitySamples.removeAt(0);
+    }
+  }
+
+  double _computeTouchVelocity() {
+    if (_touchVelocitySamples.length < 2) return 0.0;
+    final newest = _touchVelocitySamples.last;
+    final oldest = _touchVelocitySamples.first;
+    final dtMs = newest.$1 - oldest.$1;
+    if (dtMs <= 0) return 0.0;
+    final dtSeconds = dtMs / 1000.0;
+    // Sign: (oldest.clientY - newest.clientY) is positive when the finger
+    // moves upward, which corresponds to positive scroll-down delta — the
+    // same convention used by _tryHandoffOuterScroll / _dispatchOuterScrollDelta.
+    return (oldest.$2 - newest.$2) / dtSeconds;
+  }
+
+  void _startOuterFling(double velocityPxPerSec) {
+    _stopOuterFling();
+    if (velocityPxPerSec.abs() < _flingVelocityThreshold) return;
+
+    _outerFlingSimulation = ClampingScrollSimulation(
+      position: 0.0,
+      velocity: velocityPxPerSec,
+    );
+    _outerFlingLastPosition = 0.0;
+    _outerFlingTicker = createTicker(_onFlingTick);
+    _outerFlingTicker!.start();
+  }
+
+  void _onFlingTick(Duration elapsed) {
+    final simulation = _outerFlingSimulation;
+    if (simulation == null) {
+      _stopOuterFling();
+      return;
+    }
+
+    final t = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
+    if (simulation.isDone(t)) {
+      _stopOuterFling();
+      return;
+    }
+
+    final currentPosition = simulation.x(t);
+    final delta = currentPosition - _outerFlingLastPosition;
+    _outerFlingLastPosition = currentPosition;
+
+    if (delta.abs() < 0.5) {
+      _stopOuterFling();
+      return;
+    }
+
+    if (!_dispatchOuterScrollDelta(delta)) {
+      _stopOuterFling();
+    }
+  }
+
+  void _stopOuterFling() {
+    _outerFlingTicker?.stop();
+    _outerFlingTicker?.dispose();
+    _outerFlingTicker = null;
+    _outerFlingSimulation = null;
+    _outerFlingLastPosition = 0.0;
   }
 
   void _tryHandoffOuterScroll({
@@ -2762,33 +2853,28 @@ $customCss
       return;
     }
 
-    final transferWithHysteresis = _computeScrollTransfer(
+    // Single transfer computation used for both the owner decision and the
+    // delta dispatch, eliminating disagreement between two epsilon values.
+    final transfer = _computeScrollTransfer(
       deltaY,
       edgeEpsilon: _touchBoundaryHysteresisPx,
     );
+
     if (_touchScrollOwner == _TouchScrollOwner.undecided) {
-      _touchScrollOwner = transferWithHysteresis.outerRemainder.abs() > 0.01
+      _touchScrollOwner = transfer.outerRemainder.abs() > 0.01
           ? _TouchScrollOwner.outer
           : _TouchScrollOwner.inner;
     } else if (_touchScrollOwner == _TouchScrollOwner.inner &&
-        transferWithHysteresis.outerRemainder.abs() > 0.01) {
+        transfer.outerRemainder.abs() > 0.01) {
+      // Inner-to-outer transition: once promoted, the owner stays outer for
+      // the remainder of the gesture to avoid edge-bounce stutter.
       _touchScrollOwner = _TouchScrollOwner.outer;
-    } else if (_touchScrollOwner == _TouchScrollOwner.outer &&
-        transferWithHysteresis.outerRemainder.abs() <= 0.01) {
-      _touchScrollOwner = _TouchScrollOwner.inner;
     }
+    // NOTE: outer-to-inner flip is intentionally omitted. Allowing mid-gesture
+    // owner demotion caused visible stutter at scroll boundaries. A new
+    // touchstart resets the decision cleanly.
 
-    final transfer = _computeScrollTransfer(deltaY);
-    if (_touchScrollOwner == _TouchScrollOwner.inner &&
-        transferWithHysteresis.outerRemainder.abs() <= 0.01) {
-      // Let the browser perform native inner scrolling.
-      return;
-    }
-
-    if (_touchScrollOwner == _TouchScrollOwner.outer &&
-        transferWithHysteresis.outerRemainder.abs() <= 0.01) {
-      // Boundary hysteresis says inner can reliably consume again.
-      _touchScrollOwner = _TouchScrollOwner.inner;
+    if (_touchScrollOwner == _TouchScrollOwner.inner) {
       return;
     }
 
