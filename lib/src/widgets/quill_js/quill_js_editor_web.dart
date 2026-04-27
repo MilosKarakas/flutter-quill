@@ -675,6 +675,28 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
       _contentForAutoResize =
           widget.configuration.initialContent ?? (Delta()..insert('\n'));
     }
+
+    if (_loadState == _LoadState.ready &&
+        _quill != null &&
+        widget.configuration.placeholder !=
+            oldWidget.configuration.placeholder) {
+      _syncQuillPlaceholderDataAttribute();
+    }
+  }
+
+  /// Quill only reads the placeholder at construction; keep `data-placeholder`
+  /// in sync for `.ql-blank::before { content: attr(data-placeholder) }`.
+  void _syncQuillPlaceholderDataAttribute() {
+    final doc = _iframe.contentDocument;
+    if (doc == null) return;
+    final editor = doc.querySelector('.ql-editor') as web.HTMLElement?;
+    if (editor == null) return;
+    final p = widget.configuration.placeholder;
+    if (p == null || p.isEmpty) {
+      editor.removeAttribute('data-placeholder');
+    } else {
+      editor.setAttribute('data-placeholder', p);
+    }
   }
 
   @override
