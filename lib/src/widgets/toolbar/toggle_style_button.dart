@@ -17,6 +17,7 @@ typedef ToggleStyleButtonBuilder = Widget Function(
   VoidCallback? afterPressed, [
   double iconSize,
   QuillIconTheme? iconTheme,
+  String? semanticsIdentifier,
 ]);
 
 class ToggleStyleButton extends StatefulWidget {
@@ -31,6 +32,7 @@ class ToggleStyleButton extends StatefulWidget {
     this.iconTheme,
     this.afterButtonPressed,
     this.tooltip,
+    this.semanticsIdentifier,
     Key? key,
   })  : assert(controller != null || quillJsController != null,
             'Either controller or quillJsController must be provided'),
@@ -53,6 +55,7 @@ class ToggleStyleButton extends StatefulWidget {
 
   final VoidCallback? afterButtonPressed;
   final String? tooltip;
+  final String? semanticsIdentifier;
 
   /// Whether this button uses the QuillJs controller path.
   bool get _usesQuillJs => quillJsController != null;
@@ -89,6 +92,7 @@ class _ToggleStyleButtonState extends State<ToggleStyleButton> {
         widget.afterButtonPressed,
         widget.iconSize,
         widget.iconTheme,
+        widget.semanticsIdentifier,
       ),
     );
   }
@@ -189,6 +193,7 @@ Widget defaultToggleStyleButtonBuilder(
   VoidCallback? afterPressed, [
   double iconSize = kDefaultIconSize,
   QuillIconTheme? iconTheme,
+  String? semanticsIdentifier,
 ]) {
   final theme = Theme.of(context);
   final isEnabled = onPressed != null;
@@ -216,5 +221,6 @@ Widget defaultToggleStyleButtonBuilder(
     onPressed: onPressed,
     afterPressed: afterPressed,
     borderRadius: iconTheme?.borderRadius ?? 2,
+    semanticsIdentifier: semanticsIdentifier,
   );
 }

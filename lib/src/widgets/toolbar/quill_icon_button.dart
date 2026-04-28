@@ -13,6 +13,7 @@ class QuillIconButton extends StatelessWidget {
     this.highlightElevation = 1,
     this.borderRadius = 2,
     this.tooltip,
+    this.semanticsIdentifier,
     Key? key,
   }) : super(key: key);
 
@@ -25,6 +26,9 @@ class QuillIconButton extends StatelessWidget {
   final double highlightElevation;
   final double borderRadius;
   final String? tooltip;
+
+  /// Applied inside the button so it merges with the button semantics.
+  final String? semanticsIdentifier;
 
   @override
   Widget build(BuildContext context) {
@@ -45,9 +49,20 @@ class QuillIconButton extends StatelessWidget {
             onPressed?.call();
             afterPressed?.call();
           },
-          child: icon,
+          child: _semanticsWrappedIcon(),
         ),
       ),
+    );
+  }
+
+  Widget? _semanticsWrappedIcon() {
+    final id = semanticsIdentifier;
+    if (id == null || id.isEmpty) {
+      return icon;
+    }
+    return Semantics(
+      identifier: id,
+      child: icon ?? const SizedBox.shrink(),
     );
   }
 }

@@ -283,14 +283,6 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
           ToolbarButtons.search: 'Search'.i18n,
         };
 
-    Widget withSemantics(ToolbarButtons key, Widget child) {
-      final identifier = semanticsIdentifiers?[key];
-      if (identifier == null || identifier.isEmpty) {
-        return child;
-      }
-      return Semantics(identifier: identifier, child: child);
-    }
-
     return QuillToolbar(
       key: key,
       axis: axis,
@@ -346,18 +338,16 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             afterButtonPressed: afterButtonPressed,
           ),
         if (showBoldButton)
-          withSemantics(
-            ToolbarButtons.bold,
-            ToggleStyleButton(
-              attribute: Attribute.bold,
-              icon: Icons.format_bold,
-              iconSize: toolbarIconSize,
-              tooltip: buttonTooltips[ToolbarButtons.bold],
-              controller: controller,
-              quillJsController: quillJsController,
-              iconTheme: iconTheme,
-              afterButtonPressed: afterButtonPressed,
-            ),
+          ToggleStyleButton(
+            attribute: Attribute.bold,
+            icon: Icons.format_bold,
+            iconSize: toolbarIconSize,
+            tooltip: buttonTooltips[ToolbarButtons.bold],
+            controller: controller,
+            quillJsController: quillJsController,
+            iconTheme: iconTheme,
+            afterButtonPressed: afterButtonPressed,
+            semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.bold],
           ),
         if (showSubscript && controller != null)
           ToggleStyleButton(
@@ -380,18 +370,16 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             afterButtonPressed: afterButtonPressed,
           ),
         if (showItalicButton)
-          withSemantics(
-            ToolbarButtons.italic,
-            ToggleStyleButton(
-              attribute: Attribute.italic,
-              icon: Icons.format_italic,
-              iconSize: toolbarIconSize,
-              tooltip: buttonTooltips[ToolbarButtons.italic],
-              controller: controller,
-              quillJsController: quillJsController,
-              iconTheme: iconTheme,
-              afterButtonPressed: afterButtonPressed,
-            ),
+          ToggleStyleButton(
+            attribute: Attribute.italic,
+            icon: Icons.format_italic,
+            iconSize: toolbarIconSize,
+            tooltip: buttonTooltips[ToolbarButtons.italic],
+            controller: controller,
+            quillJsController: quillJsController,
+            iconTheme: iconTheme,
+            afterButtonPressed: afterButtonPressed,
+            semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.italic],
           ),
         if (showSmallButton && controller != null)
           ToggleStyleButton(
@@ -404,18 +392,17 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             afterButtonPressed: afterButtonPressed,
           ),
         if (showUnderLineButton)
-          withSemantics(
-            ToolbarButtons.underline,
-            ToggleStyleButton(
-              attribute: Attribute.underline,
-              icon: Icons.format_underline,
-              iconSize: toolbarIconSize,
-              tooltip: buttonTooltips[ToolbarButtons.underline],
-              controller: controller,
-              quillJsController: quillJsController,
-              iconTheme: iconTheme,
-              afterButtonPressed: afterButtonPressed,
-            ),
+          ToggleStyleButton(
+            attribute: Attribute.underline,
+            icon: Icons.format_underline,
+            iconSize: toolbarIconSize,
+            tooltip: buttonTooltips[ToolbarButtons.underline],
+            controller: controller,
+            quillJsController: quillJsController,
+            iconTheme: iconTheme,
+            afterButtonPressed: afterButtonPressed,
+            semanticsIdentifier:
+                semanticsIdentifiers?[ToolbarButtons.underline],
           ),
         if (showStrikeThrough && controller != null)
           ToggleStyleButton(
@@ -483,20 +470,18 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
           ),
 
         if (showLink)
-          withSemantics(
-            ToolbarButtons.link,
-            LinkStyleButton(
-              tooltip: buttonTooltips[ToolbarButtons.link],
-              controller: controller,
-              quillJsController: quillJsController,
-              iconSize: toolbarIconSize,
-              iconTheme: iconTheme,
-              dialogTheme: dialogTheme,
-              afterButtonPressed: afterButtonPressed,
-              linkRegExp: linkRegExp,
-              linkDialogAction: linkDialogAction,
-              linkDialogBuilder: linkDialogBuilder,
-            ),
+          LinkStyleButton(
+            tooltip: buttonTooltips[ToolbarButtons.link],
+            controller: controller,
+            quillJsController: quillJsController,
+            iconSize: toolbarIconSize,
+            iconTheme: iconTheme,
+            dialogTheme: dialogTheme,
+            afterButtonPressed: afterButtonPressed,
+            linkRegExp: linkRegExp,
+            linkDialogAction: linkDialogAction,
+            linkDialogBuilder: linkDialogBuilder,
+            semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.link],
           ),
         if (showSearchButton && controller != null)
           SearchButton(
@@ -583,32 +568,30 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
           ),
 
         if (showListNumbers)
-          withSemantics(
-            ToolbarButtons.listNumbers,
-            ToggleStyleButton(
-              attribute: Attribute.ol,
-              tooltip: buttonTooltips[ToolbarButtons.listNumbers],
-              controller: controller,
-              quillJsController: quillJsController,
-              icon: Icons.format_list_numbered,
-              iconSize: toolbarIconSize,
-              iconTheme: iconTheme,
-              afterButtonPressed: afterButtonPressed,
-            ),
+          ToggleStyleButton(
+            attribute: Attribute.ol,
+            tooltip: buttonTooltips[ToolbarButtons.listNumbers],
+            controller: controller,
+            quillJsController: quillJsController,
+            icon: Icons.format_list_numbered,
+            iconSize: toolbarIconSize,
+            iconTheme: iconTheme,
+            afterButtonPressed: afterButtonPressed,
+            semanticsIdentifier:
+                semanticsIdentifiers?[ToolbarButtons.listNumbers],
           ),
         if (showListBullets)
-          withSemantics(
-            ToolbarButtons.listBullets,
-            ToggleStyleButton(
-              attribute: Attribute.ul,
-              tooltip: buttonTooltips[ToolbarButtons.listBullets],
-              controller: controller,
-              quillJsController: quillJsController,
-              icon: Icons.format_list_bulleted,
-              iconSize: toolbarIconSize,
-              iconTheme: iconTheme,
-              afterButtonPressed: afterButtonPressed,
-            ),
+          ToggleStyleButton(
+            attribute: Attribute.ul,
+            tooltip: buttonTooltips[ToolbarButtons.listBullets],
+            controller: controller,
+            quillJsController: quillJsController,
+            icon: Icons.format_list_bulleted,
+            iconSize: toolbarIconSize,
+            iconTheme: iconTheme,
+            afterButtonPressed: afterButtonPressed,
+            semanticsIdentifier:
+                semanticsIdentifiers?[ToolbarButtons.listBullets],
           ),
         if (showListCheck && controller != null)
           ToggleCheckListButton(

@@ -26,6 +26,7 @@ class LinkStyleButton extends StatefulWidget {
     this.linkRegExp,
     this.linkDialogAction,
     this.linkDialogBuilder,
+    this.semanticsIdentifier,
     Key? key,
   }) : assert(
          controller != null || quillJsController != null,
@@ -44,6 +45,7 @@ class LinkStyleButton extends StatefulWidget {
   final RegExp? linkRegExp;
   final LinkDialogAction? linkDialogAction;
   final Widget Function(String, String)? linkDialogBuilder;
+  final String? semanticsIdentifier;
 
   bool get _usesQuillJs => quillJsController != null;
 
@@ -105,6 +107,7 @@ class _LinkStyleButtonState extends State<LinkStyleButton> {
       borderRadius: widget.iconTheme?.borderRadius ?? 2,
       onPressed: pressedHandler,
       afterPressed: widget.afterButtonPressed,
+      semanticsIdentifier: widget.semanticsIdentifier,
     );
   }
 

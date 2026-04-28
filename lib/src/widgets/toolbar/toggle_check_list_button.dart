@@ -106,6 +106,7 @@ class _ToggleCheckListButtonState extends State<ToggleCheckListButton> {
         widget.afterButtonPressed,
         widget.iconSize,
         widget.iconTheme,
+        null,
       ),
     );
   }
