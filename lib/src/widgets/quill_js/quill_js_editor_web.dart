@@ -2439,17 +2439,32 @@ $customCss
   void _setupEscapeKeyHandler() {
     _escapeKeyHandlerJs = ((web.Event event) {
       final keyEvent = event as web.KeyboardEvent;
-      if (keyEvent.key == 'Escape' || keyEvent.key == 'Esc') {
-        event.preventDefault();
-        event.stopPropagation();
+      if (keyEvent.key != 'Escape' && keyEvent.key != 'Esc') return;
+      event.preventDefault();
+      event.stopPropagation();
 
-        final node = widget.focusNode;
-        final shouldAdvanceFocus = node?.hasFocus ?? false;
-        _blurEditorAndSyncFlutterFocus();
-        if (shouldAdvanceFocus) {
-          node!.nextFocus();
-        }
+      if (!_editorHasFocus) return;
+
+      _iframe.blur();
+
+      _blurEditorAndSyncFlutterFocus();
+
+      final onEscape = widget.configuration.onEscapePressed;
+      if (onEscape != null) {
+        scheduleMicrotask(() {
+          if (!mounted) return;
+          onEscape();
+        });
+        return;
       }
+
+      final node = widget.focusNode;
+      if (node?.context == null) return;
+      scheduleMicrotask(() {
+        if (!mounted) return;
+        node!.requestFocus();
+        node.nextFocus();
+      });
     }).toJS;
 
     // Use capture phase to handle escape before Quill/browser defaults.

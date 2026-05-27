@@ -281,6 +281,20 @@ class QuillJsEditorConfiguration {
   /// Should match top + bottom editor CSS padding.
   final double autoResizeVerticalPadding;
 
+  /// Called when the user presses Escape inside the editor.
+  ///
+  /// Before this callback fires, the iframe is blurred (DOM focus is returned
+  /// to the parent document) and Quill's internal selection is cleared. The
+  /// host is then free to advance focus to wherever it wants — e.g. a toolbar
+  /// button — by calling `someFocusNode.requestFocus()`.
+  ///
+  /// If null, [QuillJsEditorView] falls back to a best-effort
+  /// `widget.focusNode?.nextFocus()`, which may not find the right target if
+  /// the editor and the desired next focus live in different traversal scopes
+  /// (common on Flutter Web where the editor is hosted in a platform-view
+  /// iframe).
+  final VoidCallback? onEscapePressed;
+
   const QuillJsEditorConfiguration({
     this.quillJsUrl,
     this.quillCssUrl,
@@ -307,6 +321,7 @@ class QuillJsEditorConfiguration {
     this.maxLines = 1,
     this.autoResizeHorizontalPadding = 32,
     this.autoResizeVerticalPadding = 24,
+    this.onEscapePressed,
   }) : assert(minLines > 0),
        assert(maxLines >= minLines),
        assert(autoResizeHorizontalPadding >= 0),
