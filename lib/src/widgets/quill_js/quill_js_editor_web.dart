@@ -2006,7 +2006,16 @@ $customCss
       _maybeMoveCursorToEndOnFirstFocus();
       _scheduleKeyboardSettleRetries();
     }
-    _setPhaseStableIfAcquiring(reason: 'selection_non_null');
+    // Do not mark acquisition as stable on the first non-null selection.
+    //
+    // On Android WebView cold-open paths, Quill can emit:
+    //   selection(non-null) -> selection(null)
+    // within the same keyboard animation window. Promoting to stable here
+    // disables acquisition-time blur suppression too early and allows the
+    // transient null to close IME.
+    //
+    // Acquisition should become stable only after viewport-derived keyboard
+    // readings also stabilize (see _refreshKeyboardHeightFromViewport).
 
     // Sync format state whenever selection changes (cursor moves, text selected, etc.)
     _syncFormatState();
