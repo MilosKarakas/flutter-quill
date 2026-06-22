@@ -1674,6 +1674,30 @@ $customCss
     });
   }
 
+  void _attemptAcquisitionFocusReacquire({required String trigger}) {
+    if (!_shouldSuppressUnfocusDuringAcquisition()) return;
+    if (_loadState != _LoadState.ready) return;
+    if (!widget.controller.isAttached) return;
+    if (_hasDomEditorFocus()) return;
+
+    final node = widget.focusNode;
+    if (node != null && !node.hasFocus) {
+      // Respect true Flutter blur. Reacquire only while Flutter focus intent
+      // still targets the editor.
+      return;
+    }
+
+    _traceFocus('acquisition_reacquire_focus', {
+      'trigger': trigger,
+      'focusPhase': _focusPhase.name,
+      'editorHasFocus': _editorHasFocus,
+      'flutterHasFocus': node?.hasFocus,
+    });
+    _focusJsEditor();
+    _refreshKeyboardHeightFromViewport();
+    _scheduleKeyboardSettleRetries();
+  }
+
   /// JS editor focus changed -> sync to Flutter [FocusNode].
   void _onJsFocusChanged({required bool hasFocus}) {
     final node = widget.focusNode;
@@ -1685,6 +1709,7 @@ $customCss
       'editorHasFocus': _editorHasFocus,
     });
     if (!hasFocus && _shouldSuppressUnfocusDuringAcquisition()) {
+      _attemptAcquisitionFocusReacquire(trigger: 'js_focus_lost');
       return;
     }
 
@@ -1957,6 +1982,8 @@ $customCss
       if (_shouldSuppressUnfocusDuringAcquisition()) {
         if (_isAcquisitionExpired()) {
           _cancelAcquisition(reason: 'selection_null_timeout');
+        } else {
+          _attemptAcquisitionFocusReacquire(trigger: 'selection_null');
         }
         return;
       }
