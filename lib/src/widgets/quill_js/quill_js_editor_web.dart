@@ -605,7 +605,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
 
   static const Duration _domFocusRetryDelay = Duration(milliseconds: 40);
   static const int _domFocusRetryCount = 3;
-  static const Duration _maxAcquisitionWindow = Duration(milliseconds: 400);
+  static const Duration _maxAcquisitionWindow = Duration(milliseconds: 900);
 
   // When true, the text-change handler skips firing onContentChanged.
   // Used to suppress notifications during programmatic setContents calls.
@@ -1517,6 +1517,16 @@ $customCss
     if (node == null) return;
 
     if (!node.hasFocus) {
+      // In some Android WebView containers, Flutter focus can transiently drop
+      // during cold acquisition while DOM focus is still active. Blurring JS
+      // here tears down IME and causes keyboard open/close churn.
+      if (!_explicitBlurRequested && _hasDomEditorFocus()) {
+        _traceFocus('flutter_blur_ignored_dom_still_focused', {
+          'focusPhase': _focusPhase.name,
+        });
+        _queueJsToFlutterFocusSync(true);
+        return;
+      }
       if (_isApplyingFocusToJs) {
         return;
       }
