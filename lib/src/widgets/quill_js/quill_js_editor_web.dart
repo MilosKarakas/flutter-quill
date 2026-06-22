@@ -389,6 +389,11 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     with TickerProviderStateMixin {
   static int _nextId = 0;
 
+  void _traceFocus(String event, [Map<String, Object?> data = const {}]) {
+    final timestamp = DateTime.now().toIso8601String();
+    print('KLAPP_FOCUS $timestamp QuillJsEditorView $event ${data.toString()}');
+  }
+
   late final String _viewType;
   late final web.HTMLIFrameElement _iframe;
 
@@ -479,8 +484,17 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     if (_nullSelectionFocusLossTimer?.isActive ?? false) return;
     if (_isPasteInProgress) return;
 
+    _traceFocus('selection_null_debounce_scheduled', {
+      'delayMs': 80,
+      'focusPhase': _focusPhase.name,
+      'editorHasFocus': _editorHasFocus,
+      'flutterHasFocus': widget.focusNode?.hasFocus,
+    });
     _nullSelectionFocusLossTimer = Timer(const Duration(milliseconds: 80), () {
       if (!mounted || _isPasteInProgress) return;
+      _traceFocus('selection_null_debounce_fired', {
+        'action': 'close_keyboard_and_unfocus',
+      });
       widget.controller.keyboardHeight.value = 0.0;
       _editorHasFocus = false;
       _onJsFocusChanged(hasFocus: false);
@@ -1370,6 +1384,7 @@ $customCss
       if (widget.autoFocus) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || _quill == null) return;
+          _traceFocus('autofocus_requested');
           _quill!.focus();
           _editorHasFocus = true;
           _onJsFocusChanged(hasFocus: true);
@@ -1394,6 +1409,7 @@ $customCss
       if (!mounted) return;
       if (_loadState != _LoadState.ready) return;
       if (!widget.controller.isAttached) return;
+      _traceFocus('editor_ready_callback');
       onEditorReady();
     });
   }
@@ -1478,6 +1494,11 @@ $customCss
     final node = widget.focusNode;
     if (node == null) return;
 
+    _traceFocus('flutter_focus_listener', {
+      'hasFocus': node.hasFocus,
+      'hasPrimaryFocus': node.hasPrimaryFocus,
+      'canRequestFocus': node.canRequestFocus,
+    });
     _scheduleFlutterFocusSyncToJs();
   }
 
@@ -1510,6 +1531,7 @@ $customCss
       }
       _pendingDomFocusSync = false;
       _focusSyncEpoch++;
+      _traceFocus('flutter_to_js_blur', {'reason': 'flutter_focus_lost'});
       widget.controller.keyboardHeight.value = 0.0;
       if (!widget.controller.isAttached) {
         return;
@@ -1522,6 +1544,7 @@ $customCss
   }
 
   void _focusJsEditor() {
+    _traceFocus('js_focus_requested', {'via': 'focus_bridge'});
     _isApplyingFocusToJs = true;
     try {
       _withFocusSyncGuard(widget.controller.focus);
@@ -1532,6 +1555,7 @@ $customCss
   }
 
   void _blurJsEditor() {
+    _traceFocus('js_blur_requested', {'via': 'focus_bridge'});
     _withFocusSyncGuard(widget.controller.blur);
   }
 
@@ -1644,6 +1668,12 @@ $customCss
   void _onJsFocusChanged({required bool hasFocus}) {
     final node = widget.focusNode;
     if (node == null) return;
+    _traceFocus('js_focus_changed', {
+      'hasFocus': hasFocus,
+      'focusPhase': _focusPhase.name,
+      'flutterHasFocus': node.hasFocus,
+      'editorHasFocus': _editorHasFocus,
+    });
     if (!hasFocus && _shouldSuppressUnfocusDuringAcquisition()) {
       return;
     }
@@ -1713,8 +1743,10 @@ $customCss
     _isSyncingFocus = true;
     try {
       if (jsHasFocus && !node.hasFocus) {
+        _traceFocus('flutter_request_focus_from_js');
         node.requestFocus();
       } else if (!jsHasFocus && node.hasFocus) {
+        _traceFocus('flutter_unfocus_from_js');
         node.unfocus();
       }
     } finally {
@@ -1902,6 +1934,13 @@ $customCss
   }
 
   void _onSelectionChanged(JSObject? range, String? source) {
+    _traceFocus('selection_change', {
+      'isNull': range == null,
+      'source': source,
+      'focusPhase': _focusPhase.name,
+      'editorHasFocus': _editorHasFocus,
+      'flutterHasFocus': widget.focusNode?.hasFocus,
+    });
     if (range == null) {
       _lastSelectionLength = 0;
       _isSelectionGestureActive = false;
@@ -2083,6 +2122,12 @@ $customCss
     final clientPoint = _extractClientPoint(event);
     if (clientPoint == null) return;
     final tapIndex = _resolveTapIndex(clientPoint.$1, clientPoint.$2);
+    _traceFocus('intercept_tap_focus', {
+      'eventType': event.type,
+      'tapIndex': tapIndex,
+      'editorHasFocus': _editorHasFocus,
+      'domHasFocus': _hasDomEditorFocus(),
+    });
 
     // iOS Safari can drop keyboard open if a touch-start focus path is fully
     // cancelled via preventDefault on an empty editor. Prefer a native tap
@@ -2201,6 +2246,7 @@ $customCss
   void _focusEditorFromInterceptedTap(int? tapIndex) {
     final quill = _quill;
     if (quill == null) return;
+    _traceFocus('focus_from_intercepted_tap', {'tapIndex': tapIndex});
     _beginAcquisition(reason: 'intercepted_tap');
 
     // Mark this as user-driven so first-focus move-to-end does not override
@@ -3830,12 +3876,19 @@ $customCss
   // ------------------------------------------------------------------
 
   void _onTapOutside(PointerDownEvent _) {
+    _traceFocus('tap_outside', {
+      'editorHasFocus': _editorHasFocus,
+      'focusPhase': _focusPhase.name,
+      'ignoreActive': _ignoreTapOutsideUntil != null,
+    });
     final ignoreUntil = _ignoreTapOutsideUntil;
     if (ignoreUntil != null && DateTime.now().isBefore(ignoreUntil)) {
+      _traceFocus('tap_outside_ignored', {'reason': 'ignore_window_active'});
       return;
     }
     if (!_editorHasFocus || _quill == null) return;
     _explicitBlurRequested = true;
+    _traceFocus('tap_outside_blur_triggered');
     _blurEditorAndSyncFlutterFocus();
   }
 
