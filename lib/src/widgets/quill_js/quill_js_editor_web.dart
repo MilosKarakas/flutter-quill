@@ -590,8 +590,12 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   int _focusSyncEpoch = 0;
   _FocusPhase _focusPhase = _FocusPhase.idle;
   DateTime? _acquisitionStartedAt;
+  int _acquisitionCycle = 0;
   bool _hasObservedStableSelectionDuringAcquisition = false;
   int _stableKeyboardFramesDuringAcquisition = 0;
+  int _nullSelectionEventsDuringAcquisition = 0;
+  int _jsFocusLossEventsDuringAcquisition = 0;
+  int _reacquireAttemptsDuringAcquisition = 0;
 
   /// True while [controller.focus] is running. Iframe DOM focus can make the
   /// wrapping [FocusNode] briefly report `hasFocus=false`; ignore that blur.
@@ -669,6 +673,17 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   static const Duration _tapOutsideIgnoreAfterIntercept = Duration(
     milliseconds: 350,
   );
+  static const List<int> _acquisitionReacquireDelaysMs = <int>[
+    0,
+    32,
+    72,
+    140,
+    240,
+    380,
+    560,
+    760,
+    980,
+  ];
   bool _explicitBlurRequested = false;
 
   void _setFocusPhase(_FocusPhase phase) {
@@ -679,15 +694,36 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     if (_focusPhase == _FocusPhase.acquiring && !_isAcquisitionExpired()) {
       return;
     }
+    _acquisitionCycle++;
     _acquisitionStartedAt = DateTime.now();
     _hasObservedStableSelectionDuringAcquisition = false;
     _stableKeyboardFramesDuringAcquisition = 0;
+    _nullSelectionEventsDuringAcquisition = 0;
+    _jsFocusLossEventsDuringAcquisition = 0;
+    _reacquireAttemptsDuringAcquisition = 0;
     _explicitBlurRequested = false;
     _setFocusPhase(_FocusPhase.acquiring);
+    _scheduleAcquisitionKeepAliveReacquire();
     assert(() {
       debugPrint('QuillJsEditorView: acquiring started ($reason)');
       return true;
     }());
+  }
+
+  void _scheduleAcquisitionKeepAliveReacquire() {
+    final cycle = _acquisitionCycle;
+    for (final delayMs in _acquisitionReacquireDelaysMs) {
+      Future<void>.delayed(Duration(milliseconds: delayMs), () {
+        if (!mounted) return;
+        if (_acquisitionCycle != cycle) return;
+        if (_focusPhase != _FocusPhase.acquiring) return;
+        if (_isAcquisitionExpired()) {
+          _cancelAcquisition(reason: 'keepalive_timeout');
+          return;
+        }
+        _attemptAcquisitionFocusReacquire(trigger: 'keepalive');
+      });
+    }
   }
 
   void _markStableSelectionObserved() {
@@ -704,9 +740,25 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     if (_focusPhase != _FocusPhase.acquiring) return;
     final hadStableSelection = _hasObservedStableSelectionDuringAcquisition;
     final stableKeyboardFrames = _stableKeyboardFramesDuringAcquisition;
+    final nullSelections = _nullSelectionEventsDuringAcquisition;
+    final jsFocusLosses = _jsFocusLossEventsDuringAcquisition;
+    final reacquireAttempts = _reacquireAttemptsDuringAcquisition;
     _setFocusPhase(_FocusPhase.stable);
     _acquisitionStartedAt = null;
     _stableKeyboardFramesDuringAcquisition = 0;
+    _nullSelectionEventsDuringAcquisition = 0;
+    _jsFocusLossEventsDuringAcquisition = 0;
+    _reacquireAttemptsDuringAcquisition = 0;
+    _traceFocus('acquisition_summary', {
+      'cycle': _acquisitionCycle,
+      'result': 'stable',
+      'reason': reason,
+      'selectionStableObserved': hadStableSelection,
+      'stableKeyboardFrames': stableKeyboardFrames,
+      'nullSelectionsDuringAcquire': nullSelections,
+      'jsFocusLossDuringAcquire': jsFocusLosses,
+      'reacquireAttemptsDuringAcquire': reacquireAttempts,
+    });
     assert(() {
       debugPrint(
         'QuillJsEditorView: stable ($reason, '
@@ -718,10 +770,24 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
 
   void _cancelAcquisition({required String reason}) {
     if (_focusPhase != _FocusPhase.acquiring) return;
+    final nullSelections = _nullSelectionEventsDuringAcquisition;
+    final jsFocusLosses = _jsFocusLossEventsDuringAcquisition;
+    final reacquireAttempts = _reacquireAttemptsDuringAcquisition;
     _setFocusPhase(_FocusPhase.idle);
     _acquisitionStartedAt = null;
     _hasObservedStableSelectionDuringAcquisition = false;
     _stableKeyboardFramesDuringAcquisition = 0;
+    _nullSelectionEventsDuringAcquisition = 0;
+    _jsFocusLossEventsDuringAcquisition = 0;
+    _reacquireAttemptsDuringAcquisition = 0;
+    _traceFocus('acquisition_summary', {
+      'cycle': _acquisitionCycle,
+      'result': 'canceled',
+      'reason': reason,
+      'nullSelectionsDuringAcquire': nullSelections,
+      'jsFocusLossDuringAcquire': jsFocusLosses,
+      'reacquireAttemptsDuringAcquire': reacquireAttempts,
+    });
     assert(() {
       debugPrint('QuillJsEditorView: acquiring canceled ($reason)');
       return true;
@@ -1682,16 +1748,18 @@ $customCss
 
     final node = widget.focusNode;
     if (node != null && !node.hasFocus) {
-      // Respect true Flutter blur. Reacquire only while Flutter focus intent
-      // still targets the editor.
-      return;
+      // During acquisition, Flutter focus can transiently drop before DOM focus
+      // settles in WebView. Re-request focus to preserve editor focus intent.
+      node.requestFocus();
     }
 
+    _reacquireAttemptsDuringAcquisition++;
     _traceFocus('acquisition_reacquire_focus', {
       'trigger': trigger,
       'focusPhase': _focusPhase.name,
       'editorHasFocus': _editorHasFocus,
       'flutterHasFocus': node?.hasFocus,
+      'reacquireAttemptsDuringAcquire': _reacquireAttemptsDuringAcquisition,
     });
     _focusJsEditor();
     _refreshKeyboardHeightFromViewport();
@@ -1709,6 +1777,7 @@ $customCss
       'editorHasFocus': _editorHasFocus,
     });
     if (!hasFocus && _shouldSuppressUnfocusDuringAcquisition()) {
+      _jsFocusLossEventsDuringAcquisition++;
       _attemptAcquisitionFocusReacquire(trigger: 'js_focus_lost');
       return;
     }
@@ -1980,6 +2049,7 @@ $customCss
       _lastSelectionLength = 0;
       _isSelectionGestureActive = false;
       if (_shouldSuppressUnfocusDuringAcquisition()) {
+        _nullSelectionEventsDuringAcquisition++;
         if (_isAcquisitionExpired()) {
           _cancelAcquisition(reason: 'selection_null_timeout');
         } else {
