@@ -475,6 +475,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   /// If a non-null selection arrives within the window the timer is cancelled,
   /// preventing the false focus loss.
   void _scheduleNullSelectionFocusLoss() {
+    if (_shouldSuppressUnfocusDuringAcquisition()) return;
     if (_nullSelectionFocusLossTimer?.isActive ?? false) return;
     if (_isPasteInProgress) return;
 
@@ -516,10 +517,41 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     final hasFocusIntent =
         _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
 
+    // During acquisition, transient focus oscillations can happen before JS and
+    // Flutter focus ownership converge. Do not force-close on those frames.
+    if (!hasFocusIntent && _shouldSuppressUnfocusDuringAcquisition()) {
+      if (_isAcquisitionExpired()) {
+        _cancelAcquisition(reason: 'viewport_no_focus_timeout');
+      }
+      return;
+    }
+
     // When editor is not focused, always treat keyboard as closed.
     if (!hasFocusIntent) {
       _lowKeyboardFramesWhileFocused = 0;
       widget.controller.keyboardHeight.value = 0.0;
+      return;
+    }
+
+    if (_focusPhase == _FocusPhase.acquiring) {
+      if (_isAcquisitionExpired()) {
+        _cancelAcquisition(reason: 'viewport_timeout');
+      }
+
+      // During acquisition, low keyboard samples are treated as transient and
+      // must not close the keyboard path.
+      if (kb > _keyboardOpenThresholdPx) {
+        _lowKeyboardFramesWhileFocused = 0;
+        _stableKeyboardFramesDuringAcquisition++;
+        widget.controller.keyboardHeight.value = kb;
+        _scheduleEnsureSelectionVisible(const Duration(milliseconds: 24));
+        if (_hasObservedStableSelectionDuringAcquisition &&
+            _stableKeyboardFramesDuringAcquisition >= 2) {
+          _setPhaseStableIfAcquiring(reason: 'keyboard_stable_during_acquire');
+        }
+      } else {
+        _stableKeyboardFramesDuringAcquisition = 0;
+      }
       return;
     }
 
@@ -542,6 +574,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   bool _editorHasFocus = false;
   bool _pendingDomFocusSync = false;
   int _focusSyncEpoch = 0;
+  _FocusPhase _focusPhase = _FocusPhase.idle;
+  DateTime? _acquisitionStartedAt;
+  bool _hasObservedStableSelectionDuringAcquisition = false;
+  int _stableKeyboardFramesDuringAcquisition = 0;
 
   /// True while [controller.focus] is running. Iframe DOM focus can make the
   /// wrapping [FocusNode] briefly report `hasFocus=false`; ignore that blur.
@@ -555,6 +591,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
 
   static const Duration _domFocusRetryDelay = Duration(milliseconds: 40);
   static const int _domFocusRetryCount = 3;
+  static const Duration _maxAcquisitionWindow = Duration(milliseconds: 400);
 
   // When true, the text-change handler skips firing onContentChanged.
   // Used to suppress notifications during programmatic setContents calls.
@@ -618,6 +655,80 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   static const Duration _tapOutsideIgnoreAfterIntercept = Duration(
     milliseconds: 350,
   );
+  bool _explicitBlurRequested = false;
+
+  void _setFocusPhase(_FocusPhase phase) {
+    _focusPhase = phase;
+  }
+
+  void _beginAcquisition({required String reason}) {
+    if (_focusPhase == _FocusPhase.acquiring && !_isAcquisitionExpired()) {
+      return;
+    }
+    _acquisitionStartedAt = DateTime.now();
+    _hasObservedStableSelectionDuringAcquisition = false;
+    _stableKeyboardFramesDuringAcquisition = 0;
+    _explicitBlurRequested = false;
+    _setFocusPhase(_FocusPhase.acquiring);
+    assert(() {
+      debugPrint('QuillJsEditorView: acquiring started ($reason)');
+      return true;
+    }());
+  }
+
+  void _markStableSelectionObserved() {
+    _hasObservedStableSelectionDuringAcquisition = true;
+  }
+
+  bool _isAcquisitionExpired() {
+    final startedAt = _acquisitionStartedAt;
+    if (startedAt == null) return false;
+    return DateTime.now().difference(startedAt) > _maxAcquisitionWindow;
+  }
+
+  void _setPhaseStableIfAcquiring({required String reason}) {
+    if (_focusPhase != _FocusPhase.acquiring) return;
+    final hadStableSelection = _hasObservedStableSelectionDuringAcquisition;
+    final stableKeyboardFrames = _stableKeyboardFramesDuringAcquisition;
+    _setFocusPhase(_FocusPhase.stable);
+    _acquisitionStartedAt = null;
+    _stableKeyboardFramesDuringAcquisition = 0;
+    assert(() {
+      debugPrint(
+        'QuillJsEditorView: stable ($reason, '
+        'selection=$hadStableSelection, kbFrames=$stableKeyboardFrames)',
+      );
+      return true;
+    }());
+  }
+
+  void _cancelAcquisition({required String reason}) {
+    if (_focusPhase != _FocusPhase.acquiring) return;
+    _setFocusPhase(_FocusPhase.idle);
+    _acquisitionStartedAt = null;
+    _hasObservedStableSelectionDuringAcquisition = false;
+    _stableKeyboardFramesDuringAcquisition = 0;
+    assert(() {
+      debugPrint('QuillJsEditorView: acquiring canceled ($reason)');
+      return true;
+    }());
+  }
+
+  void _resetFocusPhaseState() {
+    _setFocusPhase(_FocusPhase.idle);
+    _acquisitionStartedAt = null;
+    _hasObservedStableSelectionDuringAcquisition = false;
+    _stableKeyboardFramesDuringAcquisition = 0;
+    _explicitBlurRequested = false;
+  }
+
+  bool _shouldSuppressUnfocusDuringAcquisition() {
+    return _focusPhase == _FocusPhase.acquiring && !_explicitBlurRequested;
+  }
+
+  bool _shouldSuppressOuterHandoffDuringAcquisition() {
+    return _focusPhase == _FocusPhase.acquiring;
+  }
 
   // ------------------------------------------------------------------
   // Lifecycle
@@ -879,6 +990,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
 
     // Restore parent overflow now that the editor is gone
     _restoreParentOverflow();
+    _resetFocusPhaseState();
 
     super.dispose();
   }
@@ -1387,6 +1499,9 @@ $customCss
       if (_isApplyingFocusToJs) {
         return;
       }
+      if (_shouldSuppressUnfocusDuringAcquisition()) {
+        return;
+      }
       // On Android, context-menu paste briefly removes platform-view focus
       // before the paste event arrives. Don't tear down keyboard state
       // while a paste operation is in flight.
@@ -1480,11 +1595,25 @@ $customCss
   /// stale state prevents a later `requestFocus()` from emitting a new focus
   /// change event. We sync Flutter focus eagerly to keep both sides aligned.
   void _blurEditorAndSyncFlutterFocus() {
+    _setFocusPhase(_FocusPhase.blurring);
+    final explicitBlurRequested = _explicitBlurRequested;
+    assert(() {
+      debugPrint(
+        'QuillJsEditorView: blur start (explicit=$explicitBlurRequested)',
+      );
+      return true;
+    }());
     final quill = _quill;
-    if (quill == null) return;
+    if (quill == null) {
+      _setFocusPhase(_FocusPhase.idle);
+      _explicitBlurRequested = false;
+      return;
+    }
     quill.blur();
     _editorHasFocus = false;
     _onJsFocusChanged(hasFocus: false);
+    _setFocusPhase(_FocusPhase.idle);
+    _explicitBlurRequested = false;
   }
 
   void _withFocusSyncGuard(VoidCallback action) {
@@ -1515,6 +1644,9 @@ $customCss
   void _onJsFocusChanged({required bool hasFocus}) {
     final node = widget.focusNode;
     if (node == null) return;
+    if (!hasFocus && _shouldSuppressUnfocusDuringAcquisition()) {
+      return;
+    }
 
     if (_isSyncingFocus || _isApplyingFocusToJs) {
       _queueJsToFlutterFocusSync(hasFocus);
@@ -1572,6 +1704,9 @@ $customCss
     final node = widget.focusNode;
     if (node == null || _isSyncingFocus || _isApplyingFocusToJs) {
       _queueJsToFlutterFocusSync(jsHasFocus);
+      return;
+    }
+    if (!jsHasFocus && _shouldSuppressUnfocusDuringAcquisition()) {
       return;
     }
 
@@ -1770,12 +1905,22 @@ $customCss
     if (range == null) {
       _lastSelectionLength = 0;
       _isSelectionGestureActive = false;
+      if (_shouldSuppressUnfocusDuringAcquisition()) {
+        if (_isAcquisitionExpired()) {
+          _cancelAcquisition(reason: 'selection_null_timeout');
+        }
+        return;
+      }
+      if (_focusPhase == _FocusPhase.acquiring && _isAcquisitionExpired()) {
+        _cancelAcquisition(reason: 'selection_null_timeout');
+      }
       _scheduleNullSelectionFocusLoss();
       return;
     }
 
     // A valid range arrived — cancel any pending debounced focus loss.
     _cancelPendingNullSelectionFocusLoss();
+    _markStableSelectionObserved();
 
     final jsRange = _JsRange._(range);
     _lastSelectionLength = jsRange.length;
@@ -1812,6 +1957,7 @@ $customCss
       _maybeMoveCursorToEndOnFirstFocus();
       _scheduleKeyboardSettleRetries();
     }
+    _setPhaseStableIfAcquiring(reason: 'selection_non_null');
 
     // Sync format state whenever selection changes (cursor moves, text selected, etc.)
     _syncFormatState();
@@ -2055,6 +2201,7 @@ $customCss
   void _focusEditorFromInterceptedTap(int? tapIndex) {
     final quill = _quill;
     if (quill == null) return;
+    _beginAcquisition(reason: 'intercepted_tap');
 
     // Mark this as user-driven so first-focus move-to-end does not override
     // the tapped caret placement.
@@ -2680,6 +2827,12 @@ $customCss
     }).toJS;
 
     _outerScrollTouchEndHandlerJs = ((web.Event _) {
+      if (_shouldSuppressOuterHandoffDuringAcquisition()) {
+        _resetTouchHandoffState();
+        _touchGestureActive = false;
+        _isSelectionGestureActive = false;
+        return;
+      }
       if (_pendingOuterTouchDelta.abs() >= _touchOuterEndFlushMinPx) {
         _flushQueuedOuterTouchDelta();
       }
@@ -2694,6 +2847,12 @@ $customCss
     }).toJS;
 
     _outerScrollTouchCancelHandlerJs = ((web.Event _) {
+      if (_shouldSuppressOuterHandoffDuringAcquisition()) {
+        _resetTouchHandoffState();
+        _touchGestureActive = false;
+        _isSelectionGestureActive = false;
+        return;
+      }
       if (_pendingOuterTouchDelta.abs() >= _touchOuterEndFlushMinPx) {
         _flushQueuedOuterTouchDelta();
       }
@@ -2952,6 +3111,10 @@ $customCss
   }
 
   void _onFlingTick(Duration elapsed) {
+    if (_shouldSuppressOuterHandoffDuringAcquisition()) {
+      _stopOuterFling();
+      return;
+    }
     final simulation = _outerFlingSimulation;
     if (simulation == null) {
       _stopOuterFling();
@@ -2994,6 +3157,13 @@ $customCss
     if (!widget.configuration.enableOuterScrollHandoff) return;
     if (deltaY.abs() <= 0.01) return;
     if (_isImeComposing || _isSelectionGestureActive) return;
+    if (_shouldSuppressOuterHandoffDuringAcquisition()) {
+      if (isTouch) {
+        _resetTouchHandoffState();
+        _touchGestureActive = false;
+      }
+      return;
+    }
 
     if (!isTouch) {
       final transfer = _computeScrollTransfer(deltaY);
@@ -3665,6 +3835,7 @@ $customCss
       return;
     }
     if (!_editorHasFocus || _quill == null) return;
+    _explicitBlurRequested = true;
     _blurEditorAndSyncFlutterFocus();
   }
 
@@ -3733,3 +3904,5 @@ $customCss
 }
 
 enum _LoadState { loading, ready, error }
+
+enum _FocusPhase { idle, acquiring, stable, blurring }
