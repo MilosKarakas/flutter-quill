@@ -2237,8 +2237,17 @@ $customCss
     if (baseIndex < 0) return null;
 
     if (node is web.Text) {
-      final localOffset = offset.clamp(0, node.data.length);
-      return baseIndex + localOffset;
+      try {
+        final textLength = node.data.length;
+        final localOffset = offset.clamp(0, textLength).toInt();
+        return baseIndex + localOffset;
+      } catch (_) {
+        _traceFocus('resolve_tap_index_text_fallback', {
+          'baseIndex': baseIndex,
+          'offset': offset,
+        });
+        return baseIndex;
+      }
     }
     return baseIndex;
   }
