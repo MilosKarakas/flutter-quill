@@ -393,7 +393,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   ///
   /// Off by default so production builds stay quiet. When enabled, traces are
   /// only emitted in debug builds (see the `assert` in [_traceFocus]).
-  static const bool _kFocusTraceEnabled = true;
+  static const bool _kFocusTraceEnabled = false;
 
   void _traceFocus(String event, [Map<String, Object?> data = const {}]) {
     if (!_kFocusTraceEnabled) {
@@ -874,15 +874,36 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     _imeWarmupInput = input;
   }
 
-  /// Whether a cold intercepted tap should route through the warm-up handoff
-  /// rather than focusing Quill directly. Only on Android, only when the editor
-  /// does not already own DOM focus, and only when the warm-up input exists.
+  /// Whether an intercepted tap should route through the warm-up handoff
+  /// rather than focusing Quill directly. Only on Android, and only when the
+  /// warm-up input exists and the editor is not read-only.
+  ///
+  /// We skip the warm-up only when the editor already owns DOM focus **and** the
+  /// keyboard is actually open — i.e. an in-place caret-move tap during active
+  /// editing. Crucially, after a system-button keyboard dismiss the editor
+  /// keeps DOM focus while the keyboard is *down*; re-focusing that already
+  /// focused contenteditable does not reliably re-open the IME (it flashes open
+  /// then closes), so that case must still go through the warm-up.
   bool _shouldUseImeWarmupHandoff() {
     if (!_isAndroidWeb) return false;
     if (_imeWarmupInput == null) return false;
     if (widget.configuration.readOnly) return false;
-    if (_hasDomEditorFocus()) return false;
+    if (_hasDomEditorFocus() && _isKeyboardLikelyOpen()) return false;
     return true;
+  }
+
+  /// Heuristic for whether the soft keyboard is currently open, using the
+  /// absolute viewport shrink (the reliable signal under ADJUST_RESIZE, where
+  /// the computed keyboard height stays ~0). Compares the current height to the
+  /// tallest height seen this session.
+  bool _isKeyboardLikelyOpen() {
+    if (_maxViewportHeight <= 0) return false;
+    final shrink = _maxViewportHeight - _currentViewportHeight();
+    final threshold = math.max(
+      _warmupKeyboardShrinkMinPx,
+      _maxViewportHeight * _warmupKeyboardShrinkMinFraction,
+    );
+    return shrink >= threshold;
   }
 
   /// Opens the soft keyboard via the hidden input, then defers the actual Quill
