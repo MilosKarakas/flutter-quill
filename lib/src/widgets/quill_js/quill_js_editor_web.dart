@@ -692,6 +692,9 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     if (_explicitBlurRequested) return false;
     if (widget.configuration.readOnly) return false;
     if (_isHandlingLinkTapAction || _isHandlingLinkRequest) return false;
+    // During a warm-up the editor is intentionally blurred so focus can sit on
+    // the hidden input while the keyboard (re)opens; do not fight that blur.
+    if (_warmupHandoffPending) return false;
     if (!_editorHasFocus && !(widget.focusNode?.hasFocus ?? false)) {
       return false;
     }
@@ -2973,7 +2976,13 @@ $customCss
         event.pointerType.toLowerCase() != 'mouse') {
       return;
     }
-    if (_editorHasFocus && _hasDomEditorFocus()) {
+    // Leave the tap to native handling only when the editor is genuinely being
+    // edited: it owns focus AND the keyboard is up (an in-place caret move).
+    // After a system-button keyboard dismiss the editor keeps DOM focus while
+    // the keyboard is down; a native tap on the already-focused contenteditable
+    // does not reliably re-open the IME (it flashes open then closes), so that
+    // case must fall through and re-open the keyboard via the warm-up path.
+    if (_editorHasFocus && _hasDomEditorFocus() && _isKeyboardLikelyOpen()) {
       return;
     }
     if (_editorHasFocus && !_hasDomEditorFocus()) {
