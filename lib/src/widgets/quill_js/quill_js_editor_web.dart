@@ -393,7 +393,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   ///
   /// Off by default so production builds stay quiet. When enabled, traces are
   /// only emitted in debug builds (see the `assert` in [_traceFocus]).
-  static const bool _kFocusTraceEnabled = false;
+  static const bool _kFocusTraceEnabled = true;
 
   void _traceFocus(String event, [Map<String, Object?> data = const {}]) {
     if (!_kFocusTraceEnabled) {
@@ -779,11 +779,71 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   /// input therefore lets it survive the resize; only once that resize has
   /// settled do we move focus into the iframe, with no further resize to blur
   /// it. No-op off Android.
+  /// Resolves the document the warm-up input should live in.
+  ///
+  /// The warm-up only works if the input is in a frame whose focus is **not**
+  /// reset to `<body>` by the `SOFT_INPUT_ADJUST_RESIZE` window resize — i.e.
+  /// the top frame. When the klapp app itself runs inside another page (e.g. a
+  /// native wrapper that embeds it in an iframe with its own top bar), our own
+  /// `document` is a *subframe* and its focus gets reset just like the Quill
+  /// iframe, so the keyboard closes even with the input focused.
+  ///
+  /// This climbs to the highest **same-origin** ancestor document so the input
+  /// lands in the real top frame when reachable. If the top is cross-origin
+  /// (unreadable), it falls back to the nearest readable ancestor, then to our
+  /// own document.
+  ({web.Document doc, bool framed, bool climbedOut}) _resolveWarmupDocument() {
+    final selfDoc = web.document;
+    var framed = false;
+    try {
+      framed = web.window.parent != web.window.self ||
+          web.window.top != web.window.self;
+    } catch (_) {
+      framed = true;
+    }
+
+    // Best: the absolute top frame (survives the resize focus reset).
+    try {
+      final top = web.window.top;
+      if (top != null && top.document.body != null) {
+        return (
+          doc: top.document,
+          framed: framed,
+          climbedOut: !identical(top.document, selfDoc),
+        );
+      }
+    } catch (_) {
+      // Top is cross-origin; fall through.
+    }
+
+    // Next best: the immediate parent, if same-origin.
+    try {
+      final parent = web.window.parent;
+      if (parent != null && parent.document.body != null) {
+        return (
+          doc: parent.document,
+          framed: framed,
+          climbedOut: !identical(parent.document, selfDoc),
+        );
+      }
+    } catch (_) {
+      // Parent is cross-origin; fall through.
+    }
+
+    return (doc: selfDoc, framed: framed, climbedOut: false);
+  }
+
   void _setupImeWarmupInput() {
     if (!_isAndroidWeb) return;
-    final doc = web.document;
+    final resolved = _resolveWarmupDocument();
+    final doc = resolved.doc;
     final body = doc.body;
     if (body == null) return;
+
+    _traceFocus('warmup_input_setup', {
+      'framed': resolved.framed,
+      'climbedOut': resolved.climbedOut,
+    });
 
     final input =
         doc.createElement('input') as web.HTMLInputElement
@@ -943,7 +1003,9 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
       if (lastRefocus == null ||
           now.difference(lastRefocus) >= _warmupRefocusInterval) {
         _warmupLastRefocusAt = now;
-        if (identical(web.document.activeElement, input)) {
+        // The input may live in the parent/top document, so check focus against
+        // its own owner document rather than ours.
+        if (identical(input.ownerDocument?.activeElement, input)) {
           input.blur();
         }
         input.focus();
