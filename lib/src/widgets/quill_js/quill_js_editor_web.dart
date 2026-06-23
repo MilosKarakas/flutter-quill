@@ -530,9 +530,36 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   Timer? _warmupSettleTimer;
   DateTime? _warmupLastRefocusAt;
 
+  /// Absolute viewport height (px) captured when the warm-up began, used as the
+  /// baseline to detect the keyboard-driven shrink.
+  double? _warmupBaselineViewportHeight;
+
+  /// Tallest viewport height (px) observed during this view's lifetime, i.e. the
+  /// "no keyboard" reference. Lets us recognise a tap that arrives while the
+  /// keyboard is *already* open (current height sits well below this).
+  double _maxViewportHeight = 0;
+
+  /// Height (px) we are currently checking for stability, and when it last
+  /// changed beyond [_warmupHeightStableEpsilonPx].
+  double? _warmupSettleHeight;
+  DateTime? _warmupHeightStableSince;
+
   /// How often, while waiting for the keyboard to open, we re-issue
   /// `showSoftInput` by blur+refocusing the warm-up input.
   static const Duration _warmupRefocusInterval = Duration(milliseconds: 110);
+
+  /// Minimum absolute viewport shrink (px) that counts as the soft keyboard
+  /// opening. Large enough to ignore navigation/app-bar/inset layout changes
+  /// (tens of px) that some WebView hosts emit on screen entry, but well below
+  /// a real soft keyboard (hundreds of px).
+  static const double _warmupKeyboardShrinkMinPx = 120;
+
+  /// Fractional fallback for the shrink threshold, for short/landscape windows
+  /// where a keyboard may be a smaller absolute size.
+  static const double _warmupKeyboardShrinkMinFraction = 0.15;
+
+  /// Two height samples within this many px are treated as "the same height".
+  static const double _warmupHeightStableEpsilonPx = 6;
 
   /// Set just after a handoff completes. While active, transient
   /// `activeElement == <body>` readings (the WebView can take a few frames to
@@ -549,20 +576,14 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     return until != null && DateTime.now().isBefore(until);
   }
 
-  /// How long the viewport must be quiet (no `visualViewport` resize) after the
-  /// keyboard opened before we hand focus to Quill.
-  static const Duration _warmupResizeQuietWindow = Duration(milliseconds: 150);
+  /// How long the (shrunk) viewport height must stay stable after the keyboard
+  /// opened before we hand focus to Quill. Long enough to bridge a multi-stage
+  /// keyboard animation so no further resize blurs the editor post-handoff.
+  static const Duration _warmupHeightStableWindow = Duration(milliseconds: 180);
 
-  /// If no resize is observed after re-asserting focus on the warm-up input
-  /// for this long, the keyboard was already open (warm tap) and we hand off.
-  /// Long enough to cover several re-focus retries for the case where the
-  /// initial `showSoftInput` was dropped because a previous IME-hide animation
-  /// was still in flight when the tap landed.
-  static const Duration _warmupNoResizeGrace = Duration(milliseconds: 380);
-
-  /// Hard cap so a missed/edge-case resize signal can never strand focus on the
-  /// hidden input.
-  static const Duration _warmupMaxWait = Duration(milliseconds: 700);
+  /// Hard cap so a missed/edge-case keyboard signal can never strand focus on
+  /// the hidden input. The keyboard usually opens well within this.
+  static const Duration _warmupMaxWait = Duration(milliseconds: 900);
   static const Duration _warmupPollInterval = Duration(milliseconds: 40);
 
   bool? _cachedIsAndroidWeb;
@@ -824,6 +845,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     _warmupTapIndex = tapIndex;
     _warmupStartedAt = DateTime.now();
     _warmupLastRefocusAt = null;
+    _warmupSettleHeight = null;
+    _warmupHeightStableSince = null;
+    final baselineHeight = _currentViewportHeight();
+    _warmupBaselineViewportHeight = baselineHeight;
+    if (baselineHeight > _maxViewportHeight) {
+      _maxViewportHeight = baselineHeight;
+    }
     _didUserInteractWithSelection = true;
 
     // Keep acquisition semantics so transient frames during the keyboard
@@ -862,26 +890,53 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
       return;
     }
 
-    final lastResizeAt = _lastViewportResizeAt;
-    final resizedSinceStart =
-        lastResizeAt != null && !lastResizeAt.isBefore(startedAt);
+    final current = _currentViewportHeight();
+    if (current > _maxViewportHeight) {
+      _maxViewportHeight = current;
+    }
 
-    if (resizedSinceStart) {
-      // Keyboard opened (or is animating). Wait for the viewport to go quiet,
-      // then hand off — focus enters the iframe only with the keyboard fully up
-      // and no further resize in flight.
-      if (now.difference(lastResizeAt) >= _warmupResizeQuietWindow) {
-        _completeImeWarmupHandoff(reason: 'resize_settled');
+    // The keyboard signal under SOFT_INPUT_ADJUST_RESIZE is an *absolute*
+    // viewport-height shrink (Flutter's layout shrinks with the window, so the
+    // computed keyboard height stays ~0, but the height itself drops). Require a
+    // shrink large enough to be a keyboard and not a navigation/inset layout
+    // change — the latter is exactly what makes a plain resize event misfire in
+    // some WebView hosts. We also treat a tap that arrives with the viewport
+    // already well below the tallest-seen height as "keyboard already open".
+    final baseline = _warmupBaselineViewportHeight ?? current;
+    final shrinkThreshold = math.max(
+      _warmupKeyboardShrinkMinPx,
+      baseline * _warmupKeyboardShrinkMinFraction,
+    );
+    final keyboardOpen = (baseline - current) >= shrinkThreshold ||
+        (_maxViewportHeight - current) >= shrinkThreshold;
+
+    if (keyboardOpen) {
+      // Hand off only once the shrunk height stops changing, so a multi-stage
+      // keyboard animation is fully settled and no resize blurs the editor
+      // after focus moves into the iframe.
+      final settleHeight = _warmupSettleHeight;
+      if (settleHeight == null ||
+          (current - settleHeight).abs() > _warmupHeightStableEpsilonPx) {
+        _warmupSettleHeight = current;
+        _warmupHeightStableSince = now;
+        return;
+      }
+      final stableSince = _warmupHeightStableSince;
+      if (stableSince != null &&
+          now.difference(stableSince) >= _warmupHeightStableWindow) {
+        _completeImeWarmupHandoff(reason: 'keyboard_settled');
       }
       return;
     }
 
-    // No resize yet => the soft keyboard has not opened. The most common cause
-    // is that the tap landed while a previous IME-hide animation was still in
-    // flight, so Android dropped the initial showSoftInput. Re-issue it by
-    // blur+refocusing the parent input (a plain focus() on the already-active
-    // input is a no-op). Throttled so it does not churn. The keyboard is not
-    // open here (no resize), so the transient blur cannot cause a flicker.
+    // Keyboard has not opened yet. The common cause is the tap landing while a
+    // previous IME-hide animation was still in flight, so Android dropped the
+    // initial showSoftInput. Re-issue it by blur+refocusing the parent input (a
+    // plain focus() on the already-active input is a no-op). Throttled so it
+    // does not churn; the keyboard is not up here so the blur cannot flicker.
+    // Crucially we do NOT hand off until a real shrink is observed (or the
+    // max-wait cap fires) — handing off before the viewport actually shrinks is
+    // what lets a host's spurious layout resize close the keyboard.
     final input = _imeWarmupInput;
     if (input != null) {
       final lastRefocus = _warmupLastRefocusAt;
@@ -894,12 +949,16 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
         input.focus();
       }
     }
+  }
 
-    // Only after re-trying for the full grace do we treat this as a genuine
-    // warm tap (keyboard already open, no resize will ever come) and hand off.
-    if (elapsed >= _warmupNoResizeGrace) {
-      _completeImeWarmupHandoff(reason: 'no_resize');
+  /// Current absolute viewport height in CSS px. Prefers `visualViewport`
+  /// (tracks the soft keyboard) and falls back to `window.innerHeight`.
+  double _currentViewportHeight() {
+    final vv = web.window.visualViewport;
+    if (vv != null) {
+      return vv.height;
     }
+    return web.window.innerHeight.toDouble();
   }
 
   void _completeImeWarmupHandoff({required String reason}) {
@@ -911,6 +970,9 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     final tapIndex = _warmupTapIndex;
     _warmupTapIndex = null;
     _warmupStartedAt = null;
+    _warmupBaselineViewportHeight = null;
+    _warmupSettleHeight = null;
+    _warmupHeightStableSince = null;
 
     if (!mounted || _quill == null) return;
 
@@ -939,6 +1001,9 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     _warmupTapIndex = null;
     _warmupStartedAt = null;
     _warmupLastRefocusAt = null;
+    _warmupBaselineViewportHeight = null;
+    _warmupSettleHeight = null;
+    _warmupHeightStableSince = null;
     _warmupHandoffGuardUntil = null;
   }
 
@@ -2481,9 +2546,18 @@ $customCss
     if (vv != null) {
       _viewportResizeHandlerJs = ((web.Event _) {
         _lastViewportResizeAt = DateTime.now();
+        final height = vv.height;
+        if (height > _maxViewportHeight) {
+          _maxViewportHeight = height;
+        }
         _refreshKeyboardHeightFromViewport();
       }).toJS;
       vv.addEventListener('resize', _viewportResizeHandlerJs);
+      // Seed the "no keyboard" reference immediately so the first warm-up tap
+      // has a sane tallest-height baseline even before any resize fires.
+      if (vv.height > _maxViewportHeight) {
+        _maxViewportHeight = vv.height;
+      }
     }
 
     // --- Permanent parent-page scroll lock ---
