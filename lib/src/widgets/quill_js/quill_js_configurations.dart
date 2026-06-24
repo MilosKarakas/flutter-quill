@@ -295,6 +295,14 @@ class QuillJsEditorConfiguration {
   /// iframe).
   final VoidCallback? onEscapePressed;
 
+  /// Called when the user presses Shift+Tab inside the editor.
+  ///
+  /// Only handled when this callback is non-null. Before it fires, the iframe
+  /// is blurred and Quill's internal selection is cleared — same as
+  /// [onEscapePressed]. The host should move focus to the previous field via
+  /// `someFocusNode.requestFocus()`.
+  final VoidCallback? onShiftTabPressed;
+
   const QuillJsEditorConfiguration({
     this.quillJsUrl,
     this.quillCssUrl,
@@ -322,6 +330,7 @@ class QuillJsEditorConfiguration {
     this.autoResizeHorizontalPadding = 32,
     this.autoResizeVerticalPadding = 24,
     this.onEscapePressed,
+    this.onShiftTabPressed,
   }) : assert(minLines > 0),
        assert(maxLines >= minLines),
        assert(autoResizeHorizontalPadding >= 0),

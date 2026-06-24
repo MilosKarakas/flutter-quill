@@ -425,6 +425,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   JSFunction? _tabKeyHandlerJs;
   JSFunction? _enterKeyHandlerJs;
   JSFunction? _escapeKeyHandlerJs;
+  JSFunction? _shiftTabKeyHandlerJs;
   JSFunction? _linkClickHandlerJs;
   JSFunction? _linkTouchStartHandlerJs;
   JSFunction? _linkPointerDownHandlerJs;
@@ -1328,6 +1329,22 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     980,
   ];
   bool _explicitBlurRequested = false;
+  DateTime? _suppressEditorRefocusUntil;
+
+  bool _isWithinExplicitBlurGuard() {
+    final until = _suppressEditorRefocusUntil;
+    return until != null && DateTime.now().isBefore(until);
+  }
+
+  /// True when a soft keyboard or Android acquisition path is active.
+  bool _isSoftKeyboardContext() {
+    return _isAndroidWeb ||
+        _warmupHandoffPending ||
+        _focusPhase == _FocusPhase.acquiring ||
+        _withinImeResizeGuard() ||
+        _isKeyboardLikelyOpen() ||
+        widget.controller.keyboardHeight.value > 0;
+  }
 
   void _setFocusPhase(_FocusPhase phase) {
     _focusPhase = phase;
@@ -1581,6 +1598,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
         _editorDiv!.removeEventListener(
           'keydown',
           _escapeKeyHandlerJs,
+          true.toJS,
+        );
+      }
+      if (_shiftTabKeyHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'keydown',
+          _shiftTabKeyHandlerJs,
           true.toJS,
         );
       }
@@ -2188,6 +2212,9 @@ $customCss
     _setupLinkClickHandler();
     _setupEnterKeyHandler();
     _setupEscapeKeyHandler();
+    if (config.onShiftTabPressed != null) {
+      _setupShiftTabKeyHandler();
+    }
     _setupClipboardInterceptors();
     _setupOuterScrollHandoff();
 
@@ -2273,7 +2300,17 @@ $customCss
         // focus from the iframe and close the keyboard, starting a flicker
         // loop. DOM focus is authoritative here; leave it untouched.
         if (!_shouldPreserveDomFocusOverFlutter()) {
-          _queueJsToFlutterFocusSync(true);
+          // Desktop DOM-first mouse focus can ping-pong if we keep re-queuing
+          // Flutter requestFocus() while the editor already owns DOM focus.
+          // Android/WebView transient Flutter drops during IME resize must keep
+          // the existing re-queue path.
+          if (!_isSoftKeyboardContext() && _editorHasFocus) {
+            _traceFocus('flutter_blur_sync_skipped_desktop_dom_owns', {
+              'focusPhase': _focusPhase.name,
+            });
+          } else {
+            _queueJsToFlutterFocusSync(true);
+          }
         }
         return;
       }
@@ -2559,6 +2596,10 @@ $customCss
       _queueJsToFlutterFocusSync(jsHasFocus);
       return;
     }
+    if (jsHasFocus && _isWithinExplicitBlurGuard()) {
+      _traceFocus('js_focus_sync_suppressed_explicit_blur_guard');
+      return;
+    }
     if (!jsHasFocus && _shouldSuppressUnfocusDuringAcquisition()) {
       return;
     }
@@ -2835,6 +2876,12 @@ $customCss
     }
 
     final wasFocused = _editorHasFocus;
+    if (_isWithinExplicitBlurGuard()) {
+      _traceFocus('selection_change_suppressed_explicit_blur_guard', {
+        'source': source,
+      });
+      return;
+    }
     _editorHasFocus = true;
     _onJsFocusChanged(hasFocus: true);
     _refreshKeyboardHeightFromViewport();
@@ -2937,9 +2984,15 @@ $customCss
 
     _tapFocusPointerDownHandlerJs = ((web.Event event) {
       final pointerEvent = event as web.PointerEvent;
-      // Touch/pen paths can trigger iOS focus-scroll assist. Mouse focus is
-      // typically stable and should keep native behaviour.
       if (pointerEvent.pointerType.toLowerCase() == 'mouse') {
+        // Android WebView + DeX: keep native mouse; warm-up path untouched.
+        if (_isAndroidWeb) return;
+        // Desktop Flutter web: native mouse is DOM-first into the iframe, which
+        // desynchronizes the bridge. Intercept cold/desynced taps only; in-editor
+        // caret moves keep native behaviour when already focused.
+        if (!_editorHasFocus || !_hasDomEditorFocus()) {
+          _interceptTapFocus(event);
+        }
         return;
       }
       _interceptTapFocus(event);
@@ -3048,16 +3101,30 @@ $customCss
     return editor.contains(active);
   }
 
+  double _readDomClientCoord(Object target, String property) {
+    final value = (target as JSObject)[property];
+    return switch (value) {
+      JSNumber() => value.toDartDouble,
+      _ => (value as num).toDouble(),
+    };
+  }
+
   (double, double)? _extractClientPoint(web.Event event) {
     if (event is web.PointerEvent) {
-      return (event.clientX.toDouble(), event.clientY.toDouble());
+      return (
+        _readDomClientCoord(event, 'clientX'),
+        _readDomClientCoord(event, 'clientY'),
+      );
     }
     if (event is web.TouchEvent) {
       final touches = event.changedTouches;
       if (touches.length <= 0) return null;
       final touch = touches.item(0);
       if (touch == null) return null;
-      return (touch.clientX.toDouble(), touch.clientY.toDouble());
+      return (
+        _readDomClientCoord(touch, 'clientX'),
+        _readDomClientCoord(touch, 'clientY'),
+      );
     }
     return null;
   }
@@ -3710,6 +3777,37 @@ $customCss
   }
 
   // ------------------------------------------------------------------
+  // Shift+Tab handling (optional host-provided previous focus target)
+  // ------------------------------------------------------------------
+
+  void _setupShiftTabKeyHandler() {
+    _shiftTabKeyHandlerJs = ((web.Event event) {
+      final keyEvent = event as web.KeyboardEvent;
+      if (keyEvent.key != 'Tab' || !keyEvent.shiftKey) return;
+
+      final onShiftTab = widget.configuration.onShiftTabPressed;
+      if (onShiftTab == null) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!_editorHasFocus) return;
+
+      _iframe.blur();
+
+      _explicitBlurRequested = true;
+      _blurEditorAndSyncFlutterFocus();
+
+      scheduleMicrotask(() {
+        if (!mounted) return;
+        onShiftTab();
+      });
+    }).toJS;
+
+    _editorDiv!.addEventListener('keydown', _shiftTabKeyHandlerJs, true.toJS);
+  }
+
+  // ------------------------------------------------------------------
   // Optional inner->outer scroll handoff
   // ------------------------------------------------------------------
 
@@ -3735,7 +3833,7 @@ $customCss
       _stopOuterFling();
       _resetTouchHandoffState();
       _touchGestureActive = true;
-      final clientY = touch.clientY.toDouble();
+      final clientY = _readDomClientCoord(touch, 'clientY');
       _touchLastClientY = clientY;
       _recordVelocitySample(clientY);
       if (!_isEditorVerticallyScrollable()) {
@@ -3754,8 +3852,10 @@ $customCss
       if (_pendingEmptyTouchTapFocus) {
         final pendingPoint = _pendingEmptyTouchTapPoint;
         if (pendingPoint != null) {
-          final dx = touch.clientX.toDouble() - pendingPoint.$1;
-          final dy = touch.clientY.toDouble() - pendingPoint.$2;
+          final dx =
+              _readDomClientCoord(touch, 'clientX') - pendingPoint.$1;
+          final dy =
+              _readDomClientCoord(touch, 'clientY') - pendingPoint.$2;
           final distance = math.sqrt(dx * dx + dy * dy);
           if (distance <= _emptyTapFocusSlopPx) {
             // Keep this gesture in tap-focus mode; do not let tiny movement
@@ -3770,7 +3870,7 @@ $customCss
         _pendingEmptyTouchTapPoint = null;
       }
 
-      final currentY = touch.clientY.toDouble();
+      final currentY = _readDomClientCoord(touch, 'clientY');
       final previousY = _touchLastClientY;
       _touchLastClientY = currentY;
       if (previousY == null) return;
@@ -4796,6 +4896,10 @@ $customCss
     }
     if (!_editorHasFocus || _quill == null) return;
     _explicitBlurRequested = true;
+    _pendingJsToFlutterFocusSync = null;
+    _suppressEditorRefocusUntil = DateTime.now().add(
+      const Duration(milliseconds: 200),
+    );
     _traceFocus('tap_outside_blur_triggered');
     _blurEditorAndSyncFlutterFocus();
   }
