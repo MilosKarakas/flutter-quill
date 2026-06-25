@@ -393,7 +393,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   ///
   /// Off by default so production builds stay quiet. When enabled, traces are
   /// only emitted in debug builds (see the `assert` in [_traceFocus]).
-  static const bool _kFocusTraceEnabled = false;
+  static const bool _kFocusTraceEnabled = true;
 
   void _traceFocus(String event, [Map<String, Object?> data = const {}]) {
     if (!_kFocusTraceEnabled) {
@@ -913,6 +913,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   /// Opens the soft keyboard via the hidden input, then defers the actual Quill
   /// focus until the viewport has settled (see [_setupImeWarmupInput] docs).
   void _beginImeWarmupHandoff(int? tapIndex) {
+    _clearExplicitBlurGuard(reason: 'ime_warmup_handoff');
     final input = _imeWarmupInput;
     if (input == null) {
       _focusQuillFromTap(tapIndex);
@@ -1336,14 +1337,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     return until != null && DateTime.now().isBefore(until);
   }
 
-  /// True when a soft keyboard or Android acquisition path is active.
-  bool _isSoftKeyboardContext() {
-    return _isAndroidWeb ||
-        _warmupHandoffPending ||
-        _focusPhase == _FocusPhase.acquiring ||
-        _withinImeResizeGuard() ||
-        _isKeyboardLikelyOpen() ||
-        widget.controller.keyboardHeight.value > 0;
+  void _clearExplicitBlurGuard({required String reason}) {
+    if (_suppressEditorRefocusUntil == null) return;
+    _traceFocus('explicit_blur_guard_cleared', {'reason': reason});
+    _suppressEditorRefocusUntil = null;
   }
 
   void _setFocusPhase(_FocusPhase phase) {
@@ -2300,17 +2297,7 @@ $customCss
         // focus from the iframe and close the keyboard, starting a flicker
         // loop. DOM focus is authoritative here; leave it untouched.
         if (!_shouldPreserveDomFocusOverFlutter()) {
-          // Desktop DOM-first mouse focus can ping-pong if we keep re-queuing
-          // Flutter requestFocus() while the editor already owns DOM focus.
-          // Android/WebView transient Flutter drops during IME resize must keep
-          // the existing re-queue path.
-          if (!_isSoftKeyboardContext() && _editorHasFocus) {
-            _traceFocus('flutter_blur_sync_skipped_desktop_dom_owns', {
-              'focusPhase': _focusPhase.name,
-            });
-          } else {
-            _queueJsToFlutterFocusSync(true);
-          }
+          _queueJsToFlutterFocusSync(true);
         }
         return;
       }
@@ -2877,10 +2864,16 @@ $customCss
 
     final wasFocused = _editorHasFocus;
     if (_isWithinExplicitBlurGuard()) {
-      _traceFocus('selection_change_suppressed_explicit_blur_guard', {
-        'source': source,
-      });
-      return;
+      // Allow user-driven caret moves to refocus the editor; only block
+      // programmatic api/silent selection updates that steal focus back after
+      // an explicit tap-outside (e.g. subject click).
+      if (source != 'user') {
+        _traceFocus('selection_change_suppressed_explicit_blur_guard', {
+          'source': source,
+        });
+        return;
+      }
+      _clearExplicitBlurGuard(reason: 'selection_user');
     }
     _editorHasFocus = true;
     _onJsFocusChanged(hasFocus: true);
@@ -2984,15 +2977,9 @@ $customCss
 
     _tapFocusPointerDownHandlerJs = ((web.Event event) {
       final pointerEvent = event as web.PointerEvent;
+      // Touch/pen paths can trigger iOS focus-scroll assist. Mouse focus is
+      // typically stable and should keep native behaviour.
       if (pointerEvent.pointerType.toLowerCase() == 'mouse') {
-        // Android WebView + DeX: keep native mouse; warm-up path untouched.
-        if (_isAndroidWeb) return;
-        // Desktop Flutter web: native mouse is DOM-first into the iframe, which
-        // desynchronizes the bridge. Intercept cold/desynced taps only; in-editor
-        // caret moves keep native behaviour when already focused.
-        if (!_editorHasFocus || !_hasDomEditorFocus()) {
-          _interceptTapFocus(event);
-        }
         return;
       }
       _interceptTapFocus(event);
@@ -3102,11 +3089,19 @@ $customCss
   }
 
   double _readDomClientCoord(Object target, String property) {
-    final value = (target as JSObject)[property];
-    return switch (value) {
-      JSNumber() => value.toDartDouble,
-      _ => (value as num).toDouble(),
-    };
+    try {
+      final value = (target as JSObject)[property];
+      return switch (value) {
+        JSNumber() => value.toDartDouble,
+        _ => (value as num).toDouble(),
+      };
+    } catch (_) {
+      // Bracket access can fail on some WebViews; dynamic read handles both
+      // int-typed bindings and subpixel doubles from desktop HiDPI layouts.
+      final dynamic jsTarget = target;
+      final coord = property == 'clientX' ? jsTarget.clientX : jsTarget.clientY;
+      return (coord as num).toDouble();
+    }
   }
 
   (double, double)? _extractClientPoint(web.Event event) {
@@ -3198,6 +3193,9 @@ $customCss
   void _focusEditorFromInterceptedTap(int? tapIndex) {
     final quill = _quill;
     if (quill == null) return;
+    // User is intentionally focusing the editor; do not let a recent tap-outside
+    // guard (e.g. after clicking subject) block this acquisition.
+    _clearExplicitBlurGuard(reason: 'intercepted_tap');
     _traceFocus('focus_from_intercepted_tap', {'tapIndex': tapIndex});
 
     // On Android, open the keyboard via a hidden native input first and hand
