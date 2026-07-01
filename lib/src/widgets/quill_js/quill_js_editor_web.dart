@@ -389,6 +389,25 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     with TickerProviderStateMixin {
   static int _nextId = 0;
 
+  /// Set to `true` to emit verbose `KLAPP_FOCUS` focus/keyboard diagnostics.
+  ///
+  /// Off by default so production builds stay quiet. When enabled, traces are
+  /// only emitted in debug builds (see the `assert` in [_traceFocus]).
+  static const bool _kFocusTraceEnabled = false;
+
+  void _traceFocus(String event, [Map<String, Object?> data = const {}]) {
+    if (!_kFocusTraceEnabled) {
+      return;
+    }
+    assert(() {
+      final timestamp = DateTime.now().toIso8601String();
+      debugPrint(
+        'KLAPP_FOCUS $timestamp QuillJsEditorView $event ${data.toString()}',
+      );
+      return true;
+    }());
+  }
+
   late final String _viewType;
   late final web.HTMLIFrameElement _iframe;
 
@@ -406,6 +425,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   JSFunction? _tabKeyHandlerJs;
   JSFunction? _enterKeyHandlerJs;
   JSFunction? _escapeKeyHandlerJs;
+  JSFunction? _shiftTabKeyHandlerJs;
   JSFunction? _linkClickHandlerJs;
   JSFunction? _linkTouchStartHandlerJs;
   JSFunction? _linkPointerDownHandlerJs;
@@ -413,6 +433,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   JSFunction? _tapFocusTouchEndHandlerJs;
   JSFunction? _tapFocusTouchCancelHandlerJs;
   JSFunction? _tapFocusPointerDownHandlerJs;
+  JSFunction? _tapFocusPointerUpHandlerJs;
   JSFunction? _iframeLoadHandlerJs;
   JSFunction? _pasteHandlerJs;
   JSFunction? _copyHandlerJs;
@@ -437,8 +458,163 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   Timer? _nullSelectionFocusLossTimer;
   bool _isPasteInProgress = false;
 
+  /// Timestamp of the most recent `visualViewport` resize. Used by the
+  /// stable-phase resize guard to recognise the IME/viewport transition
+  /// window during which a transient blur must not close the keyboard.
+  DateTime? _lastViewportResizeAt;
+
+  /// Number of times the null-selection teardown has been re-armed while the
+  /// editor still holds DOM focus during a resize. Bounded so the guard can
+  /// never loop indefinitely if focus is genuinely lost.
+  int _nullSelectionRecheckCount = 0;
+
+  /// Synchronous `focusout` handler on the editor that re-asserts DOM focus
+  /// when the iframe `contenteditable` is blurred by an `adjustResize`-driven
+  /// viewport resize (which would otherwise make the WebView close the IME).
+  JSFunction? _editorFocusRetentionHandlerJs;
+
+  /// Bounded counter for [_editorFocusRetentionHandlerJs] so a genuinely lost
+  /// focus (user dismiss, navigation) cannot trigger an unbounded refocus loop.
+  int _domFocusRetainCount = 0;
+  DateTime? _domFocusRetainWindowStart;
+
   static const double _keyboardOpenThresholdPx = 50.0;
   static const int _keyboardCloseConfirmFrames = 3;
+
+  /// Window after a `visualViewport` resize during which an editable
+  /// invalidation (Quill `selection-change(null)`) is treated as a transient
+  /// side-effect of the keyboard/viewport animation rather than a real blur.
+  ///
+  /// Android WebView under `SOFT_INPUT_ADJUST_RESIZE` briefly invalidates the
+  /// focused editable while resizing for the keyboard; the IME transition
+  /// typically settles within ~200-400ms.
+  static const Duration _imeResizeGuardWindow = Duration(milliseconds: 400);
+
+  /// Maximum number of bounded re-checks the resize guard performs before it
+  /// allows the teardown to proceed, even if DOM focus still appears present.
+  static const int _maxNullSelectionRechecks = 3;
+
+  /// Sliding window and cap for synchronous DOM focus retention. If more than
+  /// [_maxDomFocusRetainAttempts] blurs are retained within this window, focus
+  /// is treated as genuinely lost and retention stops (prevents loops).
+  static const Duration _domFocusRetainWindow = Duration(milliseconds: 1200);
+  static const int _maxDomFocusRetainAttempts = 12;
+
+  // ------------------------------------------------------------------
+  // Android IME warm-up handoff
+  // ------------------------------------------------------------------
+  //
+  // On Android WebView under `SOFT_INPUT_ADJUST_RESIZE`, a *cold* tap that
+  // focuses the Quill `contenteditable` opens the soft keyboard and shrinks the
+  // WebView window in the same frame. That viewport resize races the still
+  // settling contenteditable focus and Chromium drops it to the iframe `<body>`
+  // (`iframeActiveTag: BODY`), which tells Android to hide the IME again. The
+  // editable cannot be re-focused into a re-shown keyboard without a fresh user
+  // gesture, so reactive refocus loops only flicker.
+  //
+  // The fix mirrors the path users found reliable by hand (focus a normal text
+  // field first, then move into Quill once the keyboard is already up): within
+  // the tap gesture we focus a hidden native `<input>` — which survives the
+  // resize far better than a contenteditable, just like a Flutter `TextField`
+  // does — and only once the viewport has settled do we transfer focus to
+  // Quill. The handoff happens with the keyboard already open and no further
+  // resize, so the editable never blurs.
+
+  /// Hidden native input used to open the soft keyboard ahead of the Quill
+  /// focus handoff. Only created on Android web.
+  web.HTMLInputElement? _imeWarmupInput;
+  JSFunction? _imeWarmupInputBlurHandlerJs;
+
+  /// True between focusing [_imeWarmupInput] and transferring focus to Quill.
+  bool _warmupHandoffPending = false;
+  int? _warmupTapIndex;
+  DateTime? _warmupStartedAt;
+  Timer? _warmupSettleTimer;
+  DateTime? _warmupLastRefocusAt;
+
+  /// Absolute viewport height (px) captured when the warm-up began, used as the
+  /// baseline to detect the keyboard-driven shrink.
+  double? _warmupBaselineViewportHeight;
+
+  /// Tallest viewport height (px) observed during this view's lifetime, i.e. the
+  /// "no keyboard" reference. Lets us recognise a tap that arrives while the
+  /// keyboard is *already* open (current height sits well below this).
+  double _maxViewportHeight = 0;
+
+  /// Height (px) we are currently checking for stability, and when it last
+  /// changed beyond [_warmupHeightStableEpsilonPx].
+  double? _warmupSettleHeight;
+  DateTime? _warmupHeightStableSince;
+
+  /// How often, while waiting for the keyboard to open, we re-issue
+  /// `showSoftInput` by blur+refocusing the warm-up input.
+  static const Duration _warmupRefocusInterval = Duration(milliseconds: 110);
+
+  /// Minimum absolute viewport shrink (px) that counts as the soft keyboard
+  /// opening. Large enough to ignore navigation/app-bar/inset layout changes
+  /// (tens of px) that some WebView hosts emit on screen entry, but well below
+  /// a real soft keyboard (hundreds of px).
+  static const double _warmupKeyboardShrinkMinPx = 120;
+
+  /// Fractional fallback for the shrink threshold, for short/landscape windows
+  /// where a keyboard may be a smaller absolute size.
+  static const double _warmupKeyboardShrinkMinFraction = 0.15;
+
+  /// Two height samples within this many px are treated as "the same height".
+  static const double _warmupHeightStableEpsilonPx = 6;
+
+  /// Set just after a handoff completes. While active, transient
+  /// `activeElement == <body>` readings (the WebView can take a few frames to
+  /// move DOM focus from `<body>` onto `.ql-editor` after `quill.focus()`) must
+  /// not let Flutter steal focus back via `requestFocus()`, which would close
+  /// the keyboard and restart the steal/reacquire flicker.
+  DateTime? _warmupHandoffGuardUntil;
+  static const Duration _warmupHandoffGuardWindow = Duration(
+    milliseconds: 1200,
+  );
+
+  bool _withinWarmupHandoffGuard() {
+    final until = _warmupHandoffGuardUntil;
+    return until != null && DateTime.now().isBefore(until);
+  }
+
+  /// How long the (shrunk) viewport height must stay stable after the keyboard
+  /// opened before we hand focus to Quill. Long enough to bridge a multi-stage
+  /// keyboard animation so no further resize blurs the editor post-handoff.
+  static const Duration _warmupHeightStableWindow = Duration(milliseconds: 180);
+
+  /// Hard cap so a missed/edge-case keyboard signal can never strand focus on
+  /// the hidden input. The keyboard usually opens well within this.
+  static const Duration _warmupMaxWait = Duration(milliseconds: 900);
+  static const Duration _warmupPollInterval = Duration(milliseconds: 40);
+
+  bool? _cachedIsAndroidWeb;
+  bool? _cachedIsIOSWeb;
+
+  /// Whether this is an Android web environment, where the IME warm-up handoff
+  /// applies. iOS and desktop keep their existing, working focus path.
+  bool get _isAndroidWeb => _cachedIsAndroidWeb ??=
+      web.window.navigator.userAgent.toLowerCase().contains('android');
+
+  bool get _isIOSWeb {
+    if (_cachedIsIOSWeb != null) return _cachedIsIOSWeb!;
+    final ua = web.window.navigator.userAgent.toLowerCase();
+    _cachedIsIOSWeb =
+        ua.contains('iphone') || ua.contains('ipad') || ua.contains('ipod');
+    return _cachedIsIOSWeb!;
+  }
+
+  bool get _isMobileWeb => _isAndroidWeb || _isIOSWeb;
+
+  /// True when a soft keyboard or mobile acquisition path is active.
+  bool _isSoftKeyboardContext() {
+    return _isMobileWeb ||
+        _warmupHandoffPending ||
+        _focusPhase == _FocusPhase.acquiring ||
+        _withinImeResizeGuard() ||
+        _isKeyboardLikelyOpen() ||
+        widget.controller.keyboardHeight.value > 0;
+  }
 
   void _scheduleKeyboardRefreshRetries([int retries = 2]) {
     for (var i = 1; i <= retries; i++) {
@@ -475,20 +651,526 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   /// If a non-null selection arrives within the window the timer is cancelled,
   /// preventing the false focus loss.
   void _scheduleNullSelectionFocusLoss() {
+    if (_shouldSuppressUnfocusDuringAcquisition()) return;
     if (_nullSelectionFocusLossTimer?.isActive ?? false) return;
     if (_isPasteInProgress) return;
 
-    _nullSelectionFocusLossTimer = Timer(const Duration(milliseconds: 80), () {
-      if (!mounted || _isPasteInProgress) return;
-      widget.controller.keyboardHeight.value = 0.0;
-      _editorHasFocus = false;
-      _onJsFocusChanged(hasFocus: false);
+    _nullSelectionRecheckCount = 0;
+    _traceFocus('selection_null_debounce_scheduled', {
+      'delayMs': 80,
+      'focusPhase': _focusPhase.name,
+      'editorHasFocus': _editorHasFocus,
+      'flutterHasFocus': widget.focusNode?.hasFocus,
     });
+    _nullSelectionFocusLossTimer = Timer(
+      const Duration(milliseconds: 80),
+      _processNullSelectionFocusLoss,
+    );
+  }
+
+  /// True while we are inside the [_imeResizeGuardWindow] following the most
+  /// recent `visualViewport` resize.
+  bool _withinImeResizeGuard() {
+    final lastResizeAt = _lastViewportResizeAt;
+    return lastResizeAt != null &&
+        DateTime.now().difference(lastResizeAt) < _imeResizeGuardWindow;
+  }
+
+  /// True when the iframe currently owns DOM focus and we must not perform a
+  /// Flutter-side `FocusNode.requestFocus()` that would steal it.
+  ///
+  /// On Flutter web, requesting focus on the wrapping [FocusNode] moves browser
+  /// DOM focus to the Flutter glass pane, which blurs the iframe's
+  /// `contenteditable` and makes the WebView close the IME. While the JS editor
+  /// already owns DOM focus and a soft keyboard is involved, re-asserting
+  /// Flutter focus starts a tug-of-war (steal -> reacquire -> steal) that
+  /// flickers the keyboard — and after acquisition stabilizes, the next
+  /// selection change would otherwise steal focus and close the keyboard
+  /// mid-typing. In all of these states DOM focus is authoritative and must be
+  /// left untouched.
+  ///
+  /// Desktop browsers are unaffected: there is no soft keyboard, so
+  /// [QuillJsEditorController.keyboardHeight] stays 0, no viewport resize
+  /// occurs, and the phase is never `acquiring` outside the mobile tap path.
+  bool _shouldPreserveDomFocusOverFlutter() {
+    if (_explicitBlurRequested) return false;
+    // Right after a warm-up handoff the WebView can transiently report
+    // `<body>` as active while DOM focus settles onto `.ql-editor`. Preserve
+    // DOM ownership through that window so Flutter never steals it back.
+    if (_withinWarmupHandoffGuard()) return true;
+    if (!_hasDomEditorFocus()) return false;
+    return _focusPhase == _FocusPhase.acquiring ||
+        _withinImeResizeGuard() ||
+        widget.controller.keyboardHeight.value > 0;
+  }
+
+  /// Whether a `focusout` on the editor should be treated as a transient
+  /// resize-driven blur and immediately re-focused, rather than a real blur.
+  ///
+  /// Gated tightly so it only fights to keep focus while a soft keyboard is
+  /// actively involved (cold-focus acquisition or an in-flight viewport
+  /// resize), never on user-driven dismiss (`_explicitBlurRequested`), link or
+  /// read-only flows.
+  bool _shouldRetainDomFocusOnBlur() {
+    if (_explicitBlurRequested) return false;
+    if (widget.configuration.readOnly) return false;
+    if (_isHandlingLinkTapAction || _isHandlingLinkRequest) return false;
+    // During a warm-up the editor is intentionally blurred so focus can sit on
+    // the hidden input while the keyboard (re)opens; do not fight that blur.
+    if (_warmupHandoffPending) return false;
+    if (!_editorHasFocus && !(widget.focusNode?.hasFocus ?? false)) {
+      return false;
+    }
+    // A transient resize blur always coincides with an in-flight viewport
+    // resize or the cold-focus window. A deliberate dismiss (tap outside,
+    // toolbar dialog, etc.) does not, so it falls through and is not fought.
+    return _focusPhase == _FocusPhase.acquiring || _withinImeResizeGuard();
+  }
+
+  /// Registers the synchronous focus-retention handler inside the iframe.
+  void _setupDomFocusRetention() {
+    final editorDiv = _editorDiv;
+    if (editorDiv == null) return;
+    _editorFocusRetentionHandlerJs = ((web.Event event) {
+      _handleEditorFocusOut(event);
+    }).toJS;
+    // `focusout` bubbles, so listening on the container catches blurs of the
+    // inner `.ql-editor` contenteditable.
+    editorDiv.addEventListener('focusout', _editorFocusRetentionHandlerJs!);
+  }
+
+  void _handleEditorFocusOut(web.Event event) {
+    if (!mounted || _loadState != _LoadState.ready) return;
+    if (!_shouldRetainDomFocusOnBlur()) return;
+
+    final editor = _quillEditorElement();
+    if (editor == null) return;
+
+    // Decisive diagnostic: where did focus actually go? Distinguishes a native
+    // window-resize blur (parent activeElement stays the <iframe>) from Flutter
+    // re-grabbing focus to its glass pane on a resize re-render.
+    web.EventTarget? related;
+    if (event.isA<web.FocusEvent>()) {
+      related = (event as web.FocusEvent).relatedTarget;
+    }
+    _traceFocus('dom_focus_out', {
+      'relatedTag': related.isA<web.Element>()
+          ? (related as web.Element).tagName
+          : (related == null ? 'null' : 'non-element'),
+      'parentActiveTag': web.document.activeElement?.tagName ?? 'null',
+      'parentActiveId': web.document.activeElement?.id ?? '',
+      'iframeActiveTag':
+          _iframe.contentDocument?.activeElement?.tagName ?? 'null',
+    });
+
+    // If focus is moving to another node still inside the editor (e.g. caret
+    // re-targeting), there is nothing to retain.
+    if (related != null &&
+        related.isA<web.Node>() &&
+        editor.contains(related as web.Node)) {
+      return;
+    }
+
+    final now = DateTime.now();
+    if (_domFocusRetainWindowStart == null ||
+        now.difference(_domFocusRetainWindowStart!) > _domFocusRetainWindow) {
+      _domFocusRetainWindowStart = now;
+      _domFocusRetainCount = 0;
+    }
+    if (_domFocusRetainCount >= _maxDomFocusRetainAttempts) {
+      _traceFocus('dom_focus_retain_exhausted', {
+        'focusPhase': _focusPhase.name,
+        'attempts': _domFocusRetainCount,
+      });
+      return;
+    }
+    _domFocusRetainCount++;
+    _traceFocus('dom_focus_retain_refocus', {
+      'focusPhase': _focusPhase.name,
+      'attempt': _domFocusRetainCount,
+      'withinResizeGuard': _withinImeResizeGuard(),
+    });
+    // Re-focus synchronously within the focusout turn so the WebView IME is not
+    // torn down by the adjustResize-driven blur.
+    editor.focus();
+  }
+
+  /// Creates the hidden native input used for the Android IME warm-up handoff.
+  ///
+  /// Crucially it lives in the **parent (main-frame) document**, not the
+  /// iframe. Under `SOFT_INPUT_ADJUST_RESIZE` Chromium resets focus *inside
+  /// subframes* to `<body>` on the keyboard-driven window resize, but preserves
+  /// main-frame focus (this is why a Flutter `TextField` keeps the keyboard up
+  /// while an iframe editable does not). Opening the keyboard from a main-frame
+  /// input therefore lets it survive the resize; only once that resize has
+  /// settled do we move focus into the iframe, with no further resize to blur
+  /// it. No-op off Android.
+  /// Resolves the document the warm-up input should live in.
+  ///
+  /// The warm-up only works if the input is in a frame whose focus is **not**
+  /// reset to `<body>` by the `SOFT_INPUT_ADJUST_RESIZE` window resize — i.e.
+  /// the top frame. When the klapp app itself runs inside another page (e.g. a
+  /// native wrapper that embeds it in an iframe with its own top bar), our own
+  /// `document` is a *subframe* and its focus gets reset just like the Quill
+  /// iframe, so the keyboard closes even with the input focused.
+  ///
+  /// This climbs to the highest **same-origin** ancestor document so the input
+  /// lands in the real top frame when reachable. If the top is cross-origin
+  /// (unreadable), it falls back to the nearest readable ancestor, then to our
+  /// own document.
+  ({web.Document doc, bool framed, bool climbedOut}) _resolveWarmupDocument() {
+    final selfDoc = web.document;
+    var framed = false;
+    try {
+      framed = web.window.parent != web.window.self ||
+          web.window.top != web.window.self;
+    } catch (_) {
+      framed = true;
+    }
+
+    // Best: the absolute top frame (survives the resize focus reset).
+    try {
+      final top = web.window.top;
+      if (top != null && top.document.body != null) {
+        return (
+          doc: top.document,
+          framed: framed,
+          climbedOut: !identical(top.document, selfDoc),
+        );
+      }
+    } catch (_) {
+      // Top is cross-origin; fall through.
+    }
+
+    // Next best: the immediate parent, if same-origin.
+    try {
+      final parent = web.window.parent;
+      if (parent != null && parent.document.body != null) {
+        return (
+          doc: parent.document,
+          framed: framed,
+          climbedOut: !identical(parent.document, selfDoc),
+        );
+      }
+    } catch (_) {
+      // Parent is cross-origin; fall through.
+    }
+
+    return (doc: selfDoc, framed: framed, climbedOut: false);
+  }
+
+  void _setupImeWarmupInput() {
+    if (!_isAndroidWeb) return;
+    final resolved = _resolveWarmupDocument();
+    final doc = resolved.doc;
+    final body = doc.body;
+    if (body == null) return;
+
+    _traceFocus('warmup_input_setup', {
+      'framed': resolved.framed,
+      'climbedOut': resolved.climbedOut,
+    });
+
+    final input =
+        doc.createElement('input') as web.HTMLInputElement
+          ..type = 'text'
+          ..setAttribute('autocomplete', 'off')
+          ..setAttribute('autocorrect', 'off')
+          ..setAttribute('autocapitalize', 'off')
+          ..setAttribute('spellcheck', 'false')
+          ..setAttribute('aria-hidden', 'true')
+          ..setAttribute('tabindex', '-1')
+          ..setAttribute('inputmode', 'text');
+    // Rendered (so it is focusable and can open the IME) but visually inert and
+    // non-interactive. `font-size: 16px` avoids Android focus-zoom.
+    input.style.cssText =
+        'position:fixed;top:0;left:0;width:1px;height:1px;'
+        'opacity:0;padding:0;border:0;margin:0;font-size:16px;'
+        'background:transparent;color:transparent;caret-color:transparent;'
+        'pointer-events:none;z-index:-2147483648;';
+
+    // Defensively keep the input's own value empty: focus is handed to Quill
+    // before typing, but guard against any stray input event.
+    _imeWarmupInputBlurHandlerJs = ((web.Event _) {
+      input.value = '';
+    }).toJS;
+    input.addEventListener('input', _imeWarmupInputBlurHandlerJs!);
+
+    body.appendChild(input);
+    _imeWarmupInput = input;
+  }
+
+  /// Whether an intercepted tap should route through the warm-up handoff
+  /// rather than focusing Quill directly. Only on Android, and only when the
+  /// warm-up input exists and the editor is not read-only.
+  ///
+  /// We skip the warm-up only when the editor already owns DOM focus **and** the
+  /// keyboard is actually open — i.e. an in-place caret-move tap during active
+  /// editing. Crucially, after a system-button keyboard dismiss the editor
+  /// keeps DOM focus while the keyboard is *down*; re-focusing that already
+  /// focused contenteditable does not reliably re-open the IME (it flashes open
+  /// then closes), so that case must still go through the warm-up.
+  bool _shouldUseImeWarmupHandoff() {
+    if (!_isAndroidWeb) return false;
+    if (_imeWarmupInput == null) return false;
+    if (widget.configuration.readOnly) return false;
+    if (_hasDomEditorFocus() && _isKeyboardLikelyOpen()) return false;
+    return true;
+  }
+
+  /// Heuristic for whether the soft keyboard is currently open, using the
+  /// absolute viewport shrink (the reliable signal under ADJUST_RESIZE, where
+  /// the computed keyboard height stays ~0). Compares the current height to the
+  /// tallest height seen this session.
+  bool _isKeyboardLikelyOpen() {
+    if (_maxViewportHeight <= 0) return false;
+    final shrink = _maxViewportHeight - _currentViewportHeight();
+    final threshold = math.max(
+      _warmupKeyboardShrinkMinPx,
+      _maxViewportHeight * _warmupKeyboardShrinkMinFraction,
+    );
+    return shrink >= threshold;
+  }
+
+  /// Opens the soft keyboard via the hidden input, then defers the actual Quill
+  /// focus until the viewport has settled (see [_setupImeWarmupInput] docs).
+  void _beginImeWarmupHandoff(int? tapIndex) {
+    _clearExplicitBlurGuard(reason: 'ime_warmup_handoff');
+    final input = _imeWarmupInput;
+    if (input == null) {
+      _focusQuillFromTap(tapIndex);
+      return;
+    }
+
+    // A single tap can surface as both pointerdown and touchstart; keep the
+    // first warm-up (and its resolved caret) rather than restarting it.
+    if (_warmupHandoffPending) {
+      _traceFocus('warmup_focus_input_ignored_pending', {'tapIndex': tapIndex});
+      return;
+    }
+
+    _warmupHandoffPending = true;
+    _warmupTapIndex = tapIndex;
+    _warmupStartedAt = DateTime.now();
+    _warmupLastRefocusAt = null;
+    _warmupSettleHeight = null;
+    _warmupHeightStableSince = null;
+    final baselineHeight = _currentViewportHeight();
+    _warmupBaselineViewportHeight = baselineHeight;
+    if (baselineHeight > _maxViewportHeight) {
+      _maxViewportHeight = baselineHeight;
+    }
+    _didUserInteractWithSelection = true;
+
+    // Keep acquisition semantics so transient frames during the keyboard
+    // animation are not treated as a focus loss.
+    _beginAcquisition(reason: 'intercepted_tap_warmup');
+
+    _traceFocus('warmup_focus_input', {'tapIndex': tapIndex});
+    // Must run synchronously within the tap gesture so the WebView honours the
+    // user activation and shows the soft keyboard.
+    input.focus();
+
+    _warmupSettleTimer?.cancel();
+    _warmupSettleTimer = Timer.periodic(
+      _warmupPollInterval,
+      (_) => _pollImeWarmupSettle(),
+    );
+  }
+
+  void _pollImeWarmupSettle() {
+    if (!mounted || !_warmupHandoffPending) {
+      _warmupSettleTimer?.cancel();
+      _warmupSettleTimer = null;
+      return;
+    }
+
+    final startedAt = _warmupStartedAt;
+    if (startedAt == null) {
+      _completeImeWarmupHandoff(reason: 'no_start');
+      return;
+    }
+
+    final now = DateTime.now();
+    final elapsed = now.difference(startedAt);
+    if (elapsed >= _warmupMaxWait) {
+      _completeImeWarmupHandoff(reason: 'max_wait');
+      return;
+    }
+
+    final current = _currentViewportHeight();
+    if (current > _maxViewportHeight) {
+      _maxViewportHeight = current;
+    }
+
+    // The keyboard signal under SOFT_INPUT_ADJUST_RESIZE is an *absolute*
+    // viewport-height shrink (Flutter's layout shrinks with the window, so the
+    // computed keyboard height stays ~0, but the height itself drops). Require a
+    // shrink large enough to be a keyboard and not a navigation/inset layout
+    // change — the latter is exactly what makes a plain resize event misfire in
+    // some WebView hosts. We also treat a tap that arrives with the viewport
+    // already well below the tallest-seen height as "keyboard already open".
+    final baseline = _warmupBaselineViewportHeight ?? current;
+    final shrinkThreshold = math.max(
+      _warmupKeyboardShrinkMinPx,
+      baseline * _warmupKeyboardShrinkMinFraction,
+    );
+    final keyboardOpen = (baseline - current) >= shrinkThreshold ||
+        (_maxViewportHeight - current) >= shrinkThreshold;
+
+    if (keyboardOpen) {
+      // Hand off only once the shrunk height stops changing, so a multi-stage
+      // keyboard animation is fully settled and no resize blurs the editor
+      // after focus moves into the iframe.
+      final settleHeight = _warmupSettleHeight;
+      if (settleHeight == null ||
+          (current - settleHeight).abs() > _warmupHeightStableEpsilonPx) {
+        _warmupSettleHeight = current;
+        _warmupHeightStableSince = now;
+        return;
+      }
+      final stableSince = _warmupHeightStableSince;
+      if (stableSince != null &&
+          now.difference(stableSince) >= _warmupHeightStableWindow) {
+        _completeImeWarmupHandoff(reason: 'keyboard_settled');
+      }
+      return;
+    }
+
+    // Keyboard has not opened yet. The common cause is the tap landing while a
+    // previous IME-hide animation was still in flight, so Android dropped the
+    // initial showSoftInput. Re-issue it by blur+refocusing the parent input (a
+    // plain focus() on the already-active input is a no-op). Throttled so it
+    // does not churn; the keyboard is not up here so the blur cannot flicker.
+    // Crucially we do NOT hand off until a real shrink is observed (or the
+    // max-wait cap fires) — handing off before the viewport actually shrinks is
+    // what lets a host's spurious layout resize close the keyboard.
+    final input = _imeWarmupInput;
+    if (input != null) {
+      final lastRefocus = _warmupLastRefocusAt;
+      if (lastRefocus == null ||
+          now.difference(lastRefocus) >= _warmupRefocusInterval) {
+        _warmupLastRefocusAt = now;
+        // The input may live in the parent/top document, so check focus against
+        // its own owner document rather than ours.
+        if (identical(input.ownerDocument?.activeElement, input)) {
+          input.blur();
+        }
+        input.focus();
+      }
+    }
+  }
+
+  /// Current absolute viewport height in CSS px. Prefers `visualViewport`
+  /// (tracks the soft keyboard) and falls back to `window.innerHeight`.
+  double _currentViewportHeight() {
+    final vv = web.window.visualViewport;
+    if (vv != null) {
+      return vv.height;
+    }
+    return web.window.innerHeight.toDouble();
+  }
+
+  void _completeImeWarmupHandoff({required String reason}) {
+    _warmupSettleTimer?.cancel();
+    _warmupSettleTimer = null;
+    if (!_warmupHandoffPending) return;
+    _warmupHandoffPending = false;
+
+    final tapIndex = _warmupTapIndex;
+    _warmupTapIndex = null;
+    _warmupStartedAt = null;
+    _warmupBaselineViewportHeight = null;
+    _warmupSettleHeight = null;
+    _warmupHeightStableSince = null;
+
+    if (!mounted || _quill == null) return;
+
+    _traceFocus('warmup_handoff_complete', {
+      'reason': reason,
+      'tapIndex': tapIndex,
+      'iframeActiveTag':
+          _iframe.contentDocument?.activeElement?.tagName ?? 'null',
+    });
+
+    // Guard the settling window: the WebView may report `<body>` as the active
+    // element for a few frames after `quill.focus()`, and we must not let that
+    // transient state trigger a Flutter focus steal.
+    _warmupHandoffGuardUntil = DateTime.now().add(_warmupHandoffGuardWindow);
+
+    // Transfer focus from the hidden input to Quill. The keyboard is already
+    // open and no resize is in flight, so this editable->editable move keeps the
+    // IME up instead of hiding/re-showing it.
+    _focusQuillFromTap(tapIndex);
+  }
+
+  void _cancelImeWarmupHandoff() {
+    _warmupSettleTimer?.cancel();
+    _warmupSettleTimer = null;
+    _warmupHandoffPending = false;
+    _warmupTapIndex = null;
+    _warmupStartedAt = null;
+    _warmupLastRefocusAt = null;
+    _warmupBaselineViewportHeight = null;
+    _warmupSettleHeight = null;
+    _warmupHeightStableSince = null;
+    _warmupHandoffGuardUntil = null;
+  }
+
+  /// Decides whether a debounced null-selection event is a genuine blur or a
+  /// transient side-effect of a keyboard/viewport resize.
+  ///
+  /// Under Android WebView `SOFT_INPUT_ADJUST_RESIZE`, the focused editable is
+  /// briefly invalidated while the viewport resizes for the keyboard, which
+  /// surfaces as `selection-change(null)` even though DOM focus never left the
+  /// editor. Closing the keyboard on that event causes the open/close flicker.
+  ///
+  /// The guard only defers when an explicit blur was not requested, the editor
+  /// still holds DOM focus, and we are inside the post-resize transition
+  /// window. It is bounded by [_maxNullSelectionRechecks] so a genuine focus
+  /// loss can never be suppressed indefinitely.
+  void _processNullSelectionFocusLoss() {
+    if (!mounted || _isPasteInProgress) return;
+
+    final withinResizeGuard = _withinImeResizeGuard();
+
+    if (!_explicitBlurRequested &&
+        withinResizeGuard &&
+        _hasDomEditorFocus() &&
+        _nullSelectionRecheckCount < _maxNullSelectionRechecks) {
+      _nullSelectionRecheckCount++;
+      _traceFocus('selection_null_resize_guard', {
+        'action': 'defer_close',
+        'recheck': _nullSelectionRecheckCount,
+        'focusPhase': _focusPhase.name,
+      });
+      // Re-check once the current resize-guard window elapses. If DOM focus is
+      // gone by then (or a non-null selection arrived and cancelled us), the
+      // re-check resolves correctly without tearing down on a transient frame.
+      _nullSelectionFocusLossTimer = Timer(
+        _imeResizeGuardWindow,
+        _processNullSelectionFocusLoss,
+      );
+      return;
+    }
+
+    // Genuine blur: DOM focus is gone, an explicit blur was requested, the
+    // resize window has elapsed, or we exhausted the bounded re-checks.
+    _traceFocus('selection_null_debounce_fired', {
+      'action': 'close_keyboard_and_unfocus',
+      'recheck': _nullSelectionRecheckCount,
+      'domHasFocus': _hasDomEditorFocus(),
+    });
+    _nullSelectionRecheckCount = 0;
+    widget.controller.keyboardHeight.value = 0.0;
+    _editorHasFocus = false;
+    _onJsFocusChanged(hasFocus: false);
   }
 
   void _cancelPendingNullSelectionFocusLoss() {
     _nullSelectionFocusLossTimer?.cancel();
     _nullSelectionFocusLossTimer = null;
+    _nullSelectionRecheckCount = 0;
   }
 
   void _refreshKeyboardHeightFromViewport() {
@@ -516,10 +1198,51 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     final hasFocusIntent =
         _editorHasFocus || (widget.focusNode?.hasFocus ?? false);
 
+    // During acquisition, transient focus oscillations can happen before JS and
+    // Flutter focus ownership converge. Do not force-close on those frames.
+    if (!hasFocusIntent && _shouldSuppressUnfocusDuringAcquisition()) {
+      if (_isAcquisitionExpired()) {
+        _cancelAcquisition(reason: 'viewport_no_focus_timeout');
+      }
+      return;
+    }
+
     // When editor is not focused, always treat keyboard as closed.
     if (!hasFocusIntent) {
       _lowKeyboardFramesWhileFocused = 0;
       widget.controller.keyboardHeight.value = 0.0;
+      return;
+    }
+
+    if (_focusPhase == _FocusPhase.acquiring) {
+      if (_isAcquisitionExpired()) {
+        _cancelAcquisition(reason: 'viewport_timeout');
+      }
+
+      // During acquisition, low keyboard samples are treated as transient and
+      // must not close the keyboard path.
+      if (kb > _keyboardOpenThresholdPx) {
+        _lowKeyboardFramesWhileFocused = 0;
+        _stableKeyboardFramesDuringAcquisition++;
+        widget.controller.keyboardHeight.value = kb;
+        _scheduleEnsureSelectionVisible(const Duration(milliseconds: 24));
+        if (_hasObservedStableSelectionDuringAcquisition &&
+            _stableKeyboardFramesDuringAcquisition >= 2) {
+          _setPhaseStableIfAcquiring(reason: 'keyboard_stable_during_acquire');
+        }
+      } else if (_hasObservedStableSelectionDuringAcquisition &&
+          _hasDomEditorFocus() &&
+          _isKeyboardLikelyOpen()) {
+        // Some in-app browsers report kb=0 while the viewport still shrinks.
+        _stableKeyboardFramesDuringAcquisition++;
+        if (_stableKeyboardFramesDuringAcquisition >= 2) {
+          _setPhaseStableIfAcquiring(
+            reason: 'viewport_shrink_stable_during_acquire',
+          );
+        }
+      } else {
+        _stableKeyboardFramesDuringAcquisition = 0;
+      }
       return;
     }
 
@@ -542,9 +1265,28 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   bool _editorHasFocus = false;
   bool _pendingDomFocusSync = false;
   int _focusSyncEpoch = 0;
+  _FocusPhase _focusPhase = _FocusPhase.idle;
+  DateTime? _acquisitionStartedAt;
+  int _acquisitionCycle = 0;
+  bool _hasObservedStableSelectionDuringAcquisition = false;
+  int _stableKeyboardFramesDuringAcquisition = 0;
+  int _nullSelectionEventsDuringAcquisition = 0;
+  int _jsFocusLossEventsDuringAcquisition = 0;
+  int _reacquireAttemptsDuringAcquisition = 0;
+
+  /// True while [controller.focus] is running. Iframe DOM focus can make the
+  /// wrapping [FocusNode] briefly report `hasFocus=false`; ignore that blur.
+  bool _isApplyingFocusToJs = false;
+
+  bool _flutterFocusSyncToJsScheduled = false;
+
+  /// Queued JS→Flutter sync when blocked by [_isSyncingFocus].
+  bool? _pendingJsToFlutterFocusSync;
+  bool _jsToFlutterFocusSyncScheduled = false;
 
   static const Duration _domFocusRetryDelay = Duration(milliseconds: 40);
   static const int _domFocusRetryCount = 3;
+  static const Duration _maxAcquisitionWindow = Duration(milliseconds: 900);
 
   // When true, the text-change handler skips firing onContentChanged.
   // Used to suppress notifications during programmatic setContents calls.
@@ -608,6 +1350,194 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   static const Duration _tapOutsideIgnoreAfterIntercept = Duration(
     milliseconds: 350,
   );
+  Timer? _acquisitionStableFromSelectionTimer;
+  static const Duration _acquisitionSelectionSettleWindow = Duration(
+    milliseconds: 280,
+  );
+
+  static const List<int> _acquisitionReacquireDelaysMs = <int>[
+    0,
+    32,
+    72,
+    140,
+    240,
+    380,
+    560,
+    760,
+    980,
+  ];
+  bool _explicitBlurRequested = false;
+  DateTime? _suppressEditorRefocusUntil;
+
+  bool _isWithinExplicitBlurGuard() {
+    final until = _suppressEditorRefocusUntil;
+    return until != null && DateTime.now().isBefore(until);
+  }
+
+  void _clearExplicitBlurGuard({required String reason}) {
+    if (_suppressEditorRefocusUntil == null) return;
+    _traceFocus('explicit_blur_guard_cleared', {'reason': reason});
+    _suppressEditorRefocusUntil = null;
+  }
+
+  void _cancelAcquisitionStableFromSelectionSchedule() {
+    _acquisitionStableFromSelectionTimer?.cancel();
+    _acquisitionStableFromSelectionTimer = null;
+  }
+
+  /// Promotes acquisition to stable when selection + DOM focus hold, for hosts
+  /// where [keyboardHeight] stays 0 even though the keyboard is open.
+  void _scheduleAcquisitionStableFromSelection() {
+    if (_focusPhase != _FocusPhase.acquiring) return;
+    _acquisitionStableFromSelectionTimer?.cancel();
+    _acquisitionStableFromSelectionTimer = Timer(
+      _acquisitionSelectionSettleWindow,
+      () {
+        _acquisitionStableFromSelectionTimer = null;
+        if (!mounted) return;
+        if (_focusPhase != _FocusPhase.acquiring) return;
+        if (!_hasObservedStableSelectionDuringAcquisition) return;
+        if (!_hasDomEditorFocus()) return;
+        if (_explicitBlurRequested) return;
+        if (_stableKeyboardFramesDuringAcquisition >= 2) return;
+        _setPhaseStableIfAcquiring(
+          reason: _isKeyboardLikelyOpen()
+              ? 'selection_with_viewport_shrink'
+              : 'selection_dom_stable_settle',
+        );
+      },
+    );
+  }
+
+  void _setFocusPhase(_FocusPhase phase) {
+    _focusPhase = phase;
+  }
+
+  void _beginAcquisition({required String reason}) {
+    if (_focusPhase == _FocusPhase.acquiring && !_isAcquisitionExpired()) {
+      return;
+    }
+    _acquisitionCycle++;
+    _acquisitionStartedAt = DateTime.now();
+    _hasObservedStableSelectionDuringAcquisition = false;
+    _stableKeyboardFramesDuringAcquisition = 0;
+    _nullSelectionEventsDuringAcquisition = 0;
+    _jsFocusLossEventsDuringAcquisition = 0;
+    _reacquireAttemptsDuringAcquisition = 0;
+    _explicitBlurRequested = false;
+    _setFocusPhase(_FocusPhase.acquiring);
+    _scheduleAcquisitionKeepAliveReacquire();
+    assert(() {
+      debugPrint('QuillJsEditorView: acquiring started ($reason)');
+      return true;
+    }());
+  }
+
+  void _scheduleAcquisitionKeepAliveReacquire() {
+    final cycle = _acquisitionCycle;
+    for (final delayMs in _acquisitionReacquireDelaysMs) {
+      Future<void>.delayed(Duration(milliseconds: delayMs), () {
+        if (!mounted) return;
+        if (_acquisitionCycle != cycle) return;
+        if (_focusPhase != _FocusPhase.acquiring) return;
+        if (_isAcquisitionExpired()) {
+          _cancelAcquisition(reason: 'keepalive_timeout');
+          return;
+        }
+        _attemptAcquisitionFocusReacquire(trigger: 'keepalive');
+      });
+    }
+  }
+
+  void _markStableSelectionObserved() {
+    _hasObservedStableSelectionDuringAcquisition = true;
+  }
+
+  bool _isAcquisitionExpired() {
+    final startedAt = _acquisitionStartedAt;
+    if (startedAt == null) return false;
+    return DateTime.now().difference(startedAt) > _maxAcquisitionWindow;
+  }
+
+  void _setPhaseStableIfAcquiring({required String reason}) {
+    if (_focusPhase != _FocusPhase.acquiring) return;
+    _cancelAcquisitionStableFromSelectionSchedule();
+    final hadStableSelection = _hasObservedStableSelectionDuringAcquisition;
+    final stableKeyboardFrames = _stableKeyboardFramesDuringAcquisition;
+    final nullSelections = _nullSelectionEventsDuringAcquisition;
+    final jsFocusLosses = _jsFocusLossEventsDuringAcquisition;
+    final reacquireAttempts = _reacquireAttemptsDuringAcquisition;
+    _setFocusPhase(_FocusPhase.stable);
+    _acquisitionStartedAt = null;
+    _stableKeyboardFramesDuringAcquisition = 0;
+    _nullSelectionEventsDuringAcquisition = 0;
+    _jsFocusLossEventsDuringAcquisition = 0;
+    _reacquireAttemptsDuringAcquisition = 0;
+    _traceFocus('acquisition_summary', {
+      'cycle': _acquisitionCycle,
+      'result': 'stable',
+      'reason': reason,
+      'selectionStableObserved': hadStableSelection,
+      'stableKeyboardFrames': stableKeyboardFrames,
+      'nullSelectionsDuringAcquire': nullSelections,
+      'jsFocusLossDuringAcquire': jsFocusLosses,
+      'reacquireAttemptsDuringAcquire': reacquireAttempts,
+    });
+    assert(() {
+      debugPrint(
+        'QuillJsEditorView: stable ($reason, '
+        'selection=$hadStableSelection, kbFrames=$stableKeyboardFrames)',
+      );
+      return true;
+    }());
+  }
+
+  void _cancelAcquisition({required String reason}) {
+    if (_focusPhase != _FocusPhase.acquiring) return;
+    _cancelAcquisitionStableFromSelectionSchedule();
+    final nullSelections = _nullSelectionEventsDuringAcquisition;
+    final jsFocusLosses = _jsFocusLossEventsDuringAcquisition;
+    final reacquireAttempts = _reacquireAttemptsDuringAcquisition;
+    _setFocusPhase(_FocusPhase.idle);
+    _acquisitionStartedAt = null;
+    _hasObservedStableSelectionDuringAcquisition = false;
+    _stableKeyboardFramesDuringAcquisition = 0;
+    _nullSelectionEventsDuringAcquisition = 0;
+    _jsFocusLossEventsDuringAcquisition = 0;
+    _reacquireAttemptsDuringAcquisition = 0;
+    _traceFocus('acquisition_summary', {
+      'cycle': _acquisitionCycle,
+      'result': 'canceled',
+      'reason': reason,
+      'nullSelectionsDuringAcquire': nullSelections,
+      'jsFocusLossDuringAcquire': jsFocusLosses,
+      'reacquireAttemptsDuringAcquire': reacquireAttempts,
+    });
+    assert(() {
+      debugPrint('QuillJsEditorView: acquiring canceled ($reason)');
+      return true;
+    }());
+  }
+
+  void _resetFocusPhaseState() {
+    _cancelAcquisitionStableFromSelectionSchedule();
+    _setFocusPhase(_FocusPhase.idle);
+    _acquisitionStartedAt = null;
+    _hasObservedStableSelectionDuringAcquisition = false;
+    _stableKeyboardFramesDuringAcquisition = 0;
+    _explicitBlurRequested = false;
+    _domFocusRetainCount = 0;
+    _domFocusRetainWindowStart = null;
+    _cancelImeWarmupHandoff();
+  }
+
+  bool _shouldSuppressUnfocusDuringAcquisition() {
+    return _focusPhase == _FocusPhase.acquiring && !_explicitBlurRequested;
+  }
+
+  bool _shouldSuppressOuterHandoffDuringAcquisition() {
+    return _focusPhase == _FocusPhase.acquiring;
+  }
 
   // ------------------------------------------------------------------
   // Lifecycle
@@ -667,6 +1597,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
       oldWidget.focusNode?.removeListener(_onFlutterFocusChanged);
       _focusSyncEpoch++;
       _pendingDomFocusSync = false;
+      _pendingJsToFlutterFocusSync = null;
+      _flutterFocusSyncToJsScheduled = false;
+      _jsToFlutterFocusSyncScheduled = false;
+      _isApplyingFocusToJs = false;
       _setupFocusBridge();
     }
 
@@ -701,6 +1635,11 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
 
   @override
   void dispose() {
+    _cancelAcquisitionStableFromSelectionSchedule();
+    _pendingJsToFlutterFocusSync = null;
+    _flutterFocusSyncToJsScheduled = false;
+    _jsToFlutterFocusSyncScheduled = false;
+    _isApplyingFocusToJs = false;
     _teardownFocusBridge();
     _detachController();
     _cancelOuterFlushRaf();
@@ -726,6 +1665,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
         _editorDiv!.removeEventListener(
           'keydown',
           _escapeKeyHandlerJs,
+          true.toJS,
+        );
+      }
+      if (_shiftTabKeyHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'keydown',
+          _shiftTabKeyHandlerJs,
           true.toJS,
         );
       }
@@ -771,6 +1717,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
         _editorDiv!.removeEventListener(
           'pointerdown',
           _tapFocusPointerDownHandlerJs,
+          true.toJS,
+        );
+      }
+      if (_tapFocusPointerUpHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'pointerup',
+          _tapFocusPointerUpHandlerJs,
           true.toJS,
         );
       }
@@ -840,6 +1793,24 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
           _outerScrollCompositionEndHandlerJs,
         );
       }
+      if (_editorFocusRetentionHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'focusout',
+          _editorFocusRetentionHandlerJs,
+        );
+      }
+    }
+
+    _cancelImeWarmupHandoff();
+    if (_imeWarmupInput != null) {
+      if (_imeWarmupInputBlurHandlerJs != null) {
+        _imeWarmupInput!.removeEventListener(
+          'input',
+          _imeWarmupInputBlurHandlerJs,
+        );
+      }
+      _imeWarmupInput!.remove();
+      _imeWarmupInput = null;
     }
 
     _nullSelectionFocusLossTimer?.cancel();
@@ -861,6 +1832,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
 
     // Restore parent overflow now that the editor is gone
     _restoreParentOverflow();
+    _resetFocusPhaseState();
 
     super.dispose();
   }
@@ -1240,6 +2212,7 @@ $customCss
       if (widget.autoFocus) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || _quill == null) return;
+          _traceFocus('autofocus_requested');
           _quill!.focus();
           _editorHasFocus = true;
           _onJsFocusChanged(hasFocus: true);
@@ -1264,6 +2237,7 @@ $customCss
       if (!mounted) return;
       if (_loadState != _LoadState.ready) return;
       if (!widget.controller.isAttached) return;
+      _traceFocus('editor_ready_callback');
       onEditorReady();
     });
   }
@@ -1307,9 +2281,14 @@ $customCss
 
     _setupEventListeners();
     _setupTapFocusInterception();
+    _setupImeWarmupInput();
+    _setupDomFocusRetention();
     _setupLinkClickHandler();
     _setupEnterKeyHandler();
     _setupEscapeKeyHandler();
+    if (config.onShiftTabPressed != null) {
+      _setupShiftTabKeyHandler();
+    }
     _setupClipboardInterceptors();
     _setupOuterScrollHandoff();
 
@@ -1332,7 +2311,7 @@ $customCss
     // If Flutter focus was obtained before the web editor attached, replay
     // ownership sync once callbacks become available.
     if (node?.hasFocus ?? false) {
-      _syncDomFocusOwnership(force: true);
+      _scheduleFlutterFocusSyncToJs();
     }
   }
 
@@ -1340,25 +2319,121 @@ $customCss
     widget.focusNode?.removeListener(_onFlutterFocusChanged);
   }
 
-  /// Flutter FocusNode changed -> sync to JS editor.
+  /// Flutter [FocusNode] changed -> sync to JS editor (post-frame).
+  ///
+  /// DOM focus/blur must not run synchronously inside [FocusNode] listener
+  /// callbacks — that re-enters [FocusManager.applyFocusChangesIfNeeded].
   void _onFlutterFocusChanged() {
     final node = widget.focusNode;
     if (node == null) return;
 
+    _traceFocus('flutter_focus_listener', {
+      'hasFocus': node.hasFocus,
+      'hasPrimaryFocus': node.hasPrimaryFocus,
+      'canRequestFocus': node.canRequestFocus,
+    });
+    _scheduleFlutterFocusSyncToJs();
+  }
+
+  void _scheduleFlutterFocusSyncToJs() {
+    if (_flutterFocusSyncToJsScheduled) return;
+    _flutterFocusSyncToJsScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _flutterFocusSyncToJsScheduled = false;
+      if (!mounted) return;
+      _applyFlutterFocusSyncToJs();
+    });
+  }
+
+  void _applyFlutterFocusSyncToJs() {
+    final node = widget.focusNode;
+    if (node == null) return;
+
+    // While the warm-up input is holding the keyboard open ahead of the
+    // handoff, do not let Flutter focus changes touch the iframe. Focusing the
+    // hidden parent input makes the FocusNode report focus, which would
+    // otherwise pull focus into the iframe mid-resize and blur it — exactly the
+    // race the warm-up exists to avoid. The handoff focuses Quill itself.
+    if (_warmupHandoffPending) {
+      _traceFocus('flutter_focus_sync_skipped_warmup', {
+        'hasFocus': node.hasFocus,
+      });
+      return;
+    }
+
     if (!node.hasFocus) {
+      // In some Android WebView containers, Flutter focus can transiently drop
+      // during cold acquisition while DOM focus is still active. Blurring JS
+      // here tears down IME and causes keyboard open/close churn.
+      if (!_explicitBlurRequested && _hasDomEditorFocus()) {
+        _traceFocus('flutter_blur_ignored_dom_still_focused', {
+          'focusPhase': _focusPhase.name,
+        });
+        // Do NOT re-assert Flutter focus while the JS editor owns DOM focus
+        // during acquisition / IME resize: requestFocus() would steal DOM
+        // focus from the iframe and close the keyboard, starting a flicker
+        // loop. DOM focus is authoritative here; leave it untouched.
+        if (!_shouldPreserveDomFocusOverFlutter()) {
+          // Desktop DOM-first mouse focus can ping-pong if we keep re-queuing
+          // Flutter requestFocus() while the editor already owns DOM focus.
+          // Mobile/WebView transient Flutter drops during IME resize must keep
+          // the existing re-queue path.
+          if (!_isSoftKeyboardContext() && _editorHasFocus) {
+            _traceFocus('flutter_blur_sync_skipped_desktop_dom_owns', {
+              'focusPhase': _focusPhase.name,
+            });
+          } else {
+            _queueJsToFlutterFocusSync(true);
+          }
+        }
+        return;
+      }
+      if (_isApplyingFocusToJs) {
+        return;
+      }
+      if (_shouldSuppressUnfocusDuringAcquisition()) {
+        return;
+      }
       // On Android, context-menu paste briefly removes platform-view focus
       // before the paste event arrives. Don't tear down keyboard state
       // while a paste operation is in flight.
-      if (_isPasteInProgress) return;
+      if (_isPasteInProgress) {
+        return;
+      }
       _pendingDomFocusSync = false;
       _focusSyncEpoch++;
+      _traceFocus('flutter_to_js_blur', {'reason': 'flutter_focus_lost'});
       widget.controller.keyboardHeight.value = 0.0;
-      if (!widget.controller.isAttached) return;
-      _withFocusSyncGuard(widget.controller.blur);
+      if (!widget.controller.isAttached) {
+        return;
+      }
+      _blurJsEditor();
       return;
     }
 
     _syncDomFocusOwnership(force: true);
+  }
+
+  void _focusJsEditor() {
+    // Never focus the iframe editor while the warm-up input owns the keyboard;
+    // the handoff is the only path allowed to move focus into the iframe.
+    if (_warmupHandoffPending) {
+      _traceFocus('js_focus_requested_skipped_warmup', {});
+      return;
+    }
+    _traceFocus('js_focus_requested', {'via': 'focus_bridge'});
+    _isApplyingFocusToJs = true;
+    try {
+      _withFocusSyncGuard(widget.controller.focus);
+    } finally {
+      _isApplyingFocusToJs = false;
+      _flushPendingJsToFlutterFocusSync();
+    }
+  }
+
+  void _blurJsEditor() {
+    _traceFocus('js_blur_requested', {'via': 'focus_bridge'});
+    _withFocusSyncGuard(widget.controller.blur);
   }
 
   void _syncDomFocusOwnership({bool force = false}) {
@@ -1366,16 +2441,23 @@ $customCss
     final node = widget.focusNode;
     if (node == null) return;
 
-    if (!node.hasFocus) return;
+    if (!node.hasFocus) {
+      return;
+    }
 
     if (!widget.controller.isAttached) {
       if (force) _pendingDomFocusSync = true;
       return;
     }
 
+    if (_hasDomEditorFocus()) {
+      _pendingDomFocusSync = false;
+      return;
+    }
+
     final epoch = ++_focusSyncEpoch;
     _pendingDomFocusSync = false;
-    _withFocusSyncGuard(widget.controller.focus);
+    _focusJsEditor();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _runDeferredDomFocusAttempt(epoch);
@@ -1391,11 +2473,20 @@ $customCss
 
   void _runDeferredDomFocusAttempt(int epoch) {
     if (!mounted) return;
-    if (epoch != _focusSyncEpoch) return;
+    if (epoch != _focusSyncEpoch) {
+      return;
+    }
     final node = widget.focusNode;
-    if (node == null || !node.hasFocus) return;
-    if (!widget.controller.isAttached) return;
-    _withFocusSyncGuard(widget.controller.focus);
+    if (node == null || !node.hasFocus) {
+      return;
+    }
+    if (!widget.controller.isAttached) {
+      return;
+    }
+    if (_hasDomEditorFocus()) {
+      return;
+    }
+    _focusJsEditor();
   }
 
   /// Blurs the JS editor and proactively mirrors blur to Flutter focus.
@@ -1405,15 +2496,32 @@ $customCss
   /// stale state prevents a later `requestFocus()` from emitting a new focus
   /// change event. We sync Flutter focus eagerly to keep both sides aligned.
   void _blurEditorAndSyncFlutterFocus() {
+    _cancelImeWarmupHandoff();
+    _setFocusPhase(_FocusPhase.blurring);
+    final explicitBlurRequested = _explicitBlurRequested;
+    assert(() {
+      debugPrint(
+        'QuillJsEditorView: blur start (explicit=$explicitBlurRequested)',
+      );
+      return true;
+    }());
     final quill = _quill;
-    if (quill == null) return;
+    if (quill == null) {
+      _setFocusPhase(_FocusPhase.idle);
+      _explicitBlurRequested = false;
+      return;
+    }
     quill.blur();
     _editorHasFocus = false;
     _onJsFocusChanged(hasFocus: false);
+    _setFocusPhase(_FocusPhase.idle);
+    _explicitBlurRequested = false;
   }
 
   void _withFocusSyncGuard(VoidCallback action) {
-    if (_isSyncingFocus) return;
+    if (_isSyncingFocus) {
+      return;
+    }
     _isSyncingFocus = true;
     try {
       action();
@@ -1434,15 +2542,174 @@ $customCss
     });
   }
 
-  /// JS editor focus changed -> sync to Flutter FocusNode.
+  void _attemptAcquisitionFocusReacquire({required String trigger}) {
+    // While the warm-up input holds focus to keep the keyboard open, never pull
+    // focus onto the contenteditable: that is exactly the resize-racing focus
+    // the warm-up exists to avoid. The handoff transfers focus once settled.
+    if (_warmupHandoffPending) {
+      _traceFocus('acquisition_reacquire_skipped_warmup', {'trigger': trigger});
+      return;
+    }
+    // Just after handoff, DOM focus is settling onto the editor. Don't fight it
+    // with Flutter requestFocus(); the focusout retention handler keeps the
+    // editor focused if anything knocks it to <body>.
+    if (_withinWarmupHandoffGuard()) {
+      _traceFocus('acquisition_reacquire_skipped_handoff_guard', {
+        'trigger': trigger,
+      });
+      return;
+    }
+    if (!_shouldSuppressUnfocusDuringAcquisition()) return;
+    if (_loadState != _LoadState.ready) return;
+    if (!widget.controller.isAttached) return;
+    if (_hasDomEditorFocus()) return;
+
+    // During an in-flight viewport resize, do not fight for focus on a timer:
+    // the synchronous focusout retention handler is responsible for holding DOM
+    // focus, and re-opening the editor here would re-trigger the
+    // keyboard -> resize -> blur loop that produced the open/close flicker.
+    if (_withinImeResizeGuard()) {
+      _traceFocus('acquisition_reacquire_skipped_resize', {
+        'trigger': trigger,
+        'focusPhase': _focusPhase.name,
+      });
+      return;
+    }
+
+    final node = widget.focusNode;
+    if (node != null && !node.hasFocus) {
+      // During acquisition, Flutter focus can transiently drop before DOM focus
+      // settles in WebView. Re-request focus to preserve editor focus intent.
+      node.requestFocus();
+    }
+
+    _reacquireAttemptsDuringAcquisition++;
+    _traceFocus('acquisition_reacquire_focus', {
+      'trigger': trigger,
+      'focusPhase': _focusPhase.name,
+      'editorHasFocus': _editorHasFocus,
+      'flutterHasFocus': node?.hasFocus,
+      'reacquireAttemptsDuringAcquire': _reacquireAttemptsDuringAcquisition,
+    });
+    _focusJsEditor();
+    _refreshKeyboardHeightFromViewport();
+    _scheduleKeyboardSettleRetries();
+  }
+
+  /// JS editor focus changed -> sync to Flutter [FocusNode].
   void _onJsFocusChanged({required bool hasFocus}) {
     final node = widget.focusNode;
-    if (node == null || _isSyncingFocus) return;
+    if (node == null) return;
+    _traceFocus('js_focus_changed', {
+      'hasFocus': hasFocus,
+      'focusPhase': _focusPhase.name,
+      'flutterHasFocus': node.hasFocus,
+      'editorHasFocus': _editorHasFocus,
+    });
+    if (!hasFocus && _shouldSuppressUnfocusDuringAcquisition()) {
+      _jsFocusLossEventsDuringAcquisition++;
+      _attemptAcquisitionFocusReacquire(trigger: 'js_focus_lost');
+      return;
+    }
+
+    if (_isSyncingFocus || _isApplyingFocusToJs) {
+      _queueJsToFlutterFocusSync(hasFocus);
+      return;
+    }
+
+    _applyJsToFlutterFocusSync(hasFocus);
+  }
+
+  void _queueJsToFlutterFocusSync(bool jsHasFocus) {
+    final node = widget.focusNode;
+    if (node == null) return;
+
+    if (jsHasFocus && !node.hasFocus) {
+      _pendingJsToFlutterFocusSync = true;
+    } else if (!jsHasFocus && node.hasFocus) {
+      _pendingJsToFlutterFocusSync = false;
+    } else {
+      return;
+    }
+    _scheduleJsToFlutterFocusSyncFlush();
+  }
+
+  void _scheduleJsToFlutterFocusSyncFlush() {
+    if (_jsToFlutterFocusSyncScheduled) return;
+    _jsToFlutterFocusSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _jsToFlutterFocusSyncScheduled = false;
+      _flushPendingJsToFlutterFocusSync();
+    });
+  }
+
+  void _flushPendingJsToFlutterFocusSync() {
+    if (!mounted) return;
+    if (_isSyncingFocus || _isApplyingFocusToJs) {
+      _scheduleJsToFlutterFocusSyncFlush();
+      return;
+    }
+
+    final pending = _pendingJsToFlutterFocusSync;
+    if (pending == null) return;
+    _pendingJsToFlutterFocusSync = null;
+
+    final node = widget.focusNode;
+    if (node == null) return;
+
+    if (pending && !node.hasFocus) {
+      _applyJsToFlutterFocusSync(true);
+    } else if (!pending && node.hasFocus) {
+      _applyJsToFlutterFocusSync(false);
+    }
+  }
+
+  void _applyJsToFlutterFocusSync(bool jsHasFocus) {
+    final node = widget.focusNode;
+    if (node == null || _isSyncingFocus || _isApplyingFocusToJs) {
+      _queueJsToFlutterFocusSync(jsHasFocus);
+      return;
+    }
+    if (jsHasFocus && _isWithinExplicitBlurGuard()) {
+      _traceFocus('js_focus_sync_suppressed_explicit_blur_guard');
+      return;
+    }
+    if (!jsHasFocus && _shouldSuppressUnfocusDuringAcquisition()) {
+      return;
+    }
+    // Resize guard: a JS focus-loss reported while the editor still holds DOM
+    // focus during the IME/viewport transition is a transient WebView artifact,
+    // not a real blur. Ignore it without tearing down. We intentionally do NOT
+    // re-queue an upward focus sync here, because that would lead to a
+    // requestFocus() that steals DOM focus and closes the keyboard.
+    if (!jsHasFocus &&
+        !_explicitBlurRequested &&
+        _withinImeResizeGuard() &&
+        _hasDomEditorFocus()) {
+      _traceFocus('js_blur_ignored_resize_guard', {
+        'focusPhase': _focusPhase.name,
+      });
+      _editorHasFocus = true;
+      return;
+    }
+    // Never steal DOM focus from the iframe while it is authoritative: calling
+    // requestFocus() on the Flutter side here moves browser focus to the glass
+    // pane and closes the WebView IME, triggering a reacquire/steal flicker.
+    if (jsHasFocus && !node.hasFocus && _shouldPreserveDomFocusOverFlutter()) {
+      _traceFocus('flutter_request_focus_skipped_dom_owns', {
+        'focusPhase': _focusPhase.name,
+      });
+      _editorHasFocus = true;
+      return;
+    }
+
     _isSyncingFocus = true;
     try {
-      if (hasFocus && !node.hasFocus) {
+      if (jsHasFocus && !node.hasFocus) {
+        _traceFocus('flutter_request_focus_from_js');
         node.requestFocus();
-      } else if (!hasFocus && node.hasFocus) {
+      } else if (!jsHasFocus && node.hasFocus) {
+        _traceFocus('flutter_unfocus_from_js');
         node.unfocus();
       }
     } finally {
@@ -1479,9 +2746,19 @@ $customCss
     final vv = web.window.visualViewport;
     if (vv != null) {
       _viewportResizeHandlerJs = ((web.Event _) {
+        _lastViewportResizeAt = DateTime.now();
+        final height = vv.height;
+        if (height > _maxViewportHeight) {
+          _maxViewportHeight = height;
+        }
         _refreshKeyboardHeightFromViewport();
       }).toJS;
       vv.addEventListener('resize', _viewportResizeHandlerJs);
+      // Seed the "no keyboard" reference immediately so the first warm-up tap
+      // has a sane tallest-height baseline even before any resize fires.
+      if (vv.height > _maxViewportHeight) {
+        _maxViewportHeight = vv.height;
+      }
     }
 
     // --- Permanent parent-page scroll lock ---
@@ -1630,15 +2907,38 @@ $customCss
   }
 
   void _onSelectionChanged(JSObject? range, String? source) {
+    _traceFocus('selection_change', {
+      'isNull': range == null,
+      'source': source,
+      'focusPhase': _focusPhase.name,
+      'editorHasFocus': _editorHasFocus,
+      'flutterHasFocus': widget.focusNode?.hasFocus,
+    });
     if (range == null) {
       _lastSelectionLength = 0;
       _isSelectionGestureActive = false;
+      if (_shouldSuppressUnfocusDuringAcquisition()) {
+        _nullSelectionEventsDuringAcquisition++;
+        if (_isAcquisitionExpired()) {
+          _cancelAcquisition(reason: 'selection_null_timeout');
+        } else {
+          _attemptAcquisitionFocusReacquire(trigger: 'selection_null');
+        }
+        return;
+      }
+      if (_focusPhase == _FocusPhase.acquiring && _isAcquisitionExpired()) {
+        _cancelAcquisition(reason: 'selection_null_timeout');
+      }
       _scheduleNullSelectionFocusLoss();
       return;
     }
 
     // A valid range arrived — cancel any pending debounced focus loss.
     _cancelPendingNullSelectionFocusLoss();
+    _markStableSelectionObserved();
+    if (_focusPhase == _FocusPhase.acquiring) {
+      _scheduleAcquisitionStableFromSelection();
+    }
 
     final jsRange = _JsRange._(range);
     _lastSelectionLength = jsRange.length;
@@ -1653,6 +2953,18 @@ $customCss
     }
 
     final wasFocused = _editorHasFocus;
+    if (_isWithinExplicitBlurGuard()) {
+      // Allow user-driven caret moves to refocus the editor; only block
+      // programmatic api/silent selection updates that steal focus back after
+      // an explicit tap-outside (e.g. subject click).
+      if (source != 'user') {
+        _traceFocus('selection_change_suppressed_explicit_blur_guard', {
+          'source': source,
+        });
+        return;
+      }
+      _clearExplicitBlurGuard(reason: 'selection_user');
+    }
     _editorHasFocus = true;
     _onJsFocusChanged(hasFocus: true);
     _refreshKeyboardHeightFromViewport();
@@ -1675,6 +2987,16 @@ $customCss
       _maybeMoveCursorToEndOnFirstFocus();
       _scheduleKeyboardSettleRetries();
     }
+    // Do not mark acquisition as stable on the first non-null selection.
+    //
+    // On Android WebView cold-open paths, Quill can emit:
+    //   selection(non-null) -> selection(null)
+    // within the same keyboard animation window. Promoting to stable here
+    // disables acquisition-time blur suppression too early and allows the
+    // transient null to close IME.
+    //
+    // Acquisition should become stable only after viewport-derived keyboard
+    // readings also stabilize (see _refreshKeyboardHeightFromViewport).
 
     // Sync format state whenever selection changes (cursor moves, text selected, etc.)
     _syncFormatState();
@@ -1721,21 +3043,9 @@ $customCss
 
     _tapFocusTouchEndHandlerJs = ((web.Event event) {
       if (!_pendingEmptyTouchTapFocus) return;
-      _pendingEmptyTouchTapFocus = false;
-
+      _completeEmptyTouchTapFocus(event: event);
       event.preventDefault();
       event.stopPropagation();
-      _ignoreTapOutsideUntil = DateTime.now().add(
-        _tapOutsideIgnoreAfterIntercept,
-      );
-
-      final clientPoint =
-          _extractClientPoint(event) ?? _pendingEmptyTouchTapPoint;
-      _pendingEmptyTouchTapPoint = null;
-      final tapIndex = clientPoint == null
-          ? null
-          : _resolveTapIndex(clientPoint.$1, clientPoint.$2);
-      _focusEditorFromInterceptedTap(tapIndex);
     }).toJS;
 
     _tapFocusTouchCancelHandlerJs = ((web.Event _) {
@@ -1743,11 +3053,26 @@ $customCss
       _pendingEmptyTouchTapPoint = null;
     }).toJS;
 
+    _tapFocusPointerUpHandlerJs = ((web.Event event) {
+      if (!_pendingEmptyTouchTapFocus || !_isIOSWeb) return;
+      final pointerEvent = event as web.PointerEvent;
+      if (pointerEvent.pointerType.toLowerCase() == 'mouse') return;
+      _completeEmptyTouchTapFocus(event: event);
+      event.preventDefault();
+      event.stopPropagation();
+    }).toJS;
+
     _tapFocusPointerDownHandlerJs = ((web.Event event) {
       final pointerEvent = event as web.PointerEvent;
-      // Touch/pen paths can trigger iOS focus-scroll assist. Mouse focus is
-      // typically stable and should keep native behaviour.
       if (pointerEvent.pointerType.toLowerCase() == 'mouse') {
+        // Android WebView + DeX: keep native mouse; warm-up path untouched.
+        if (_isAndroidWeb) return;
+        // Desktop Flutter web: native mouse is DOM-first into the iframe, which
+        // desynchronizes the bridge. Intercept cold/desynced taps only; in-editor
+        // caret moves keep native behaviour when already focused.
+        if (!_editorHasFocus || !_hasDomEditorFocus()) {
+          _interceptTapFocus(event);
+        }
         return;
       }
       _interceptTapFocus(event);
@@ -1773,6 +3098,35 @@ $customCss
       _tapFocusPointerDownHandlerJs!,
       true.toJS,
     );
+    editorDiv.addEventListener(
+      'pointerup',
+      _tapFocusPointerUpHandlerJs!,
+      true.toJS,
+    );
+  }
+
+  /// Finishes an iOS empty-editor tap deferred from [touchstart] to [touchend].
+  /// Must run focus before [preventDefault] so user activation is preserved.
+  void _completeEmptyTouchTapFocus({web.Event? event}) {
+    if (!_pendingEmptyTouchTapFocus) return;
+    _pendingEmptyTouchTapFocus = false;
+
+    final clientPoint =
+        (event != null ? _extractClientPoint(event) : null) ??
+        _pendingEmptyTouchTapPoint;
+    _pendingEmptyTouchTapPoint = null;
+    final tapIndex = clientPoint == null
+        ? null
+        : _resolveTapIndex(clientPoint.$1, clientPoint.$2);
+
+    _traceFocus('empty_touch_tap_complete', {
+      'eventType': event?.type ?? 'direct',
+      'tapIndex': tapIndex,
+    });
+    _ignoreTapOutsideUntil = DateTime.now().add(
+      _tapOutsideIgnoreAfterIntercept,
+    );
+    _focusEditorFromInterceptedTap(tapIndex);
   }
 
   void _interceptTapFocus(web.Event event) {
@@ -1782,9 +3136,23 @@ $customCss
     if (_pendingEmptyTouchTapFocus &&
         event is web.PointerEvent &&
         event.pointerType.toLowerCase() != 'mouse') {
+      // iOS defers empty taps to touchend/pointerup; other platforms must not
+      // stall here if touchstart already marked the gesture pending.
+      if (_isIOSWeb) {
+        return;
+      }
+      _completeEmptyTouchTapFocus(event: event);
+      event.preventDefault();
+      event.stopPropagation();
       return;
     }
-    if (_editorHasFocus && _hasDomEditorFocus()) {
+    // Leave the tap to native handling only when the editor is genuinely being
+    // edited: it owns focus AND the keyboard is up (an in-place caret move).
+    // After a system-button keyboard dismiss the editor keeps DOM focus while
+    // the keyboard is down; a native tap on the already-focused contenteditable
+    // does not reliably re-open the IME (it flashes open then closes), so that
+    // case must fall through and re-open the keyboard via the warm-up path.
+    if (_editorHasFocus && _hasDomEditorFocus() && _isKeyboardLikelyOpen()) {
       return;
     }
     if (_editorHasFocus && !_hasDomEditorFocus()) {
@@ -1800,30 +3168,42 @@ $customCss
     final clientPoint = _extractClientPoint(event);
     if (clientPoint == null) return;
     final tapIndex = _resolveTapIndex(clientPoint.$1, clientPoint.$2);
+    _traceFocus('intercept_tap_focus', {
+      'eventType': event.type,
+      'tapIndex': tapIndex,
+      'editorHasFocus': _editorHasFocus,
+      'domHasFocus': _hasDomEditorFocus(),
+    });
 
-    // iOS Safari can drop keyboard open if a touch-start focus path is fully
-    // cancelled via preventDefault on an empty editor. Prefer a native tap
-    // completion path in that case while still forcing explicit focus/selection.
-    if (event is web.TouchEvent && _isEditorEffectivelyEmpty()) {
+    // iOS Safari only: defer empty-editor focus from touchstart to touchend so
+    // preventDefault does not cancel keyboard open. Every other platform (incl.
+    // Android WebView and desktop web) must focus synchronously in this gesture.
+    final isEmpty = _isEditorEffectivelyEmpty();
+    if (event.type == 'touchstart' &&
+        event is web.TouchEvent &&
+        isEmpty &&
+        _isIOSWeb) {
       _pendingEmptyTouchTapFocus = true;
       _pendingEmptyTouchTapPoint = clientPoint;
-      event.preventDefault();
-      event.stopPropagation();
       _ignoreTapOutsideUntil = DateTime.now().add(
         _tapOutsideIgnoreAfterIntercept,
       );
+      event.preventDefault();
+      event.stopPropagation();
       return;
     }
 
     _pendingEmptyTouchTapFocus = false;
     _pendingEmptyTouchTapPoint = null;
 
-    event.preventDefault();
-    event.stopPropagation();
     _ignoreTapOutsideUntil = DateTime.now().add(
       _tapOutsideIgnoreAfterIntercept,
     );
+    // Focus before preventDefault so empty contenteditable still receives DOM
+    // focus when the browser would otherwise rely on the default click path.
     _focusEditorFromInterceptedTap(tapIndex);
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   bool _isEditorEffectivelyEmpty() {
@@ -1844,16 +3224,49 @@ $customCss
     return editor.contains(active);
   }
 
+  double _readDomClientCoord(Object target, String property) {
+    try {
+      final value = (target as JSObject)[property];
+      return switch (value) {
+        JSNumber() => value.toDartDouble,
+        _ => (value as num).toDouble(),
+      };
+    } catch (_) {
+      // Bracket access can fail on some WebViews; dynamic read handles both
+      // int-typed bindings and subpixel doubles from desktop HiDPI layouts.
+      final dynamic jsTarget = target;
+      final coord = property == 'clientX' ? jsTarget.clientX : jsTarget.clientY;
+      return (coord as num).toDouble();
+    }
+  }
+
+  web.Touch? _firstTouchFromEvent(web.TouchEvent event) {
+    final changed = event.changedTouches;
+    if (changed.length > 0) {
+      final touch = changed.item(0);
+      if (touch != null) return touch;
+    }
+    final active = event.touches;
+    if (active.length > 0) {
+      return active.item(0);
+    }
+    return null;
+  }
+
   (double, double)? _extractClientPoint(web.Event event) {
     if (event is web.PointerEvent) {
-      return (event.clientX.toDouble(), event.clientY.toDouble());
+      return (
+        _readDomClientCoord(event, 'clientX'),
+        _readDomClientCoord(event, 'clientY'),
+      );
     }
     if (event is web.TouchEvent) {
-      final touches = event.changedTouches;
-      if (touches.length <= 0) return null;
-      final touch = touches.item(0);
+      final touch = _firstTouchFromEvent(event);
       if (touch == null) return null;
-      return (touch.clientX.toDouble(), touch.clientY.toDouble());
+      return (
+        _readDomClientCoord(touch, 'clientX'),
+        _readDomClientCoord(touch, 'clientY'),
+      );
     }
     return null;
   }
@@ -1909,8 +3322,17 @@ $customCss
     if (baseIndex < 0) return null;
 
     if (node is web.Text) {
-      final localOffset = offset.clamp(0, node.data.length);
-      return baseIndex + localOffset;
+      try {
+        final textLength = node.data.length;
+        final localOffset = offset.clamp(0, textLength).toInt();
+        return baseIndex + localOffset;
+      } catch (_) {
+        _traceFocus('resolve_tap_index_text_fallback', {
+          'baseIndex': baseIndex,
+          'offset': offset,
+        });
+        return baseIndex;
+      }
     }
     return baseIndex;
   }
@@ -1918,28 +3340,76 @@ $customCss
   void _focusEditorFromInterceptedTap(int? tapIndex) {
     final quill = _quill;
     if (quill == null) return;
+    // User is intentionally focusing the editor; do not let a recent tap-outside
+    // guard (e.g. after clicking subject) block this acquisition.
+    _clearExplicitBlurGuard(reason: 'intercepted_tap');
+    _traceFocus('focus_from_intercepted_tap', {'tapIndex': tapIndex});
 
-    // Mark this as user-driven so first-focus move-to-end does not override
-    // the tapped caret placement.
+    // On Android, open the keyboard via a hidden native input first and hand
+    // focus to Quill only once the viewport resize has settled, so the cold
+    // contenteditable focus never races the keyboard-driven resize.
+    if (_shouldUseImeWarmupHandoff()) {
+      _beginImeWarmupHandoff(tapIndex);
+      return;
+    }
+
+    // Desktop: Flutter-first (same as Tab) avoids DOM-first ping-pong that
+    // breaks subject re-focus. Mobile: DOM-first + acquisition guards IME.
     _didUserInteractWithSelection = true;
+    if (!_isMobileWeb) {
+      _focusEditorFlutterFirst(tapIndex);
+      return;
+    }
 
-    quill.focus();
+    _beginAcquisition(reason: 'intercepted_tap');
+    _focusQuillFromTap(tapIndex);
+  }
+
+  /// Desktop tap path: request Flutter focus first, then sync into the iframe.
+  void _focusEditorFlutterFirst(int? tapIndex) {
+    _traceFocus('focus_flutter_first', {'tapIndex': tapIndex});
+    final node = widget.focusNode;
+    if (node != null && node.canRequestFocus) {
+      node.requestFocus();
+    }
+    _syncDomFocusOwnership(force: true);
+    // Empty editors often fail to show a caret when DOM focus is deferred to
+    // the next frame; force Quill focus in the same user gesture.
+    if (_isEditorEffectivelyEmpty() && _quill != null) {
+      _quill!.focus();
+      _quillEditorElement()?.focus();
+      _editorHasFocus = true;
+      _onJsFocusChanged(hasFocus: true);
+      _applyTapSelectionAt(tapIndex);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _applyTapSelectionAt(tapIndex);
+    });
+  }
+
+  void _applyTapSelectionAt(int? tapIndex) {
+    final quill = _quill;
+    if (quill == null) return;
+
     _editorHasFocus = true;
-    _onJsFocusChanged(hasFocus: true);
     _refreshKeyboardHeightFromViewport();
     _scheduleKeyboardSettleRetries();
+
     final fallbackSelection = _getQuillSelection(focus: false);
     final resolvedTapIndex = tapIndex ?? fallbackSelection?.index ?? 0;
 
     void applySelection() {
       if (!mounted || _quill == null) return;
+      if (!_hasDomEditorFocus()) {
+        _quillEditorElement()?.focus();
+      }
       final length = _quill!.getLength();
       final maxIndex = length > 0 ? length - 1 : 0;
       final clamped = resolvedTapIndex.clamp(0, maxIndex).toInt();
       _quill!.setSelection(clamped, 0);
     }
 
-    // Apply now and retry briefly so selection wins over async focus settling.
     applySelection();
     for (var i = 1; i <= 2; i++) {
       Future<void>.delayed(Duration(milliseconds: 16 * i), () {
@@ -1947,6 +3417,22 @@ $customCss
         _refreshKeyboardHeightFromViewport();
       });
     }
+  }
+
+  /// Focuses Quill and applies the tapped caret selection. Shared by the direct
+  /// path and the post-warm-up handoff.
+  void _focusQuillFromTap(int? tapIndex) {
+    final quill = _quill;
+    if (quill == null) return;
+
+    quill.focus();
+    // `quill.focus()` sets Quill's selection but the WebView can leave DOM
+    // focus on `<body>` for a few frames; force it onto the editor element so
+    // `_hasDomEditorFocus()` is true and the JS->Flutter sync does not steal.
+    _quillEditorElement()?.focus();
+    _editorHasFocus = true;
+    _onJsFocusChanged(hasFocus: true);
+    _applyTapSelectionAt(tapIndex);
   }
 
   // ------------------------------------------------------------------
@@ -2439,21 +3925,67 @@ $customCss
   void _setupEscapeKeyHandler() {
     _escapeKeyHandlerJs = ((web.Event event) {
       final keyEvent = event as web.KeyboardEvent;
-      if (keyEvent.key == 'Escape' || keyEvent.key == 'Esc') {
-        event.preventDefault();
-        event.stopPropagation();
+      if (keyEvent.key != 'Escape' && keyEvent.key != 'Esc') return;
+      event.preventDefault();
+      event.stopPropagation();
 
-        final node = widget.focusNode;
-        final shouldAdvanceFocus = node?.hasFocus ?? false;
-        _blurEditorAndSyncFlutterFocus();
-        if (shouldAdvanceFocus) {
-          node!.nextFocus();
-        }
+      if (!_editorHasFocus) return;
+
+      _iframe.blur();
+
+      _blurEditorAndSyncFlutterFocus();
+
+      final onEscape = widget.configuration.onEscapePressed;
+      if (onEscape != null) {
+        scheduleMicrotask(() {
+          if (!mounted) return;
+          onEscape();
+        });
+        return;
       }
+
+      final node = widget.focusNode;
+      if (node?.context == null) return;
+      scheduleMicrotask(() {
+        if (!mounted) return;
+        node!.requestFocus();
+        node.nextFocus();
+      });
     }).toJS;
 
     // Use capture phase to handle escape before Quill/browser defaults.
     _editorDiv!.addEventListener('keydown', _escapeKeyHandlerJs, true.toJS);
+  }
+
+  // ------------------------------------------------------------------
+  // Shift+Tab handling (optional host-provided previous focus target)
+  // ------------------------------------------------------------------
+
+  void _setupShiftTabKeyHandler() {
+    _shiftTabKeyHandlerJs = ((web.Event event) {
+      final keyEvent = event as web.KeyboardEvent;
+      if (keyEvent.key != 'Tab' || !keyEvent.shiftKey) return;
+
+      final onShiftTab = widget.configuration.onShiftTabPressed;
+      if (onShiftTab == null) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!_editorHasFocus) return;
+
+      _iframe.blur();
+
+      _explicitBlurRequested = true;
+      _blurEditorAndSyncFlutterFocus();
+
+      scheduleMicrotask(() {
+        if (!mounted) return;
+        onShiftTab();
+      });
+    }).toJS;
+
+    _editorDiv!.addEventListener('keydown', _shiftTabKeyHandlerJs, true.toJS);
   }
 
   // ------------------------------------------------------------------
@@ -2482,7 +4014,7 @@ $customCss
       _stopOuterFling();
       _resetTouchHandoffState();
       _touchGestureActive = true;
-      final clientY = touch.clientY.toDouble();
+      final clientY = _readDomClientCoord(touch, 'clientY');
       _touchLastClientY = clientY;
       _recordVelocitySample(clientY);
       if (!_isEditorVerticallyScrollable()) {
@@ -2501,8 +4033,10 @@ $customCss
       if (_pendingEmptyTouchTapFocus) {
         final pendingPoint = _pendingEmptyTouchTapPoint;
         if (pendingPoint != null) {
-          final dx = touch.clientX.toDouble() - pendingPoint.$1;
-          final dy = touch.clientY.toDouble() - pendingPoint.$2;
+          final dx =
+              _readDomClientCoord(touch, 'clientX') - pendingPoint.$1;
+          final dy =
+              _readDomClientCoord(touch, 'clientY') - pendingPoint.$2;
           final distance = math.sqrt(dx * dx + dy * dy);
           if (distance <= _emptyTapFocusSlopPx) {
             // Keep this gesture in tap-focus mode; do not let tiny movement
@@ -2517,7 +4051,7 @@ $customCss
         _pendingEmptyTouchTapPoint = null;
       }
 
-      final currentY = touch.clientY.toDouble();
+      final currentY = _readDomClientCoord(touch, 'clientY');
       final previousY = _touchLastClientY;
       _touchLastClientY = currentY;
       if (previousY == null) return;
@@ -2528,6 +4062,12 @@ $customCss
     }).toJS;
 
     _outerScrollTouchEndHandlerJs = ((web.Event _) {
+      if (_shouldSuppressOuterHandoffDuringAcquisition()) {
+        _resetTouchHandoffState();
+        _touchGestureActive = false;
+        _isSelectionGestureActive = false;
+        return;
+      }
       if (_pendingOuterTouchDelta.abs() >= _touchOuterEndFlushMinPx) {
         _flushQueuedOuterTouchDelta();
       }
@@ -2542,6 +4082,12 @@ $customCss
     }).toJS;
 
     _outerScrollTouchCancelHandlerJs = ((web.Event _) {
+      if (_shouldSuppressOuterHandoffDuringAcquisition()) {
+        _resetTouchHandoffState();
+        _touchGestureActive = false;
+        _isSelectionGestureActive = false;
+        return;
+      }
       if (_pendingOuterTouchDelta.abs() >= _touchOuterEndFlushMinPx) {
         _flushQueuedOuterTouchDelta();
       }
@@ -2800,6 +4346,10 @@ $customCss
   }
 
   void _onFlingTick(Duration elapsed) {
+    if (_shouldSuppressOuterHandoffDuringAcquisition()) {
+      _stopOuterFling();
+      return;
+    }
     final simulation = _outerFlingSimulation;
     if (simulation == null) {
       _stopOuterFling();
@@ -2842,6 +4392,13 @@ $customCss
     if (!widget.configuration.enableOuterScrollHandoff) return;
     if (deltaY.abs() <= 0.01) return;
     if (_isImeComposing || _isSelectionGestureActive) return;
+    if (_shouldSuppressOuterHandoffDuringAcquisition()) {
+      if (isTouch) {
+        _resetTouchHandoffState();
+        _touchGestureActive = false;
+      }
+      return;
+    }
 
     if (!isTouch) {
       final transfer = _computeScrollTransfer(deltaY);
@@ -3508,11 +5065,23 @@ $customCss
   // ------------------------------------------------------------------
 
   void _onTapOutside(PointerDownEvent _) {
+    _traceFocus('tap_outside', {
+      'editorHasFocus': _editorHasFocus,
+      'focusPhase': _focusPhase.name,
+      'ignoreActive': _ignoreTapOutsideUntil != null,
+    });
     final ignoreUntil = _ignoreTapOutsideUntil;
     if (ignoreUntil != null && DateTime.now().isBefore(ignoreUntil)) {
+      _traceFocus('tap_outside_ignored', {'reason': 'ignore_window_active'});
       return;
     }
     if (!_editorHasFocus || _quill == null) return;
+    _explicitBlurRequested = true;
+    _pendingJsToFlutterFocusSync = null;
+    _suppressEditorRefocusUntil = DateTime.now().add(
+      const Duration(milliseconds: 200),
+    );
+    _traceFocus('tap_outside_blur_triggered');
     _blurEditorAndSyncFlutterFocus();
   }
 
@@ -3581,3 +5150,5 @@ $customCss
 }
 
 enum _LoadState { loading, ready, error }
+
+enum _FocusPhase { idle, acquiring, stable, blurring }
