@@ -1552,6 +1552,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     _viewType = 'quill-js-editor-${_nextId++}';
 
     _iframe = web.document.createElement('iframe') as web.HTMLIFrameElement
+      ..setAttribute('translate', 'no')
+      ..classList.add('notranslate')
       ..style.setProperty('width', '100%')
       ..style.setProperty('height', '100%')
       ..style.setProperty('border', 'none');
@@ -1864,7 +1866,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
         : '';
 
     return '''<!DOCTYPE html>
-<html>
+<html translate="no" class="notranslate">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,interactive-widget=resizes-visual">
