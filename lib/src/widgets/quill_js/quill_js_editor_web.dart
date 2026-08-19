@@ -1334,6 +1334,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   DateTime? _ignoreTapOutsideUntil;
   bool _pendingEmptyTouchTapFocus = false;
   (double, double)? _pendingEmptyTouchTapPoint;
+  int _internalPointerFocusCheckEpoch = 0;
+  _QuillSelection? _lastKnownSelection;
 
   static const String _bundledQuillJsAsset =
       'packages/flutter_quill/assets/js/quill.min.js';
@@ -1350,6 +1352,12 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   static const Duration _tapOutsideIgnoreAfterIntercept = Duration(
     milliseconds: 350,
   );
+  static const List<Duration> _internalPointerFocusCheckDelays = <Duration>[
+    Duration.zero,
+    Duration(milliseconds: 16),
+    Duration(milliseconds: 80),
+    Duration(milliseconds: 160),
+  ];
   Timer? _acquisitionStableFromSelectionTimer;
   static const Duration _acquisitionSelectionSettleWindow = Duration(
     milliseconds: 280,
@@ -2944,6 +2952,7 @@ $customCss
 
     final jsRange = _JsRange._(range);
     _lastSelectionLength = jsRange.length;
+    _lastKnownSelection = (index: jsRange.index, length: jsRange.length);
 
     // While a link action sheet/dialog is active, Quill can emit non-user
     // selection updates that would incorrectly re-focus the editor on mobile.
@@ -3040,6 +3049,7 @@ $customCss
     final editorDiv = _editorDiv!;
 
     _tapFocusTouchStartHandlerJs = ((web.Event event) {
+      _scheduleInternalPointerFocusVerification();
       _interceptTapFocus(event);
     }).toJS;
 
@@ -3065,6 +3075,7 @@ $customCss
     }).toJS;
 
     _tapFocusPointerDownHandlerJs = ((web.Event event) {
+      _scheduleInternalPointerFocusVerification();
       final pointerEvent = event as web.PointerEvent;
       if (pointerEvent.pointerType.toLowerCase() == 'mouse') {
         // Android WebView + DeX: keep native mouse; warm-up path untouched.
@@ -3105,6 +3116,58 @@ $customCss
       _tapFocusPointerUpHandlerJs!,
       true.toJS,
     );
+  }
+
+  /// Verifies that an iframe pointer interaction did not leave Flutter focus
+  /// and DOM focus out of sync.
+  ///
+  /// Native double/triple-click selection is left entirely to the browser. A
+  /// recovery is attempted only when the editor actually loses DOM focus after
+  /// an internal pointer-down. This handles accessibility/semantics focus
+  /// updates that can land after the iframe's pointer event has completed.
+  void _scheduleInternalPointerFocusVerification() {
+    final epoch = ++_internalPointerFocusCheckEpoch;
+    for (final delay in _internalPointerFocusCheckDelays) {
+      Future<void>.delayed(delay, () {
+        if (!mounted || epoch != _internalPointerFocusCheckEpoch) return;
+        _restoreFocusAfterInternalPointerIfNeeded();
+      });
+    }
+  }
+
+  void _restoreFocusAfterInternalPointerIfNeeded() {
+    if (_loadState != _LoadState.ready || _quill == null) return;
+    if (widget.configuration.readOnly) return;
+    if (_explicitBlurRequested || _isWithinExplicitBlurGuard()) return;
+    if (_isHandlingLinkTapAction || _isHandlingLinkRequest) return;
+    if (_warmupHandoffPending || _hasDomEditorFocus()) return;
+
+    final node = widget.focusNode;
+    if (node != null && node.canRequestFocus && !node.hasFocus) {
+      node.requestFocus();
+    }
+
+    final selection = _lastKnownSelection;
+    _quill!.focus();
+    _quillEditorElement()?.focus();
+    if (selection != null) {
+      final length = _quill!.getLength();
+      final maxIndex = length > 0 ? length - 1 : 0;
+      final index = selection.index.clamp(0, maxIndex).toInt();
+      final selectionLength = selection.length
+          .clamp(0, math.max(0, maxIndex - index))
+          .toInt();
+      _quill!.setSelectionWithSource(
+        index,
+        selectionLength,
+        'silent'.toJS,
+      );
+    }
+    _editorHasFocus = true;
+    _traceFocus('internal_pointer_focus_restored', {
+      'selectionIndex': selection?.index,
+      'selectionLength': selection?.length,
+    });
   }
 
   /// Finishes an iOS empty-editor tap deferred from [touchstart] to [touchend].
