@@ -26,6 +26,7 @@ import '../models/themes/quill_dialog_theme.dart';
 import '../utils/cast.dart';
 import '../utils/delta.dart';
 import '../utils/embeds.dart';
+import '../utils/placeholder.dart';
 import '../utils/platform.dart';
 import '../utils/web_clipboard.dart';
 import 'package:dart_quill_delta/dart_quill_delta.dart';
@@ -661,9 +662,7 @@ class RawEditorState extends EditorState
 
     var _doc = controller.document;
     if (_doc.isEmpty() && widget.placeholder != null) {
-      final raw = widget.placeholder?.replaceAll(r'"', '\\"');
-      _doc = Document.fromJson(jsonDecode(
-          '[{"attributes":{"placeholder":true},"insert":"$raw\\n"}]'));
+      _doc = documentFromPlaceholder(widget.placeholder!);
     }
 
     Widget child = CompositedTransformTarget(

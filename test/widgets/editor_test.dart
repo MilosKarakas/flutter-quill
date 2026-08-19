@@ -129,5 +129,64 @@ void main() {
       await tester.tap(find.byIcon(Icons.copy));
       expect(didCopy, isTrue);
     });
+
+    testWidgets(
+        'empty editor placeholder with a real newline does not throw',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: QuillEditor.basic(
+            controller: controller,
+            readOnly: false,
+            autoFocus: false,
+            placeholder: 'Hello\nWorld',
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Hello', findRichText: true), findsOneWidget);
+      expect(find.text('World', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets(
+        'empty editor placeholder with a backslash-n escape becomes a newline',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: QuillEditor.basic(
+            controller: controller,
+            readOnly: false,
+            autoFocus: false,
+            placeholder: r'Hello\nWorld',
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Hello', findRichText: true), findsOneWidget);
+      expect(find.text('World', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets(
+        'newline in placeholder does not rewrite a non-empty document',
+        (tester) async {
+      controller.document.insert(0, 'existing');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: QuillEditor.basic(
+            controller: controller,
+            readOnly: false,
+            autoFocus: false,
+            placeholder: 'Hello\nWorld',
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(controller.document.toPlainText(), 'existing\n');
+      expect(find.text('existing', findRichText: true), findsOneWidget);
+      expect(find.text('Hello', findRichText: true), findsNothing);
+    });
   });
 }
