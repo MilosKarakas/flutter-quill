@@ -18,6 +18,7 @@ class ToggleCheckListButton extends StatefulWidget {
     this.iconTheme,
     this.afterButtonPressed,
     this.tooltip,
+    this.focusNode,
     Key? key,
   }) : super(key: key);
 
@@ -35,6 +36,7 @@ class ToggleCheckListButton extends StatefulWidget {
   final QuillIconTheme? iconTheme;
   final VoidCallback? afterButtonPressed;
   final String? tooltip;
+  final FocusNode? focusNode;
 
   @override
   _ToggleCheckListButtonState createState() => _ToggleCheckListButtonState();
@@ -47,8 +49,9 @@ class _ToggleCheckListButtonState extends State<ToggleCheckListButton> {
 
   void _didChangeEditingValue() {
     setState(() {
-      _isToggled =
-          _getIsToggled(widget.controller.getSelectionStyle().attributes);
+      _isToggled = _getIsToggled(
+        widget.controller.getSelectionStyle().attributes,
+      );
     });
   }
 
@@ -107,13 +110,16 @@ class _ToggleCheckListButtonState extends State<ToggleCheckListButton> {
         widget.iconSize,
         widget.iconTheme,
         null,
+        widget.focusNode,
       ),
     );
   }
 
   void _toggleAttribute() {
-    widget.controller.formatSelection(_isToggled!
-        ? Attribute.clone(Attribute.unchecked, null)
-        : Attribute.unchecked);
+    widget.controller.formatSelection(
+      _isToggled!
+          ? Attribute.clone(Attribute.unchecked, null)
+          : Attribute.unchecked,
+    );
   }
 }

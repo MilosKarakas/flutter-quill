@@ -30,9 +30,9 @@ class QuillFontSizeButton extends StatefulWidget {
     this.itemPadding,
     this.defaultItemColor = Colors.red,
     Key? key,
-  })  : assert(rawItemsMap.length > 0),
-        assert(initialValue == null || initialValue.length > 0),
-        super(key: key);
+  }) : assert(rawItemsMap.length > 0),
+       assert(initialValue == null || initialValue.length > 0),
+       super(key: key);
 
   final double iconSize;
   final Color? fillColor;
@@ -116,8 +116,10 @@ class _QuillFontSizeButtonState extends State<QuillFontSizeButton> {
         child: RawMaterialButton(
           visualDensity: VisualDensity.compact,
           shape: RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.circular(widget.iconTheme?.borderRadius ?? 2)),
+            borderRadius: BorderRadius.circular(
+              widget.iconTheme?.borderRadius ?? 2,
+            ),
+          ),
           fillColor: widget.fillColor,
           elevation: 0,
           hoverElevation: widget.hoverElevation,
@@ -139,8 +141,10 @@ class _QuillFontSizeButtonState extends State<QuillFontSizeButton> {
     final position = RelativeRect.fromRect(
       Rect.fromPoints(
         button.localToGlobal(Offset.zero, ancestor: overlay),
-        button.localToGlobal(button.size.bottomLeft(Offset.zero),
-            ancestor: overlay),
+        button.localToGlobal(
+          button.size.bottomLeft(Offset.zero),
+          ancestor: overlay,
+        ),
       ),
       Offset.zero & overlay.size,
     );
@@ -175,8 +179,12 @@ class _QuillFontSizeButtonState extends State<QuillFontSizeButton> {
       setState(() {
         _currentValue = keyName ?? _defaultDisplayText;
         if (keyName != null) {
-          widget.controller.formatSelection(Attribute.fromKeyValue(
-              'size', newValue == '0' ? null : getFontSize(newValue)));
+          widget.controller.formatSelection(
+            Attribute.fromKeyValue(
+              'size',
+              newValue == '0' ? null : getFontSize(newValue),
+            ),
+          );
           widget.onSelected?.call(newValue);
         }
       });
@@ -195,19 +203,26 @@ class _QuillFontSizeButtonState extends State<QuillFontSizeButton> {
           UtilityWidgets.maybeWidget(
             enabled: hasFinalWidth,
             wrapper: (child) => Expanded(child: child),
-            child: Text(_currentValue,
-                overflow: widget.labelOverflow,
-                style: widget.style ??
-                    TextStyle(
-                        fontSize: widget.iconSize / 1.15,
-                        color: widget.iconTheme?.iconUnselectedColor ??
-                            theme.iconTheme.color)),
+            child: Text(
+              _currentValue,
+              overflow: widget.labelOverflow,
+              style:
+                  widget.style ??
+                  TextStyle(
+                    fontSize: widget.iconSize / 1.15,
+                    color:
+                        widget.iconTheme?.iconUnselectedColor ??
+                        theme.iconTheme.color,
+                  ),
+            ),
           ),
           const SizedBox(width: 3),
-          Icon(Icons.arrow_drop_down,
-              size: widget.iconSize / 1.15,
-              color: widget.iconTheme?.iconUnselectedColor ??
-                  theme.iconTheme.color)
+          Icon(
+            Icons.arrow_drop_down,
+            size: widget.iconSize / 1.15,
+            color:
+                widget.iconTheme?.iconUnselectedColor ?? theme.iconTheme.color,
+          ),
         ],
       ),
     );

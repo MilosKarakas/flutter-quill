@@ -24,6 +24,7 @@ import '../default_styles.dart';
 import 'inline_mark_css.dart';
 import 'link_range_resolution.dart';
 import 'quill_js_configurations.dart';
+import 'quill_js_escape_dismiss.dart';
 
 // ---------------------------------------------------------------------------
 // JS interop helpers (work on any window context)
@@ -593,8 +594,12 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
 
   /// Whether this is an Android web environment, where the IME warm-up handoff
   /// applies. iOS and desktop keep their existing, working focus path.
-  bool get _isAndroidWeb => _cachedIsAndroidWeb ??=
-      web.window.navigator.userAgent.toLowerCase().contains('android');
+  bool get _isAndroidWeb => _cachedIsAndroidWeb ??= web
+      .window
+      .navigator
+      .userAgent
+      .toLowerCase()
+      .contains('android');
 
   bool get _isIOSWeb {
     if (_cachedIsIOSWeb != null) return _cachedIsIOSWeb!;
@@ -822,7 +827,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     final selfDoc = web.document;
     var framed = false;
     try {
-      framed = web.window.parent != web.window.self ||
+      framed =
+          web.window.parent != web.window.self ||
           web.window.top != web.window.self;
     } catch (_) {
       framed = true;
@@ -871,16 +877,15 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
       'climbedOut': resolved.climbedOut,
     });
 
-    final input =
-        doc.createElement('input') as web.HTMLInputElement
-          ..type = 'text'
-          ..setAttribute('autocomplete', 'off')
-          ..setAttribute('autocorrect', 'off')
-          ..setAttribute('autocapitalize', 'off')
-          ..setAttribute('spellcheck', 'false')
-          ..setAttribute('aria-hidden', 'true')
-          ..setAttribute('tabindex', '-1')
-          ..setAttribute('inputmode', 'text');
+    final input = doc.createElement('input') as web.HTMLInputElement
+      ..type = 'text'
+      ..setAttribute('autocomplete', 'off')
+      ..setAttribute('autocorrect', 'off')
+      ..setAttribute('autocapitalize', 'off')
+      ..setAttribute('spellcheck', 'false')
+      ..setAttribute('aria-hidden', 'true')
+      ..setAttribute('tabindex', '-1')
+      ..setAttribute('inputmode', 'text');
     // Rendered (so it is focusable and can open the IME) but visually inert and
     // non-interactive. `font-size: 16px` avoids Android focus-zoom.
     input.style.cssText =
@@ -1015,7 +1020,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
       _warmupKeyboardShrinkMinPx,
       baseline * _warmupKeyboardShrinkMinFraction,
     );
-    final keyboardOpen = (baseline - current) >= shrinkThreshold ||
+    final keyboardOpen =
+        (baseline - current) >= shrinkThreshold ||
         (_maxViewportHeight - current) >= shrinkThreshold;
 
     if (keyboardOpen) {
@@ -3157,11 +3163,7 @@ $customCss
       final selectionLength = selection.length
           .clamp(0, math.max(0, maxIndex - index))
           .toInt();
-      _quill!.setSelectionWithSource(
-        index,
-        selectionLength,
-        'silent'.toJS,
-      );
+      _quill!.setSelectionWithSource(index, selectionLength, 'silent'.toJS);
     }
     _editorHasFocus = true;
     _traceFocus('internal_pointer_focus_restored', {
@@ -3996,26 +3998,25 @@ $customCss
 
       if (!_editorHasFocus) return;
 
-      _iframe.blur();
-
-      _blurEditorAndSyncFlutterFocus();
-
-      final onEscape = widget.configuration.onEscapePressed;
-      if (onEscape != null) {
-        scheduleMicrotask(() {
-          if (!mounted) return;
-          onEscape();
-        });
-        return;
-      }
-
-      final node = widget.focusNode;
-      if (node?.context == null) return;
-      scheduleMicrotask(() {
-        if (!mounted) return;
-        node!.requestFocus();
-        node.nextFocus();
-      });
+      applyQuillJsEscapeDismiss(
+        markExplicitDismiss: () {
+          _explicitBlurRequested = true;
+          _pendingJsToFlutterFocusSync = null;
+          _suppressEditorRefocusUntil = DateTime.now().add(
+            const Duration(milliseconds: 200),
+          );
+        },
+        blurEditor: () {
+          _iframe.blur();
+          _blurEditorAndSyncFlutterFocus();
+        },
+        onEscapePressed: widget.configuration.onEscapePressed == null
+            ? null
+            : () {
+                if (!mounted) return;
+                widget.configuration.onEscapePressed!.call();
+              },
+      );
     }).toJS;
 
     // Use capture phase to handle escape before Quill/browser defaults.
@@ -4098,10 +4099,8 @@ $customCss
       if (_pendingEmptyTouchTapFocus) {
         final pendingPoint = _pendingEmptyTouchTapPoint;
         if (pendingPoint != null) {
-          final dx =
-              _readDomClientCoord(touch, 'clientX') - pendingPoint.$1;
-          final dy =
-              _readDomClientCoord(touch, 'clientY') - pendingPoint.$2;
+          final dx = _readDomClientCoord(touch, 'clientX') - pendingPoint.$1;
+          final dy = _readDomClientCoord(touch, 'clientY') - pendingPoint.$2;
           final distance = math.sqrt(dx * dx + dy * dy);
           if (distance <= _emptyTapFocusSlopPx) {
             // Keep this gesture in tap-focus mode; do not let tiny movement

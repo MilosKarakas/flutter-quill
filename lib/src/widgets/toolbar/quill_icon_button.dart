@@ -14,6 +14,7 @@ class QuillIconButton extends StatelessWidget {
     this.borderRadius = 2,
     this.tooltip,
     this.semanticsIdentifier,
+    this.focusNode,
     Key? key,
   }) : super(key: key);
 
@@ -30,6 +31,8 @@ class QuillIconButton extends StatelessWidget {
   /// Applied inside the button so it merges with the button semantics.
   final String? semanticsIdentifier;
 
+  final FocusNode? focusNode;
+
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
@@ -37,6 +40,7 @@ class QuillIconButton extends StatelessWidget {
       child: UtilityWidgets.maybeTooltip(
         message: tooltip,
         child: RawMaterialButton(
+          focusNode: focusNode,
           visualDensity: VisualDensity.compact,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(borderRadius),
@@ -60,9 +64,6 @@ class QuillIconButton extends StatelessWidget {
     if (id == null || id.isEmpty) {
       return icon;
     }
-    return Semantics(
-      identifier: id,
-      child: icon ?? const SizedBox.shrink(),
-    );
+    return Semantics(identifier: id, child: icon ?? const SizedBox.shrink());
   }
 }

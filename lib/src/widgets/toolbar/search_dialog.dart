@@ -56,9 +56,7 @@ class _SearchDialogState extends State<SearchDialog> {
     }
 
     return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(5),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
       backgroundColor: widget.dialogTheme?.dialogBackgroundColor,
       alignment: Alignment.bottomCenter,
       insetPadding: EdgeInsets.zero,
@@ -81,17 +79,11 @@ class _SearchDialogState extends State<SearchDialog> {
                 children: const [
                   Text(
                     '\u0391\u03b1',
-                    style: TextStyle(
-                      fontFamily: 'MaterialIcons',
-                      fontSize: 24,
-                    ),
+                    style: TextStyle(fontFamily: 'MaterialIcons', fontSize: 24),
                   ),
                   Text(
                     '\u201c\u2026\u201d',
-                    style: TextStyle(
-                      fontFamily: 'MaterialIcons',
-                      fontSize: 24,
-                    ),
+                    style: TextStyle(fontFamily: 'MaterialIcons', fontSize: 24),
                   ),
                 ],
               ),
@@ -158,10 +150,12 @@ class _SearchDialogState extends State<SearchDialog> {
 
   void _moveToPosition() {
     widget.controller.updateSelection(
-        TextSelection(
-            baseOffset: _offsets![_index],
-            extentOffset: _offsets![_index] + _text.length),
-        ChangeSource.LOCAL);
+      TextSelection(
+        baseOffset: _offsets![_index],
+        extentOffset: _offsets![_index] + _text.length,
+      ),
+      ChangeSource.LOCAL,
+    );
   }
 
   void _moveToPrevious() {

@@ -49,7 +49,8 @@ class _SelectAlignmentButtonState extends State<SelectAlignmentButton> {
   void initState() {
     super.initState();
     setState(() {
-      _value = _selectionStyle.attributes[Attribute.align.key] ??
+      _value =
+          _selectionStyle.attributes[Attribute.align.key] ??
           Attribute.leftAlignment;
     });
     widget.controller.addListener(_didChangeEditingValue);
@@ -72,7 +73,7 @@ class _SelectAlignmentButtonState extends State<SelectAlignmentButton> {
       if (widget.showLeftAlignment!) Attribute.leftAlignment,
       if (widget.showCenterAlignment!) Attribute.centerAlignment,
       if (widget.showRightAlignment!) Attribute.rightAlignment,
-      if (widget.showJustifyAlignment!) Attribute.justifyAlignment
+      if (widget.showJustifyAlignment!) Attribute.justifyAlignment,
     ];
     final _valueString = <String>[
       if (widget.showLeftAlignment!) Attribute.leftAlignment.value!,
@@ -93,7 +94,8 @@ class _SelectAlignmentButtonState extends State<SelectAlignmentButton> {
 
     final theme = Theme.of(context);
 
-    final buttonCount = ((widget.showLeftAlignment!) ? 1 : 0) +
+    final buttonCount =
+        ((widget.showLeftAlignment!) ? 1 : 0) +
         ((widget.showCenterAlignment!) ? 1 : 0) +
         ((widget.showRightAlignment!) ? 1 : 0) +
         ((widget.showJustifyAlignment!) ? 1 : 0);
@@ -102,7 +104,8 @@ class _SelectAlignmentButtonState extends State<SelectAlignmentButton> {
       mainAxisSize: MainAxisSize.min,
       children: List.generate(buttonCount, (index) {
         return Padding(
-          padding: widget.padding ??
+          padding:
+              widget.padding ??
               const EdgeInsets.symmetric(horizontal: !kIsWeb ? 1.0 : 5.0),
           child: ConstrainedBox(
             constraints: BoxConstraints.tightFor(
@@ -117,36 +120,39 @@ class _SelectAlignmentButtonState extends State<SelectAlignmentButton> {
                 elevation: 0,
                 visualDensity: VisualDensity.compact,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                        widget.iconTheme?.borderRadius ?? 2)),
+                  borderRadius: BorderRadius.circular(
+                    widget.iconTheme?.borderRadius ?? 2,
+                  ),
+                ),
                 fillColor: _valueToText[_value] == _valueString[index]
                     ? (widget.iconTheme?.iconSelectedFillColor ??
-                        Theme.of(context).primaryColor)
+                          Theme.of(context).primaryColor)
                     : (widget.iconTheme?.iconUnselectedFillColor ??
-                        theme.canvasColor),
+                          theme.canvasColor),
                 onPressed: () {
                   _valueAttribute[index] == Attribute.leftAlignment
                       ? widget.controller.formatSelection(
-                          Attribute.clone(Attribute.align, null))
-                      : widget.controller
-                          .formatSelection(_valueAttribute[index]);
+                          Attribute.clone(Attribute.align, null),
+                        )
+                      : widget.controller.formatSelection(
+                          _valueAttribute[index],
+                        );
                   widget.afterButtonPressed?.call();
                 },
                 child: Icon(
                   _valueString[index] == Attribute.leftAlignment.value
                       ? Icons.format_align_left
                       : _valueString[index] == Attribute.centerAlignment.value
-                          ? Icons.format_align_center
-                          : _valueString[index] ==
-                                  Attribute.rightAlignment.value
-                              ? Icons.format_align_right
-                              : Icons.format_align_justify,
+                      ? Icons.format_align_center
+                      : _valueString[index] == Attribute.rightAlignment.value
+                      ? Icons.format_align_right
+                      : Icons.format_align_justify,
                   size: widget.iconSize,
                   color: _valueToText[_value] == _valueString[index]
                       ? (widget.iconTheme?.iconSelectedColor ??
-                          theme.primaryIconTheme.color)
+                            theme.primaryIconTheme.color)
                       : (widget.iconTheme?.iconUnselectedColor ??
-                          theme.iconTheme.color),
+                            theme.iconTheme.color),
                 ),
               ),
             ),
@@ -158,7 +164,8 @@ class _SelectAlignmentButtonState extends State<SelectAlignmentButton> {
 
   void _didChangeEditingValue() {
     setState(() {
-      _value = _selectionStyle.attributes[Attribute.align.key] ??
+      _value =
+          _selectionStyle.attributes[Attribute.align.key] ??
           Attribute.leftAlignment;
     });
   }
@@ -169,7 +176,8 @@ class _SelectAlignmentButtonState extends State<SelectAlignmentButton> {
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_didChangeEditingValue);
       widget.controller.addListener(_didChangeEditingValue);
-      _value = _selectionStyle.attributes[Attribute.align.key] ??
+      _value =
+          _selectionStyle.attributes[Attribute.align.key] ??
           Attribute.leftAlignment;
     }
   }

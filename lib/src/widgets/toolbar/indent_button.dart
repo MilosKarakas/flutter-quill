@@ -13,6 +13,7 @@ class IndentButton extends StatefulWidget {
     this.iconTheme,
     this.afterButtonPressed,
     this.tooltip,
+    this.focusNode,
     Key? key,
   }) : super(key: key);
 
@@ -24,6 +25,7 @@ class IndentButton extends StatefulWidget {
 
   final QuillIconTheme? iconTheme;
   final String? tooltip;
+  final FocusNode? focusNode;
 
   @override
   _IndentButtonState createState() => _IndentButtonState();
@@ -50,6 +52,7 @@ class _IndentButtonState extends State<IndentButton> {
         widget.controller.indentSelection(widget.isIncrease);
       },
       afterPressed: widget.afterButtonPressed,
+      focusNode: widget.focusNode,
     );
   }
 }

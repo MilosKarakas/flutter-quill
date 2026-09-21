@@ -283,16 +283,16 @@ class QuillJsEditorConfiguration {
 
   /// Called when the user presses Escape inside the editor.
   ///
-  /// Before this callback fires, the iframe is blurred (DOM focus is returned
-  /// to the parent document) and Quill's internal selection is cleared. The
-  /// host is then free to advance focus to wherever it wants — e.g. a toolbar
-  /// button — by calling `someFocusNode.requestFocus()`.
+  /// Before this callback fires, the editor is already dismissed: the iframe
+  /// is blurred, Quill's selection is cleared, and Flutter focus is synced
+  /// off the editor. The blur is treated as an explicit user dismiss so
+  /// focus-retention must not restore the caret.
   ///
-  /// If null, [QuillJsEditorView] falls back to a best-effort
-  /// `widget.focusNode?.nextFocus()`, which may not find the right target if
-  /// the editor and the desired next focus live in different traversal scopes
-  /// (common on Flutter Web where the editor is hosted in a platform-view
-  /// iframe).
+  /// The callback is only for moving focus to a host widget — e.g. a toolbar
+  /// button — by calling `someFocusNode.requestFocus()`. Do not call
+  /// `requestFocus()` on the editor [FocusNode].
+  ///
+  /// If null, the editor stays unfocused. There is no `nextFocus()` fallback.
   final VoidCallback? onEscapePressed;
 
   /// Called when the user presses Shift+Tab inside the editor.

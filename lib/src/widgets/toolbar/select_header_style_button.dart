@@ -90,13 +90,15 @@ class _SelectHeaderStyleButtonState extends State<SelectHeaderStyleButton> {
               elevation: 0,
               visualDensity: VisualDensity.compact,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                      widget.iconTheme?.borderRadius ?? 2)),
+                borderRadius: BorderRadius.circular(
+                  widget.iconTheme?.borderRadius ?? 2,
+                ),
+              ),
               fillColor: isSelected
                   ? (widget.iconTheme?.iconSelectedFillColor ??
-                      Theme.of(context).primaryColor)
+                        Theme.of(context).primaryColor)
                   : (widget.iconTheme?.iconUnselectedFillColor ??
-                      theme.canvasColor),
+                        theme.canvasColor),
               onPressed: () {
                 final _attribute = _selectedAttribute == attribute
                     ? Attribute.header
@@ -109,9 +111,9 @@ class _SelectHeaderStyleButtonState extends State<SelectHeaderStyleButton> {
                 style: style.copyWith(
                   color: isSelected
                       ? (widget.iconTheme?.iconSelectedColor ??
-                          theme.primaryIconTheme.color)
+                            theme.primaryIconTheme.color)
                       : (widget.iconTheme?.iconUnselectedColor ??
-                          theme.iconTheme.color),
+                            theme.iconTheme.color),
                 ),
               ),
             ),
@@ -121,14 +123,8 @@ class _SelectHeaderStyleButtonState extends State<SelectHeaderStyleButton> {
     }).toList();
 
     return widget.axis == Axis.horizontal
-        ? Row(
-            mainAxisSize: MainAxisSize.min,
-            children: children,
-          )
-        : Column(
-            mainAxisSize: MainAxisSize.min,
-            children: children,
-          );
+        ? Row(mainAxisSize: MainAxisSize.min, children: children)
+        : Column(mainAxisSize: MainAxisSize.min, children: children);
   }
 
   void _didChangeEditingValue() {

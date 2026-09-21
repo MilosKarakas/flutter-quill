@@ -130,6 +130,54 @@ void main() {
       });
     });
 
+    testWidgets('buttonFocusNodes attach to the mapped toolbar actions', (
+      tester,
+    ) async {
+      final boldFocusNode = FocusNode();
+      final italicFocusNode = FocusNode();
+      final linkFocusNode = FocusNode();
+      addTearDown(boldFocusNode.dispose);
+      addTearDown(italicFocusNode.dispose);
+      addTearDown(linkFocusNode.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: QuillToolbar.basic(
+            controller: QuillController.basic(),
+            showUndo: false,
+            showRedo: false,
+            showFontFamily: false,
+            showFontSize: false,
+            showSmallButton: false,
+            showStrikeThrough: false,
+            showInlineCode: false,
+            showColorButton: false,
+            showBackgroundColorButton: false,
+            showClearFormat: false,
+            showSearchButton: false,
+            buttonFocusNodes: {
+              ToolbarButtons.bold: boldFocusNode,
+              ToolbarButtons.italic: italicFocusNode,
+              ToolbarButtons.link: linkFocusNode,
+            },
+          ),
+        ),
+      );
+
+      QuillIconButton iconButtonWith(IconData icon) {
+        return tester.widget<QuillIconButton>(
+          find.widgetWithIcon(QuillIconButton, icon),
+        );
+      }
+
+      expect(iconButtonWith(Icons.format_bold).focusNode, same(boldFocusNode));
+      expect(
+        iconButtonWith(Icons.format_italic).focusNode,
+        same(italicFocusNode),
+      );
+      expect(iconButtonWith(Icons.link).focusNode, same(linkFocusNode));
+    });
+
     group('1189 - The provided text position is not in the current node', () {
       late QuillController controller;
       late QuillEditor editor;

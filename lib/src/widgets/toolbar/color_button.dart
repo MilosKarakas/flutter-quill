@@ -22,6 +22,7 @@ class ColorButton extends StatefulWidget {
     this.iconTheme,
     this.afterButtonPressed,
     this.tooltip,
+    this.focusNode,
     Key? key,
   }) : super(key: key);
 
@@ -32,6 +33,7 @@ class ColorButton extends StatefulWidget {
   final QuillIconTheme? iconTheme;
   final VoidCallback? afterButtonPressed;
   final String? tooltip;
+  final FocusNode? focusNode;
 
   @override
   _ColorButtonState createState() => _ColorButtonState();
@@ -47,13 +49,17 @@ class _ColorButtonState extends State<ColorButton> {
 
   void _didChangeEditingValue() {
     setState(() {
-      _isToggledColor =
-          _getIsToggledColor(widget.controller.getSelectionStyle().attributes);
+      _isToggledColor = _getIsToggledColor(
+        widget.controller.getSelectionStyle().attributes,
+      );
       _isToggledBackground = _getIsToggledBackground(
-          widget.controller.getSelectionStyle().attributes);
-      _isWhite = _isToggledColor &&
+        widget.controller.getSelectionStyle().attributes,
+      );
+      _isWhite =
+          _isToggledColor &&
           _selectionStyle.attributes['color']!.value == '#ffffff';
-      _isWhiteBackground = _isToggledBackground &&
+      _isWhiteBackground =
+          _isToggledBackground &&
           _selectionStyle.attributes['background']!.value == '#ffffff';
     });
   }
@@ -63,9 +69,11 @@ class _ColorButtonState extends State<ColorButton> {
     super.initState();
     _isToggledColor = _getIsToggledColor(_selectionStyle.attributes);
     _isToggledBackground = _getIsToggledBackground(_selectionStyle.attributes);
-    _isWhite = _isToggledColor &&
+    _isWhite =
+        _isToggledColor &&
         _selectionStyle.attributes['color']!.value == '#ffffff';
-    _isWhiteBackground = _isToggledBackground &&
+    _isWhiteBackground =
+        _isToggledBackground &&
         _selectionStyle.attributes['background']!.value == '#ffffff';
     widget.controller.addListener(_didChangeEditingValue);
   }
@@ -85,11 +93,14 @@ class _ColorButtonState extends State<ColorButton> {
       oldWidget.controller.removeListener(_didChangeEditingValue);
       widget.controller.addListener(_didChangeEditingValue);
       _isToggledColor = _getIsToggledColor(_selectionStyle.attributes);
-      _isToggledBackground =
-          _getIsToggledBackground(_selectionStyle.attributes);
-      _isWhite = _isToggledColor &&
+      _isToggledBackground = _getIsToggledBackground(
+        _selectionStyle.attributes,
+      );
+      _isWhite =
+          _isToggledColor &&
           _selectionStyle.attributes['color']!.value == '#ffffff';
-      _isWhiteBackground = _isToggledBackground &&
+      _isWhiteBackground =
+          _isToggledBackground &&
           _selectionStyle.attributes['background']!.value == '#ffffff';
     }
   }
@@ -109,29 +120,32 @@ class _ColorButtonState extends State<ColorButton> {
 
     final iconColorBackground =
         _isToggledBackground && widget.background && !_isWhiteBackground
-            ? stringToColor(_selectionStyle.attributes['background']!.value)
-            : (widget.iconTheme?.iconUnselectedColor ?? theme.iconTheme.color);
+        ? stringToColor(_selectionStyle.attributes['background']!.value)
+        : (widget.iconTheme?.iconUnselectedColor ?? theme.iconTheme.color);
 
     final fillColor = _isToggledColor && !widget.background && _isWhite
         ? stringToColor('#ffffff')
         : (widget.iconTheme?.iconUnselectedFillColor ?? theme.canvasColor);
     final fillColorBackground =
         _isToggledBackground && widget.background && _isWhiteBackground
-            ? stringToColor('#ffffff')
-            : (widget.iconTheme?.iconUnselectedFillColor ?? theme.canvasColor);
+        ? stringToColor('#ffffff')
+        : (widget.iconTheme?.iconUnselectedFillColor ?? theme.canvasColor);
 
     return QuillIconButton(
       tooltip: widget.tooltip,
       highlightElevation: 0,
       hoverElevation: 0,
       size: widget.iconSize * kIconButtonFactor,
-      icon: Icon(widget.icon,
-          size: widget.iconSize,
-          color: widget.background ? iconColorBackground : iconColor),
+      icon: Icon(
+        widget.icon,
+        size: widget.iconSize,
+        color: widget.background ? iconColorBackground : iconColor,
+      ),
       fillColor: widget.background ? fillColorBackground : fillColor,
       borderRadius: widget.iconTheme?.borderRadius ?? 2,
       onPressed: _showColorPicker,
       afterPressed: widget.afterButtonPressed,
+      focusNode: widget.focusNode,
     );
   }
 
@@ -139,7 +153,8 @@ class _ColorButtonState extends State<ColorButton> {
     var hex = colorToHex(color);
     hex = '#$hex';
     widget.controller.formatSelection(
-        widget.background ? BackgroundAttribute(hex) : ColorAttribute(hex));
+      widget.background ? BackgroundAttribute(hex) : ColorAttribute(hex),
+    );
   }
 
   void _showColorPicker() {
@@ -153,21 +168,24 @@ class _ColorButtonState extends State<ColorButton> {
           : hexToColor(_selectionStyle.attributes['color']?.value);
     }
 
-    final hexController =
-        TextEditingController(text: colorToHex(selectedColor));
+    final hexController = TextEditingController(
+      text: colorToHex(selectedColor),
+    );
     late void Function(void Function()) colorBoxSetState;
 
     showDialog<String>(
       context: context,
-      builder: (context) => StatefulBuilder(builder: (context, dlgSetState) {
-        return AlertDialog(
+      builder: (context) => StatefulBuilder(
+        builder: (context, dlgSetState) {
+          return AlertDialog(
             title: Text('Select Color'.i18n),
             actions: [
               TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: Text('OK'.i18n)),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: Text('OK'.i18n),
+              ),
             ],
             backgroundColor: Theme.of(context).canvasColor,
             content: SingleChildScrollView(
@@ -177,86 +195,88 @@ class _ColorButtonState extends State<ColorButton> {
                   Row(
                     children: [
                       TextButton(
-                          onPressed: () {
-                            dlgSetState(() {
-                              pickerType = 'material';
-                            });
-                          },
-                          child: Text('Material'.i18n)),
+                        onPressed: () {
+                          dlgSetState(() {
+                            pickerType = 'material';
+                          });
+                        },
+                        child: Text('Material'.i18n),
+                      ),
                       TextButton(
-                          onPressed: () {
-                            dlgSetState(() {
-                              pickerType = 'color';
-                            });
-                          },
-                          child: Text('Color'.i18n)),
+                        onPressed: () {
+                          dlgSetState(() {
+                            pickerType = 'color';
+                          });
+                        },
+                        child: Text('Color'.i18n),
+                      ),
                     ],
                   ),
-                  Column(children: [
-                    if (pickerType == 'material')
-                      MaterialPicker(
-                        pickerColor: selectedColor,
-                        onColorChanged: (color) {
-                          _changeColor(context, color);
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                    if (pickerType == 'color')
-                      ColorPicker(
-                        pickerColor: selectedColor,
-                        onColorChanged: (color) {
-                          _changeColor(context, color);
-                          hexController.text = colorToHex(color);
-                          selectedColor = color;
-                          colorBoxSetState(() {});
-                        },
-                      ),
-                    const SizedBox(
-                      height: 10,
-                    ),
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 100,
-                          height: 60,
-                          child: TextFormField(
-                            controller: hexController,
-                            onChanged: (value) {
-                              selectedColor = hexToColor(value);
-                              _changeColor(context, selectedColor);
+                  Column(
+                    children: [
+                      if (pickerType == 'material')
+                        MaterialPicker(
+                          pickerColor: selectedColor,
+                          onColorChanged: (color) {
+                            _changeColor(context, color);
+                            Navigator.of(context).pop();
+                          },
+                        ),
+                      if (pickerType == 'color')
+                        ColorPicker(
+                          pickerColor: selectedColor,
+                          onColorChanged: (color) {
+                            _changeColor(context, color);
+                            hexController.text = colorToHex(color);
+                            selectedColor = color;
+                            colorBoxSetState(() {});
+                          },
+                        ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 100,
+                            height: 60,
+                            child: TextFormField(
+                              controller: hexController,
+                              onChanged: (value) {
+                                selectedColor = hexToColor(value);
+                                _changeColor(context, selectedColor);
 
-                              colorBoxSetState(() {});
-                            },
-                            decoration: InputDecoration(
-                              labelText: 'Hex'.i18n,
-                              border: const OutlineInputBorder(),
+                                colorBoxSetState(() {});
+                              },
+                              decoration: InputDecoration(
+                                labelText: 'Hex'.i18n,
+                                border: const OutlineInputBorder(),
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        StatefulBuilder(builder: (context, mcolorBoxSetState) {
-                          colorBoxSetState = mcolorBoxSetState;
-                          return Container(
-                            width: 25,
-                            height: 25,
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: Colors.black45,
-                              ),
-                              color: selectedColor,
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
-                  ])
+                          const SizedBox(width: 10),
+                          StatefulBuilder(
+                            builder: (context, mcolorBoxSetState) {
+                              colorBoxSetState = mcolorBoxSetState;
+                              return Container(
+                                width: 25,
+                                height: 25,
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.black45),
+                                  color: selectedColor,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ],
               ),
-            ));
-      }),
+            ),
+          );
+        },
+      ),
     );
   }
 
