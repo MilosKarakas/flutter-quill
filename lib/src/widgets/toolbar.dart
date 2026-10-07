@@ -165,6 +165,13 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
     /// To disable semantic identifiers just pass empty map as well.
     Map<ToolbarButtons, String>? semanticsIdentifiers,
 
+    /// Optional [FocusNode]s for individual toolbar actions.
+    ///
+    /// Same keying as [semanticsIdentifiers] / [tooltips]. Single-icon
+    /// actions accept a node; composite dropdowns (font, alignment, header)
+    /// are ignored if present in the map.
+    Map<ToolbarButtons, FocusNode>? buttonFocusNodes,
+
     /// The locale to use for the editor toolbar, defaults to system locale
     /// More at https://github.com/singerdmx/flutter-quill#translation
     Locale? locale,
@@ -190,6 +197,8 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
       controller != null || quillJsController != null,
       'Either controller or quillJsController must be provided',
     );
+
+    FocusNode? focusOf(ToolbarButtons button) => buttonFocusNodes?[button];
 
     // Whether the classic QuillController is available — buttons that only
     // work with QuillController are hidden when it is null.
@@ -306,6 +315,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             undo: true,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.undo),
           ),
         if (showRedo && controller != null)
           HistoryButton(
@@ -316,6 +326,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             undo: false,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.redo),
           ),
         if (showFontFamily && controller != null)
           QuillFontFamilyButton(
@@ -348,6 +359,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
             semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.bold],
+            focusNode: focusOf(ToolbarButtons.bold),
           ),
         if (showSubscript && controller != null)
           ToggleStyleButton(
@@ -358,6 +370,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             controller: controller,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.subscript),
           ),
         if (showSuperscript && controller != null)
           ToggleStyleButton(
@@ -368,6 +381,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             controller: controller,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.superscript),
           ),
         if (showItalicButton)
           ToggleStyleButton(
@@ -380,6 +394,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
             semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.italic],
+            focusNode: focusOf(ToolbarButtons.italic),
           ),
         if (showSmallButton && controller != null)
           ToggleStyleButton(
@@ -390,6 +405,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             controller: controller,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.small),
           ),
         if (showUnderLineButton)
           ToggleStyleButton(
@@ -403,6 +419,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             afterButtonPressed: afterButtonPressed,
             semanticsIdentifier:
                 semanticsIdentifiers?[ToolbarButtons.underline],
+            focusNode: focusOf(ToolbarButtons.underline),
           ),
         if (showStrikeThrough && controller != null)
           ToggleStyleButton(
@@ -413,6 +430,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             controller: controller,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.strikeThrough),
           ),
         if (showInlineCode && controller != null)
           ToggleStyleButton(
@@ -423,6 +441,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             controller: controller,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.inlineCode),
           ),
         if (showColorButton && controller != null)
           ColorButton(
@@ -433,6 +452,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             background: false,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.color),
           ),
         if (showBackgroundColorButton && controller != null)
           ColorButton(
@@ -443,6 +463,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             background: true,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.backgroundColor),
           ),
         if (showClearFormat && controller != null)
           ClearFormatButton(
@@ -452,6 +473,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             controller: controller,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.clearFormat),
           ),
         if (embedButtons != null && controller != null)
           for (final builder in embedButtons)
@@ -482,6 +504,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             linkDialogAction: linkDialogAction,
             linkDialogBuilder: linkDialogBuilder,
             semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.link],
+            focusNode: focusOf(ToolbarButtons.link),
           ),
         if (showSearchButton && controller != null)
           SearchButton(
@@ -492,6 +515,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             iconTheme: iconTheme,
             dialogTheme: dialogTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.search),
           ),
 
         if (showDividers &&
@@ -535,6 +559,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             iconSize: toolbarIconSize,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.direction),
           ),
 
         if (showDividers &&
@@ -579,6 +604,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             afterButtonPressed: afterButtonPressed,
             semanticsIdentifier:
                 semanticsIdentifiers?[ToolbarButtons.listNumbers],
+            focusNode: focusOf(ToolbarButtons.listNumbers),
           ),
         if (showListBullets)
           ToggleStyleButton(
@@ -592,6 +618,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             afterButtonPressed: afterButtonPressed,
             semanticsIdentifier:
                 semanticsIdentifiers?[ToolbarButtons.listBullets],
+            focusNode: focusOf(ToolbarButtons.listBullets),
           ),
         if (showListCheck && controller != null)
           ToggleCheckListButton(
@@ -602,6 +629,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             iconSize: toolbarIconSize,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.listChecks),
           ),
         if (showCodeBlock && controller != null)
           ToggleStyleButton(
@@ -612,6 +640,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             iconSize: toolbarIconSize,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.codeBlock),
           ),
 
         if (showDividers && isButtonGroupShown[4] && isButtonGroupShown[5])
@@ -630,6 +659,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             iconSize: toolbarIconSize,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.quote),
           ),
         if (showIndent && controller != null)
           IndentButton(
@@ -640,6 +670,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             isIncrease: true,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.indentIncrease),
           ),
         if (showIndent && controller != null)
           IndentButton(
@@ -650,6 +681,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             isIncrease: false,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+            focusNode: focusOf(ToolbarButtons.indentDecrease),
           ),
 
         if (customButtons.isNotEmpty)

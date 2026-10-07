@@ -13,6 +13,7 @@ class ClearFormatButton extends StatefulWidget {
     this.iconTheme,
     this.afterButtonPressed,
     this.tooltip,
+    this.focusNode,
     Key? key,
   }) : super(key: key);
 
@@ -24,6 +25,7 @@ class ClearFormatButton extends StatefulWidget {
   final QuillIconTheme? iconTheme;
   final VoidCallback? afterButtonPressed;
   final String? tooltip;
+  final FocusNode? focusNode;
 
   @override
   _ClearFormatButtonState createState() => _ClearFormatButtonState();
@@ -57,6 +59,7 @@ class _ClearFormatButtonState extends State<ClearFormatButton> {
         }
       },
       afterPressed: widget.afterButtonPressed,
+      focusNode: widget.focusNode,
     );
   }
 }

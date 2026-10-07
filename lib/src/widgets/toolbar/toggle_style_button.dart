@@ -7,18 +7,20 @@ import '../controller.dart';
 import '../quill_js/quill_js_configurations.dart';
 import '../toolbar.dart';
 
-typedef ToggleStyleButtonBuilder = Widget Function(
-  BuildContext context,
-  Attribute attribute,
-  IconData icon,
-  Color? fillColor,
-  bool? isToggled,
-  VoidCallback? onPressed,
-  VoidCallback? afterPressed, [
-  double iconSize,
-  QuillIconTheme? iconTheme,
-  String? semanticsIdentifier,
-]);
+typedef ToggleStyleButtonBuilder =
+    Widget Function(
+      BuildContext context,
+      Attribute attribute,
+      IconData icon,
+      Color? fillColor,
+      bool? isToggled,
+      VoidCallback? onPressed,
+      VoidCallback? afterPressed, [
+      double iconSize,
+      QuillIconTheme? iconTheme,
+      String? semanticsIdentifier,
+      FocusNode? focusNode,
+    ]);
 
 class ToggleStyleButton extends StatefulWidget {
   const ToggleStyleButton({
@@ -33,10 +35,13 @@ class ToggleStyleButton extends StatefulWidget {
     this.afterButtonPressed,
     this.tooltip,
     this.semanticsIdentifier,
+    this.focusNode,
     Key? key,
-  })  : assert(controller != null || quillJsController != null,
-            'Either controller or quillJsController must be provided'),
-        super(key: key);
+  }) : assert(
+         controller != null || quillJsController != null,
+         'Either controller or quillJsController must be provided',
+       ),
+       super(key: key);
 
   final Attribute attribute;
 
@@ -56,6 +61,7 @@ class ToggleStyleButton extends StatefulWidget {
   final VoidCallback? afterButtonPressed;
   final String? tooltip;
   final String? semanticsIdentifier;
+  final FocusNode? focusNode;
 
   /// Whether this button uses the QuillJs controller path.
   bool get _usesQuillJs => quillJsController != null;
@@ -93,6 +99,7 @@ class _ToggleStyleButtonState extends State<ToggleStyleButton> {
         widget.iconSize,
         widget.iconTheme,
         widget.semanticsIdentifier,
+        widget.focusNode,
       ),
     );
   }
@@ -122,7 +129,8 @@ class _ToggleStyleButtonState extends State<ToggleStyleButton> {
       return _getIsToggledQuillJs();
     }
     return _getIsToggledClassic(
-        widget.controller!.getSelectionStyle().attributes);
+      widget.controller!.getSelectionStyle().attributes,
+    );
   }
 
   bool _getIsToggledQuillJs() {
@@ -158,9 +166,11 @@ class _ToggleStyleButtonState extends State<ToggleStyleButton> {
     if (widget._usesQuillJs) {
       _toggleAttributeQuillJs();
     } else {
-      widget.controller!.formatSelection(_isToggled!
-          ? Attribute.clone(widget.attribute, null)
-          : widget.attribute);
+      widget.controller!.formatSelection(
+        _isToggled!
+            ? Attribute.clone(widget.attribute, null)
+            : widget.attribute,
+      );
     }
   }
 
@@ -194,24 +204,26 @@ Widget defaultToggleStyleButtonBuilder(
   double iconSize = kDefaultIconSize,
   QuillIconTheme? iconTheme,
   String? semanticsIdentifier,
+  FocusNode? focusNode,
 ]) {
   final theme = Theme.of(context);
   final isEnabled = onPressed != null;
   final iconColor = isEnabled
       ? isToggled == true
-          ? (iconTheme?.iconSelectedColor ??
-              theme
-                  .primaryIconTheme.color) //You can specify your own icon color
-          : (iconTheme?.iconUnselectedColor ?? theme.iconTheme.color)
+            ? (iconTheme?.iconSelectedColor ??
+                  theme
+                      .primaryIconTheme
+                      .color) //You can specify your own icon color
+            : (iconTheme?.iconUnselectedColor ?? theme.iconTheme.color)
       : (iconTheme?.disabledIconColor ?? theme.disabledColor);
   final fill = isEnabled
       ? isToggled == true
-          ? (iconTheme?.iconSelectedFillColor ??
-              Theme.of(context).primaryColor) //Selected icon fill color
-          : (iconTheme?.iconUnselectedFillColor ??
-              theme.canvasColor) //Unselected icon fill color :
+            ? (iconTheme?.iconSelectedFillColor ??
+                  Theme.of(context).primaryColor) //Selected icon fill color
+            : (iconTheme?.iconUnselectedFillColor ??
+                  theme.canvasColor) //Unselected icon fill color :
       : (iconTheme?.disabledIconFillColor ??
-          (fillColor ?? theme.canvasColor)); //Disabled icon fill color
+            (fillColor ?? theme.canvasColor)); //Disabled icon fill color
   return QuillIconButton(
     highlightElevation: 0,
     hoverElevation: 0,
@@ -222,5 +234,6 @@ Widget defaultToggleStyleButtonBuilder(
     afterPressed: afterPressed,
     borderRadius: iconTheme?.borderRadius ?? 2,
     semanticsIdentifier: semanticsIdentifier,
+    focusNode: focusNode,
   );
 }

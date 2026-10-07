@@ -16,6 +16,7 @@ class SearchButton extends StatelessWidget {
     this.dialogTheme,
     this.afterButtonPressed,
     this.tooltip,
+    this.focusNode,
     Key? key,
   }) : super(key: key);
 
@@ -29,6 +30,7 @@ class SearchButton extends StatelessWidget {
   final QuillDialogTheme? dialogTheme;
   final VoidCallback? afterButtonPressed;
   final String? tooltip;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +50,7 @@ class SearchButton extends StatelessWidget {
       borderRadius: iconTheme?.borderRadius ?? 2,
       onPressed: () => _onPressedHandler(context),
       afterPressed: afterButtonPressed,
+      focusNode: focusNode,
     );
   }
 
@@ -55,7 +58,10 @@ class SearchButton extends StatelessWidget {
     await showDialog<String>(
       context: context,
       builder: (_) => SearchDialog(
-          controller: controller, dialogTheme: dialogTheme, text: ''),
+        controller: controller,
+        dialogTheme: dialogTheme,
+        text: '',
+      ),
     ).then(_searchSubmitted);
   }
 

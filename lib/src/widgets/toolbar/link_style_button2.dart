@@ -31,11 +31,11 @@ class LinkStyleButton2 extends StatefulWidget {
     this.validationMessage,
     this.buttonSize,
     Key? key,
-  })  : assert(addLinkLabel == null || addLinkLabel.length > 0),
-        assert(editLinkLabel == null || editLinkLabel.length > 0),
-        assert(childrenSpacing > 0),
-        assert(validationMessage == null || validationMessage.length > 0),
-        super(key: key);
+  }) : assert(addLinkLabel == null || addLinkLabel.length > 0),
+       assert(editLinkLabel == null || editLinkLabel.length > 0),
+       assert(childrenSpacing > 0),
+       assert(validationMessage == null || validationMessage.length > 0),
+       super(key: key);
 
   final QuillController controller;
   final IconData? icon;
@@ -106,12 +106,12 @@ class _LinkStyleButton2State extends State<LinkStyleButton2> {
         size: widget.iconSize,
         color: isToggled
             ? (widget.iconTheme?.iconSelectedColor ??
-                theme.primaryIconTheme.color)
+                  theme.primaryIconTheme.color)
             : (widget.iconTheme?.iconUnselectedColor ?? theme.iconTheme.color),
       ),
       fillColor: isToggled
           ? (widget.iconTheme?.iconSelectedFillColor ??
-              Theme.of(context).primaryColor)
+                Theme.of(context).primaryColor)
           : (widget.iconTheme?.iconUnselectedFillColor ?? theme.canvasColor),
       borderRadius: widget.iconTheme?.borderRadius ?? 2,
       onPressed: _openLinkDialog,
@@ -163,8 +163,10 @@ class LinkStyleDialog extends StatefulWidget {
     this.link,
     this.dialogTheme,
     this.constraints,
-    this.contentPadding =
-        const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+    this.contentPadding = const EdgeInsets.symmetric(
+      vertical: 16,
+      horizontal: 16,
+    ),
     this.addLinkLabel,
     this.editLinkLabel,
     this.linkColor,
@@ -172,11 +174,11 @@ class LinkStyleDialog extends StatefulWidget {
     this.autovalidateMode = AutovalidateMode.disabled,
     this.validationMessage,
     this.buttonSize,
-  })  : assert(addLinkLabel == null || addLinkLabel.length > 0),
-        assert(editLinkLabel == null || editLinkLabel.length > 0),
-        assert(childrenSpacing > 0),
-        assert(validationMessage == null || validationMessage.length > 0),
-        super(key: key);
+  }) : assert(addLinkLabel == null || addLinkLabel.length > 0),
+       assert(editLinkLabel == null || editLinkLabel.length > 0),
+       assert(childrenSpacing > 0),
+       assert(validationMessage == null || validationMessage.length > 0),
+       super(key: key);
 
   final String? text;
   final String? link;
@@ -242,7 +244,8 @@ class _LinkStyleDialogState extends State<LinkStyleDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final constraints = widget.constraints ??
+    final constraints =
+        widget.constraints ??
         widget.dialogTheme?.linkDialogConstraints ??
         () {
           final size = MediaQuery.sizeOf(context);
@@ -251,10 +254,9 @@ class _LinkStyleDialogState extends State<LinkStyleDialog> {
         }();
 
     final buttonStyle = widget.buttonSize != null
-        ? Theme.of(context)
-            .elevatedButtonTheme
-            .style
-            ?.copyWith(fixedSize: MaterialStatePropertyAll(widget.buttonSize))
+        ? Theme.of(context).elevatedButtonTheme.style?.copyWith(
+            fixedSize: MaterialStatePropertyAll(widget.buttonSize),
+          )
         : widget.dialogTheme?.buttonStyle;
 
     final isWrappable = widget.dialogTheme?.isWrappable ?? false;
@@ -265,14 +267,12 @@ class _LinkStyleDialogState extends State<LinkStyleDialog> {
             UtilityWidgets.maybeWidget(
               enabled: !isWrappable,
               wrapper: (child) => Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: child,
-                ),
+                child: Align(alignment: Alignment.centerLeft, child: child),
               ),
               child: Padding(
-                padding:
-                    EdgeInsets.symmetric(horizontal: widget.childrenSpacing),
+                padding: EdgeInsets.symmetric(
+                  horizontal: widget.childrenSpacing,
+                ),
                 child: Link(
                   uri: Uri.parse(_linkController.text),
                   builder: (context, followLink) {
@@ -317,12 +317,11 @@ class _LinkStyleDialogState extends State<LinkStyleDialog> {
             Text(widget.addLinkLabel ?? 'Enter link'.i18n),
             UtilityWidgets.maybeWidget(
               enabled: !isWrappable,
-              wrapper: (child) => Expanded(
-                child: child,
-              ),
+              wrapper: (child) => Expanded(child: child),
               child: Padding(
-                padding:
-                    EdgeInsets.symmetric(horizontal: widget.childrenSpacing),
+                padding: EdgeInsets.symmetric(
+                  horizontal: widget.childrenSpacing,
+                ),
                 child: TextFormField(
                   controller: _linkController,
                   style: widget.dialogTheme?.inputTextStyle,
@@ -347,7 +346,8 @@ class _LinkStyleDialogState extends State<LinkStyleDialog> {
 
     return Dialog(
       backgroundColor: widget.dialogTheme?.dialogBackgroundColor,
-      shape: widget.dialogTheme?.shape ??
+      shape:
+          widget.dialogTheme?.shape ??
           DialogTheme.of(context).shape ??
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       child: ConstrainedBox(
@@ -361,9 +361,7 @@ class _LinkStyleDialogState extends State<LinkStyleDialog> {
                   runSpacing: widget.dialogTheme?.runSpacing ?? 0.0,
                   children: children,
                 )
-              : Row(
-                  children: children,
-                ),
+              : Row(children: children),
         ),
       ),
     );
@@ -395,17 +393,16 @@ class _LinkStyleDialogState extends State<LinkStyleDialog> {
 
 /// Contains information about text URL.
 class QuillTextLink {
-  QuillTextLink(
-    this.text,
-    this.link,
-  );
+  QuillTextLink(this.text, this.link);
 
   final String text;
   final String? link;
 
   static QuillTextLink prepare(QuillController controller) {
-    final link =
-        controller.getSelectionStyle().attributes[Attribute.link.key]?.value;
+    final link = controller
+        .getSelectionStyle()
+        .attributes[Attribute.link.key]
+        ?.value;
     final index = controller.selection.start;
 
     var text;
@@ -426,8 +423,10 @@ class QuillTextLink {
   void submit(QuillController controller) {
     var index = controller.selection.start;
     var length = controller.selection.end - index;
-    final linkValue =
-        controller.getSelectionStyle().attributes[Attribute.link.key]?.value;
+    final linkValue = controller
+        .getSelectionStyle()
+        .attributes[Attribute.link.key]
+        ?.value;
 
     if (linkValue != null) {
       // text should be the link's corresponding text, not selection

@@ -13,6 +13,7 @@ class HistoryButton extends StatefulWidget {
     this.iconTheme,
     this.afterButtonPressed,
     this.tooltip,
+    this.focusNode,
     Key? key,
   }) : super(key: key);
 
@@ -23,6 +24,7 @@ class HistoryButton extends StatefulWidget {
   final QuillIconTheme? iconTheme;
   final VoidCallback? afterButtonPressed;
   final String? tooltip;
+  final FocusNode? focusNode;
 
   @override
   _HistoryButtonState createState() => _HistoryButtonState();
@@ -52,6 +54,7 @@ class _HistoryButtonState extends State<HistoryButton> {
       borderRadius: widget.iconTheme?.borderRadius ?? 2,
       onPressed: _changeHistory,
       afterPressed: widget.afterButtonPressed,
+      focusNode: widget.focusNode,
     );
   }
 
