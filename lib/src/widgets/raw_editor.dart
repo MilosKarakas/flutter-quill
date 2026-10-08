@@ -1459,10 +1459,11 @@ class RawEditorState extends EditorState
     final plainText = selection.textInside(text);
 
     // Get the Delta for the selection
-    final delta = controller.document.toDelta().slice(
-          selection.start,
-          selection.end,
-        );
+    final delta = sliceDeltaForCopy(
+      controller.document.toDelta(),
+      selection.start,
+      selection.end,
+    );
 
     // Call the interceptor
     return interceptor(plainText, delta);
@@ -2049,10 +2050,11 @@ class RawEditorState extends EditorState
         // We don't call Clipboard.setData to avoid duplicate writes.
       } else {
         // On mobile, call the interceptor to let app handle clipboard writing
-        final delta = controller.document.toDelta().slice(
-              selection.start,
-              selection.end,
-            );
+        final delta = sliceDeltaForCopy(
+          controller.document.toDelta(),
+          selection.start,
+          selection.end,
+        );
         final result = interceptor(plainText, delta);
         // If result is null, the app handled clipboard writing.
         // If result is non-null on mobile, the app expected us to handle it,
@@ -2108,10 +2110,11 @@ class RawEditorState extends EditorState
         // We don't call Clipboard.setData to avoid duplicate writes.
       } else {
         // On mobile, call the interceptor to let app handle clipboard writing
-        final delta = controller.document.toDelta().slice(
-              selection.start,
-              selection.end,
-            );
+        final delta = sliceDeltaForCopy(
+          controller.document.toDelta(),
+          selection.start,
+          selection.end,
+        );
         final result = interceptor(plainText, delta);
         // If result is null, the app handled clipboard writing.
         // If result is non-null on mobile, the app expected us to handle it,

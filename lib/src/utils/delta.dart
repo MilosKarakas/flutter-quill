@@ -28,13 +28,17 @@ class Diff {
 Diff getDiff(String oldText, String newText, int cursorPosition) {
   var end = oldText.length;
   final delta = newText.length - end;
-  for (final limit = math.max(0, cursorPosition - delta);
-      end > limit && oldText[end - 1] == newText[end + delta - 1];
-      end--) {}
+  for (
+    final limit = math.max(0, cursorPosition - delta);
+    end > limit && oldText[end - 1] == newText[end + delta - 1];
+    end--
+  ) {}
   var start = 0;
-  for (final startLimit = cursorPosition - math.max(0, delta);
-      start < startLimit && oldText[start] == newText[start];
-      start++) {}
+  for (
+    final startLimit = cursorPosition - math.max(0, delta);
+    start < startLimit && oldText[start] == newText[start];
+    start++
+  ) {}
   final deleted = (start >= end) ? '' : oldText.substring(start, end);
   final inserted = newText.substring(start, end + delta);
   return Diff(start, deleted, inserted);
@@ -74,6 +78,49 @@ int getPositionDelta(Delta user, Delta actual) {
     }
   }
   return diff;
+}
+
+/// Returns the part of [document] between [start] and [end] for copying.
+///
+/// Block formats (lists, headers, ...) are stored on the newline that ends a
+/// line, so a multi-line selection that stops before the last line's newline
+/// would lose that line's block format. In that case the newline is appended
+/// with the line's block attributes. Single-line selections are left as-is.
+Delta sliceDeltaForCopy(Delta document, int start, int end) {
+  final slice = document.slice(start, end);
+  final ops = slice.toList();
+  if (ops.isEmpty) {
+    return slice;
+  }
+
+  final lastData = ops.last.data;
+  if (lastData is String && lastData.endsWith('\n')) {
+    return slice;
+  }
+  final spansLines = ops.any(
+    (op) => op.data is String && (op.data as String).contains('\n'),
+  );
+  if (!spansLines) {
+    return slice;
+  }
+
+  Map<String, dynamic>? lineAttributes;
+  for (final op in document.slice(end).toList()) {
+    final data = op.data;
+    if (data is String && data.contains('\n')) {
+      lineAttributes = op.attributes;
+      break;
+    }
+  }
+
+  final blockAttributes = <String, dynamic>{
+    for (final entry in (lineAttributes ?? const {}).entries)
+      if (Attribute.blockKeys.contains(entry.key)) entry.key: entry.value,
+  };
+  if (blockAttributes.isEmpty) {
+    return slice;
+  }
+  return slice..insert('\n', blockAttributes);
 }
 
 TextDirection getDirectionOfNode(Node node) {
