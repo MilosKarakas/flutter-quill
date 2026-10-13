@@ -2,7 +2,7 @@ import 'dart:ui' show Color, FontVariation;
 
 import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart' show EdgeInsets;
+import 'package:flutter/painting.dart' show BoxShadow, EdgeInsets;
 
 import '../../models/auto_link.dart';
 import '../../models/structs/copy_data.dart';
@@ -121,6 +121,12 @@ class QuillJsLinkTooltipStyle {
     this.fontVariations,
     this.letterSpacing,
     this.minHeight,
+    this.boxShadow,
+    this.maxWidth,
+    this.maxLines,
+    this.showDelay = Duration.zero,
+    this.anchorToPointer = false,
+    this.pointerGap = 20,
   });
 
   final Color? backgroundColor;
@@ -144,6 +150,24 @@ class QuillJsLinkTooltipStyle {
 
   /// Minimum distance from the window edges.
   final double margin;
+
+  /// Drop shadows, drawn as CSS `box-shadow`.
+  final List<BoxShadow>? boxShadow;
+
+  /// Maximum width in logical pixels. The window margin still applies.
+  final double? maxWidth;
+
+  /// Clips the address to this many lines.
+  final int? maxLines;
+
+  /// Wait after hovering a link before the tooltip appears.
+  final Duration showDelay;
+
+  /// Position from the pointer instead of the link centre.
+  final bool anchorToPointer;
+
+  /// Gap between the pointer and the tooltip when [anchorToPointer] is true.
+  final double pointerGap;
 }
 
 /// Configuration for the Quill.js-based web editor.

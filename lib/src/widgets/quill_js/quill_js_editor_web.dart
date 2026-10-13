@@ -442,7 +442,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   JSFunction? _linkTooltipIframeScrollHandlerJs;
   JSFunction? _linkTooltipParentScrollHandlerJs;
   web.HTMLDivElement? _linkTooltipElement;
+  web.HTMLAnchorElement? _linkTooltipAnchor;
+  bool _linkTooltipVisible = false;
   Timer? _linkTooltipHideTimer;
+  Timer? _linkTooltipShowTimer;
   JSFunction? _tapFocusTouchStartHandlerJs;
   JSFunction? _tapFocusTouchEndHandlerJs;
   JSFunction? _tapFocusTouchCancelHandlerJs;
@@ -1916,6 +1919,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     }
     _linkTooltipHideTimer?.cancel();
     _linkTooltipHideTimer = null;
+    _linkTooltipShowTimer?.cancel();
+    _linkTooltipShowTimer = null;
+    _linkTooltipAnchor = null;
+    _linkTooltipVisible = false;
     _linkTooltipElement?.remove();
     _linkTooltipElement = null;
 
@@ -3785,7 +3792,7 @@ $customCss
     _linkTooltipMouseOverHandlerJs = ((web.Event event) {
       final tapped = _findTappedAnchorFromEvent(event, editorDiv);
       if (tapped == null) return;
-      _showLinkTooltip(tapped.anchor, tapped.href);
+      _scheduleLinkTooltipShow(tapped.anchor, tapped.href, event);
     }).toJS;
 
     _linkTooltipMouseOutHandlerJs = ((web.Event event) {
@@ -3857,7 +3864,57 @@ $customCss
     );
   }
 
-  void _showLinkTooltip(web.HTMLAnchorElement anchor, String href) {
+  void _scheduleLinkTooltipShow(
+    web.HTMLAnchorElement anchor,
+    String href,
+    web.Event event,
+  ) {
+    final tooltipStyle = widget.configuration.linkTooltipStyle;
+    if (tooltipStyle == null || !mounted) return;
+    final current = _linkTooltipAnchor;
+    if (current != null &&
+        current.isSameNode(anchor) &&
+        (_linkTooltipShowTimer != null || _linkTooltipVisible)) {
+      _linkTooltipHideTimer?.cancel();
+      _linkTooltipHideTimer = null;
+      return;
+    }
+
+    _linkTooltipShowTimer?.cancel();
+    _linkTooltipShowTimer = null;
+    _linkTooltipAnchor = anchor;
+    final pointer = tooltipStyle.anchorToPointer
+        ? _linkTooltipPointerInParent(event)
+        : null;
+    if (tooltipStyle.showDelay == Duration.zero) {
+      _showLinkTooltip(anchor, href, pointer);
+      return;
+    }
+    _linkTooltipShowTimer = Timer(tooltipStyle.showDelay, () {
+      _linkTooltipShowTimer = null;
+      if (!mounted) return;
+      _showLinkTooltip(anchor, href, pointer);
+    });
+  }
+
+  /// Pointer in parent-viewport coordinates, captured on mouseover.
+  ({double x, double y})? _linkTooltipPointerInParent(web.Event event) {
+    try {
+      final iframeRect = _iframe.getBoundingClientRect();
+      return (
+        x: _readDomClientCoord(event, 'clientX') + iframeRect.left,
+        y: _readDomClientCoord(event, 'clientY') + iframeRect.top,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _showLinkTooltip(
+    web.HTMLAnchorElement anchor,
+    String href, [
+    ({double x, double y})? pointer,
+  ]) {
     final tooltipStyle = widget.configuration.linkTooltipStyle;
     if (tooltipStyle == null || !mounted) return;
     _linkTooltipHideTimer?.cancel();
@@ -3866,39 +3923,57 @@ $customCss
     final tooltip = _ensureLinkTooltipElement();
     if (tooltip == null) return;
     _applyLinkTooltipStyle(tooltip, tooltipStyle);
-    tooltip.textContent = href;
+    _setLinkTooltipText(tooltip, href, tooltipStyle.maxLines);
     tooltip.style
       ..setProperty('visibility', 'hidden')
       ..setProperty('left', '0px')
       ..setProperty('top', '0px');
 
     final tipRect = tooltip.getBoundingClientRect();
-    final anchorRect = anchor.getBoundingClientRect();
-    final iframeRect = _iframe.getBoundingClientRect();
-    final centerX = iframeRect.left + anchorRect.left + (anchorRect.width / 2);
-    final centerY = iframeRect.top + anchorRect.top + (anchorRect.height / 2);
     final tipWidth = tipRect.width;
     final tipHeight = tipRect.height;
-    final margin = tooltipStyle.margin;
     final viewWidth = web.window.innerWidth.toDouble();
     final viewHeight = web.window.innerHeight.toDouble();
 
-    var top = centerY + tooltipStyle.verticalOffset;
-    if (top + tipHeight > viewHeight - margin) {
-      top = centerY - tooltipStyle.verticalOffset - tipHeight;
+    late final double top;
+    late final double left;
+    if (tooltipStyle.anchorToPointer && pointer != null) {
+      final gap = tooltipStyle.pointerGap;
+      final below = pointer.y + gap;
+      final rawTop = below + tipHeight <= viewHeight
+          ? below
+          : pointer.y - gap - tipHeight;
+      final maxLeft = math.max(0, viewWidth - tipWidth).toDouble();
+      top = math.max(0, rawTop).toDouble();
+      left = math.min(math.max(0, pointer.x), maxLeft).toDouble();
+    } else {
+      final anchorRect = anchor.getBoundingClientRect();
+      final iframeRect = _iframe.getBoundingClientRect();
+      final centerX =
+          iframeRect.left + anchorRect.left + (anchorRect.width / 2);
+      final centerY =
+          iframeRect.top + anchorRect.top + (anchorRect.height / 2);
+      final margin = tooltipStyle.margin;
+      var linkTop = centerY + tooltipStyle.verticalOffset;
+      if (linkTop + tipHeight > viewHeight - margin) {
+        linkTop = centerY - tooltipStyle.verticalOffset - tipHeight;
+      }
+
+      final minLeft = margin;
+      final maxLeft = viewWidth - margin - tipWidth;
+      var linkLeft = centerX - (tipWidth / 2);
+      if (maxLeft <= minLeft) {
+        linkLeft = minLeft;
+      } else if (linkLeft < minLeft) {
+        linkLeft = minLeft;
+      } else if (linkLeft > maxLeft) {
+        linkLeft = maxLeft;
+      }
+      top = linkTop;
+      left = linkLeft;
     }
 
-    final minLeft = margin;
-    final maxLeft = viewWidth - margin - tipWidth;
-    var left = centerX - (tipWidth / 2);
-    if (maxLeft <= minLeft) {
-      left = minLeft;
-    } else if (left < minLeft) {
-      left = minLeft;
-    } else if (left > maxLeft) {
-      left = maxLeft;
-    }
-
+    _linkTooltipVisible = true;
     tooltip.style
       ..setProperty('left', '${left}px')
       ..setProperty('top', '${top}px')
@@ -3926,12 +4001,38 @@ $customCss
     return tooltip;
   }
 
+  void _setLinkTooltipText(
+    web.HTMLDivElement tooltip,
+    String href,
+    int? maxLines,
+  ) {
+    if (maxLines == null) {
+      tooltip.textContent = href;
+      return;
+    }
+    tooltip.textContent = '';
+    final label = web.document.createElement('span') as web.HTMLSpanElement
+      ..textContent = href;
+    label.style
+      ..setProperty('display', '-webkit-box')
+      ..setProperty('-webkit-box-orient', 'vertical')
+      ..setProperty('-webkit-line-clamp', '$maxLines')
+      ..setProperty('overflow', 'hidden');
+    tooltip.appendChild(label);
+  }
+
   void _applyLinkTooltipStyle(
     web.HTMLElement tooltip,
     QuillJsLinkTooltipStyle style,
   ) {
+    final windowCap = 'calc(100vw - ${style.margin * 2}px)';
+    final maxWidth = style.maxWidth;
     final properties = <String, String>{
-      'max-width': 'calc(100vw - ${style.margin * 2}px)',
+      'max-width': maxWidth == null
+          ? windowCap
+          : 'min(${maxWidth}px, $windowCap)',
+      'word-break': style.maxLines == null ? 'break-all' : 'normal',
+      'overflow-wrap': style.maxLines == null ? 'normal' : 'anywhere',
     };
     final background = style.backgroundColor;
     if (background != null) {
@@ -3980,6 +4081,12 @@ $customCss
       properties['display'] = 'flex';
       properties['align-items'] = 'center';
     }
+    final boxShadow = _linkTooltipBoxShadowCss(style.boxShadow);
+    if (boxShadow == null) {
+      tooltip.style.removeProperty('box-shadow');
+    } else {
+      properties['box-shadow'] = boxShadow;
+    }
     final fontUrl = style.fontUrl;
     if (fontFamily != null && fontUrl != null) {
       _registerLinkTooltipFont(fontFamily, fontUrl);
@@ -3988,6 +4095,18 @@ $customCss
     for (final entry in properties.entries) {
       css.setProperty(entry.key, entry.value);
     }
+  }
+
+  String? _linkTooltipBoxShadowCss(List<BoxShadow>? shadows) {
+    if (shadows == null || shadows.isEmpty) return null;
+    return shadows
+        .map(
+          (shadow) =>
+              '${shadow.offset.dx}px ${shadow.offset.dy}px '
+              '${shadow.blurRadius}px ${shadow.spreadRadius}px '
+              '${_colorToCss(shadow.color)}',
+        )
+        .join(', ');
   }
 
   /// Adds the tooltip font to the page once; shared by all editors.
@@ -4007,17 +4126,27 @@ $customCss
   }
 
   void _scheduleLinkTooltipHide() {
+    _linkTooltipShowTimer?.cancel();
+    _linkTooltipShowTimer = null;
     _linkTooltipHideTimer?.cancel();
     _linkTooltipHideTimer = Timer(const Duration(milliseconds: 100), () {
       _linkTooltipHideTimer = null;
       if (!mounted) return;
-      _hideLinkTooltip();
+      _dismissLinkTooltip();
     });
   }
 
   void _hideLinkTooltip() {
     _linkTooltipHideTimer?.cancel();
     _linkTooltipHideTimer = null;
+    _linkTooltipShowTimer?.cancel();
+    _linkTooltipShowTimer = null;
+    _linkTooltipAnchor = null;
+    _dismissLinkTooltip();
+  }
+
+  void _dismissLinkTooltip() {
+    _linkTooltipVisible = false;
     _linkTooltipElement?.style.setProperty('visibility', 'hidden');
   }
 
