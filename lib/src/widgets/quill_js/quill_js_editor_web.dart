@@ -19,6 +19,8 @@ import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:web/web.dart' as web;
 
+import '../../models/auto_link.dart';
+import '../../models/documents/document.dart';
 import '../../models/structs/copy_data.dart';
 import '../../utils/delta.dart';
 import '../default_styles.dart';
@@ -426,11 +428,21 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   // Event listener references for cleanup
   JSFunction? _tabKeyHandlerJs;
   JSFunction? _enterKeyHandlerJs;
+  JSFunction? _autoLinkBackspaceHandlerJs;
+  ({List<LinkMatch> links, int cursor})? _lastAutoLink;
   JSFunction? _escapeKeyHandlerJs;
   JSFunction? _shiftTabKeyHandlerJs;
   JSFunction? _linkClickHandlerJs;
   JSFunction? _linkTouchStartHandlerJs;
   JSFunction? _linkPointerDownHandlerJs;
+  JSFunction? _linkTooltipMouseOverHandlerJs;
+  JSFunction? _linkTooltipMouseOutHandlerJs;
+  JSFunction? _linkTooltipKeyDownHandlerJs;
+  JSFunction? _linkTooltipBlurHandlerJs;
+  JSFunction? _linkTooltipIframeScrollHandlerJs;
+  JSFunction? _linkTooltipParentScrollHandlerJs;
+  web.HTMLDivElement? _linkTooltipElement;
+  Timer? _linkTooltipHideTimer;
   JSFunction? _tapFocusTouchStartHandlerJs;
   JSFunction? _tapFocusTouchEndHandlerJs;
   JSFunction? _tapFocusTouchCancelHandlerJs;
@@ -1671,6 +1683,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
       if (_tabKeyHandlerJs != null) {
         _editorDiv!.removeEventListener('keydown', _tabKeyHandlerJs, true.toJS);
       }
+      if (_autoLinkBackspaceHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'keydown',
+          _autoLinkBackspaceHandlerJs,
+          true.toJS,
+        );
+      }
       if (_enterKeyHandlerJs != null) {
         _editorDiv!.removeEventListener(
           'keydown',
@@ -1707,6 +1726,48 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
           'pointerdown',
           _linkPointerDownHandlerJs,
           true.toJS,
+        );
+      }
+      if (_linkTooltipMouseOverHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'mouseover',
+          _linkTooltipMouseOverHandlerJs,
+        );
+      }
+      if (_linkTooltipMouseOutHandlerJs != null) {
+        _editorDiv!.removeEventListener(
+          'mouseout',
+          _linkTooltipMouseOutHandlerJs,
+        );
+      }
+      final linkTooltipWindow = _iframe.contentWindow;
+      if (linkTooltipWindow != null) {
+        if (_linkTooltipKeyDownHandlerJs != null) {
+          linkTooltipWindow.removeEventListener(
+            'keydown',
+            _linkTooltipKeyDownHandlerJs,
+            true.toJS,
+          );
+        }
+        if (_linkTooltipBlurHandlerJs != null) {
+          linkTooltipWindow.removeEventListener(
+            'blur',
+            _linkTooltipBlurHandlerJs,
+            true.toJS,
+          );
+        }
+        if (_linkTooltipIframeScrollHandlerJs != null) {
+          linkTooltipWindow.removeEventListener(
+            'scroll',
+            _linkTooltipIframeScrollHandlerJs,
+            true.toJS,
+          );
+        }
+      }
+      if (_linkTooltipIframeScrollHandlerJs != null) {
+        _quillEditorElement()?.removeEventListener(
+          'scroll',
+          _linkTooltipIframeScrollHandlerJs,
         );
       }
       if (_tapFocusTouchStartHandlerJs != null) {
@@ -1846,6 +1907,17 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
     if (_parentScrollResetJs != null) {
       web.window.removeEventListener('scroll', _parentScrollResetJs, true.toJS);
     }
+    if (_linkTooltipParentScrollHandlerJs != null) {
+      web.window.removeEventListener(
+        'scroll',
+        _linkTooltipParentScrollHandlerJs,
+        true.toJS,
+      );
+    }
+    _linkTooltipHideTimer?.cancel();
+    _linkTooltipHideTimer = null;
+    _linkTooltipElement?.remove();
+    _linkTooltipElement = null;
 
     // Restore parent overflow now that the editor is gone
     _restoreParentOverflow();
@@ -2341,6 +2413,7 @@ $customCss
     _setupImeWarmupInput();
     _setupDomFocusRetention();
     _setupLinkClickHandler();
+    _setupLinkTooltip();
     _setupEnterKeyHandler();
     _setupEscapeKeyHandler();
     if (config.onShiftTabPressed != null) {
@@ -2351,6 +2424,9 @@ $customCss
 
     if (config.preventOrphanListNesting) {
       _setupTabKeyHandler();
+    }
+    if (config.linkMatcher != null) {
+      _setupAutoLinkBackspaceHandler();
     }
 
     _attachController();
@@ -2890,6 +2966,48 @@ $customCss
     return offset;
   }
 
+  void _applyAutoLinks(List<LinkMatch> links) {
+    for (final link in links) {
+      _quill!.formatText(
+        link.start,
+        link.end - link.start,
+        'link',
+        link.url.toJS,
+      );
+    }
+  }
+
+  /// Links the word before a single inserted space, newline, or tab.
+  /// Any other user change clears the one-shot Backspace undo.
+  void _autoLinkAfterUserChange(JSAny? changeJs) {
+    _lastAutoLink = null;
+    final matcher = widget.configuration.linkMatcher;
+    if (matcher == null || _quill == null || changeJs is! JSObject) {
+      return;
+    }
+    var index = 0;
+    String? inserted;
+    for (final op in _jsToDelta(changeJs).toList()) {
+      if (op.isRetain && inserted == null) {
+        index += op.length!;
+      } else if (op.isInsert) {
+        if (inserted != null || op.data is! String) return;
+        inserted = op.data as String;
+      }
+    }
+    if (inserted == null || !autoLinkTriggers.contains(inserted)) return;
+    final contents = _getContentsDelta();
+    final links = linkBeforeTrigger(
+      Document.plainTextFromDelta(contents),
+      index,
+      matcher,
+      linkedIndexTester(contents),
+    );
+    if (links.isEmpty) return;
+    _applyAutoLinks(links);
+    _lastAutoLink = (links: links, cursor: index + 1);
+  }
+
   void _setupEventListeners() {
     // text-change: (delta, oldContents, source) => void
     // Fires when document content changes (typing, deletions, insertions).
@@ -2932,6 +3050,9 @@ $customCss
             } else {
               _onTextChanged();
             }
+            if (src == 'user') {
+              _autoLinkAfterUserChange(changeDeltaJs);
+            }
           }
           // Sync format state after a short delay to ensure format is applied
           Future.delayed(const Duration(milliseconds: 10), () {
@@ -2964,6 +3085,15 @@ $customCss
   }
 
   void _onSelectionChanged(JSObject? range, String? source) {
+    final autoLink = _lastAutoLink;
+    if (autoLink != null) {
+      final selected = range == null ? null : _JsRange._(range);
+      if (selected == null ||
+          selected.index != autoLink.cursor ||
+          selected.length != 0) {
+        _lastAutoLink = null;
+      }
+    }
     _traceFocus('selection_change', {
       'isNull': range == null,
       'source': source,
@@ -3644,17 +3774,279 @@ $customCss
   }
 
   // ------------------------------------------------------------------
+  // Link hover tooltip (parent document, so the iframe cannot clip it)
+  // ------------------------------------------------------------------
+
+  void _setupLinkTooltip() {
+    if (widget.configuration.linkTooltipStyle == null) return;
+    final editorDiv = _editorDiv;
+    if (editorDiv == null) return;
+
+    _linkTooltipMouseOverHandlerJs = ((web.Event event) {
+      final tapped = _findTappedAnchorFromEvent(event, editorDiv);
+      if (tapped == null) return;
+      _showLinkTooltip(tapped.anchor, tapped.href);
+    }).toJS;
+
+    _linkTooltipMouseOutHandlerJs = ((web.Event event) {
+      final left = _findTappedAnchorFromEvent(event, editorDiv);
+      if (left == null) return;
+      final related = (event as web.MouseEvent).relatedTarget;
+      if (related is web.Node && _nodeIsWithin(related, left.anchor)) {
+        return;
+      }
+      _scheduleLinkTooltipHide();
+    }).toJS;
+
+    _linkTooltipKeyDownHandlerJs = ((web.Event _) {
+      _hideLinkTooltip();
+    }).toJS;
+
+    _linkTooltipBlurHandlerJs = ((web.Event event) {
+      final target = event.target;
+      if (target is web.Node) {
+        final editor = _quillEditorElement() ?? editorDiv;
+        if (!_nodeIsWithin(target, editor)) return;
+        final related = (event as web.FocusEvent).relatedTarget;
+        if (related is web.Node && _nodeIsWithin(related, editor)) {
+          return;
+        }
+      }
+      _hideLinkTooltip();
+    }).toJS;
+
+    _linkTooltipIframeScrollHandlerJs = ((web.Event _) {
+      _hideLinkTooltip();
+    }).toJS;
+
+    _linkTooltipParentScrollHandlerJs = ((web.Event _) {
+      _hideLinkTooltip();
+    }).toJS;
+
+    editorDiv
+      ..addEventListener('mouseover', _linkTooltipMouseOverHandlerJs)
+      ..addEventListener('mouseout', _linkTooltipMouseOutHandlerJs);
+
+    final contentWindow = _iframe.contentWindow;
+    if (contentWindow != null) {
+      contentWindow
+        ..addEventListener(
+          'keydown',
+          _linkTooltipKeyDownHandlerJs,
+          true.toJS,
+        )
+        ..addEventListener(
+          'blur',
+          _linkTooltipBlurHandlerJs,
+          true.toJS,
+        )
+        ..addEventListener(
+          'scroll',
+          _linkTooltipIframeScrollHandlerJs,
+          true.toJS,
+        );
+    }
+    _quillEditorElement()?.addEventListener(
+      'scroll',
+      _linkTooltipIframeScrollHandlerJs,
+    );
+    web.window.addEventListener(
+      'scroll',
+      _linkTooltipParentScrollHandlerJs,
+      true.toJS,
+    );
+  }
+
+  void _showLinkTooltip(web.HTMLAnchorElement anchor, String href) {
+    final tooltipStyle = widget.configuration.linkTooltipStyle;
+    if (tooltipStyle == null || !mounted) return;
+    _linkTooltipHideTimer?.cancel();
+    _linkTooltipHideTimer = null;
+
+    final tooltip = _ensureLinkTooltipElement();
+    if (tooltip == null) return;
+    _applyLinkTooltipStyle(tooltip, tooltipStyle);
+    tooltip.textContent = href;
+    tooltip.style
+      ..setProperty('visibility', 'hidden')
+      ..setProperty('left', '0px')
+      ..setProperty('top', '0px');
+
+    final tipRect = tooltip.getBoundingClientRect();
+    final anchorRect = anchor.getBoundingClientRect();
+    final iframeRect = _iframe.getBoundingClientRect();
+    final centerX = iframeRect.left + anchorRect.left + (anchorRect.width / 2);
+    final centerY = iframeRect.top + anchorRect.top + (anchorRect.height / 2);
+    final tipWidth = tipRect.width;
+    final tipHeight = tipRect.height;
+    final margin = tooltipStyle.margin;
+    final viewWidth = web.window.innerWidth.toDouble();
+    final viewHeight = web.window.innerHeight.toDouble();
+
+    var top = centerY + tooltipStyle.verticalOffset;
+    if (top + tipHeight > viewHeight - margin) {
+      top = centerY - tooltipStyle.verticalOffset - tipHeight;
+    }
+
+    final minLeft = margin;
+    final maxLeft = viewWidth - margin - tipWidth;
+    var left = centerX - (tipWidth / 2);
+    if (maxLeft <= minLeft) {
+      left = minLeft;
+    } else if (left < minLeft) {
+      left = minLeft;
+    } else if (left > maxLeft) {
+      left = maxLeft;
+    }
+
+    tooltip.style
+      ..setProperty('left', '${left}px')
+      ..setProperty('top', '${top}px')
+      ..setProperty('visibility', 'visible');
+  }
+
+  web.HTMLDivElement? _ensureLinkTooltipElement() {
+    final existing = _linkTooltipElement;
+    if (existing != null) return existing;
+    final body = web.document.body;
+    if (body == null) return null;
+
+    final tooltip = web.document.createElement('div') as web.HTMLDivElement;
+    tooltip.style
+      ..setProperty('position', 'fixed')
+      ..setProperty('z-index', '2147483647')
+      ..setProperty('pointer-events', 'none')
+      ..setProperty('white-space', 'normal')
+      ..setProperty('word-break', 'break-all')
+      ..setProperty('width', 'max-content')
+      ..setProperty('box-sizing', 'border-box')
+      ..setProperty('visibility', 'hidden');
+    body.appendChild(tooltip);
+    _linkTooltipElement = tooltip;
+    return tooltip;
+  }
+
+  void _applyLinkTooltipStyle(
+    web.HTMLElement tooltip,
+    QuillJsLinkTooltipStyle style,
+  ) {
+    final properties = <String, String>{
+      'max-width': 'calc(100vw - ${style.margin * 2}px)',
+    };
+    final background = style.backgroundColor;
+    if (background != null) {
+      properties['background-color'] = _colorToCss(background);
+    }
+    final textColor = style.textColor;
+    if (textColor != null) {
+      properties['color'] = _colorToCss(textColor);
+    }
+    final fontFamily = style.fontFamily;
+    if (fontFamily != null && fontFamily.trim().isNotEmpty) {
+      final cssFamily = fontFamily.contains(',')
+          ? fontFamily
+          : _fontFamilyTokenToCss(fontFamily);
+      if (cssFamily.isNotEmpty) {
+        properties['font-family'] = cssFamily;
+      }
+    }
+    final fontSize = style.fontSize;
+    if (fontSize != null) {
+      properties['font-size'] = '${fontSize}px';
+    }
+    final padding = style.padding;
+    if (padding != null) {
+      properties['padding'] =
+          '${padding.top}px ${padding.right}px '
+          '${padding.bottom}px ${padding.left}px';
+    }
+    final radius = style.borderRadius;
+    if (radius != null) {
+      properties['border-radius'] = '${radius}px';
+    }
+    final variations = _fontVariationSettingsToCss(
+      TextStyle(fontVariations: style.fontVariations),
+    );
+    if (variations != null) {
+      properties['font-variation-settings'] = variations;
+    }
+    final letterSpacing = style.letterSpacing;
+    if (letterSpacing != null) {
+      properties['letter-spacing'] = '${letterSpacing}px';
+    }
+    final minHeight = style.minHeight;
+    if (minHeight != null) {
+      properties['min-height'] = '${minHeight}px';
+      properties['display'] = 'flex';
+      properties['align-items'] = 'center';
+    }
+    final fontUrl = style.fontUrl;
+    if (fontFamily != null && fontUrl != null) {
+      _registerLinkTooltipFont(fontFamily, fontUrl);
+    }
+    final css = tooltip.style;
+    for (final entry in properties.entries) {
+      css.setProperty(entry.key, entry.value);
+    }
+  }
+
+  /// Adds the tooltip font to the page once; shared by all editors.
+  void _registerLinkTooltipFont(String fontFamily, String fontUrl) {
+    const id = 'quill-js-link-tooltip-font';
+    final head = web.document.head;
+    if (head == null || web.document.getElementById(id) != null) return;
+    final style = web.document.createElement('style') as web.HTMLStyleElement
+      ..id = id
+      ..textContent = '@font-face { '
+          'font-family: ${_cssDoubleQuoted(fontFamily)}; '
+          "src: url('$fontUrl'); "
+          'font-weight: 100 1000; '
+          'font-style: normal; '
+          'font-display: swap; }';
+    head.appendChild(style);
+  }
+
+  void _scheduleLinkTooltipHide() {
+    _linkTooltipHideTimer?.cancel();
+    _linkTooltipHideTimer = Timer(const Duration(milliseconds: 100), () {
+      _linkTooltipHideTimer = null;
+      if (!mounted) return;
+      _hideLinkTooltip();
+    });
+  }
+
+  void _hideLinkTooltip() {
+    _linkTooltipHideTimer?.cancel();
+    _linkTooltipHideTimer = null;
+    _linkTooltipElement?.style.setProperty('visibility', 'hidden');
+  }
+
+  bool _nodeIsWithin(web.Node? node, web.Node ancestor) {
+    var current = node;
+    while (current != null) {
+      if (current == ancestor) return true;
+      current = current.parentNode;
+    }
+    return false;
+  }
+
+  // ------------------------------------------------------------------
   // Clipboard paste/copy interceptors
   // ------------------------------------------------------------------
 
   void _setupClipboardInterceptors() {
     final pasteInterceptor = widget.configuration.onPasteInterceptor;
     final copyInterceptor = widget.configuration.onCopyInterceptor;
-    if (pasteInterceptor == null && copyInterceptor == null) return;
+    final matcher = widget.configuration.linkMatcher;
+    if (pasteInterceptor == null &&
+        copyInterceptor == null &&
+        matcher == null) {
+      return;
+    }
 
     final editorDiv = _editorDiv!;
 
-    if (pasteInterceptor != null) {
+    if (pasteInterceptor != null || matcher != null) {
       _pasteHandlerJs = ((web.Event event) {
         _isPasteInProgress = true;
         _cancelPendingNullSelectionFocusLoss();
@@ -3674,9 +4066,48 @@ $customCss
         final htmlContent = html.isNotEmpty ? html : null;
         final deltaJson = quillDeltaJson.isNotEmpty ? quillDeltaJson : null;
 
-        final pasteDelta =
-            _deltaFromClipboardJson(deltaJson) ??
-            pasteInterceptor(plain, htmlContent, deltaJson);
+        _QuillSelection? prefetchedSelection;
+        var selectionPrefetched = false;
+        if (matcher != null && plain != null) {
+          prefetchedSelection =
+              _getQuillSelection() ?? _getQuillSelection(focus: true);
+          selectionPrefetched = true;
+          if (prefetchedSelection != null &&
+              prefetchedSelection.length > 0) {
+            final url = linkForPasteOverSelection(
+              plain,
+              _quill!.getText(
+                prefetchedSelection.index,
+                prefetchedSelection.length,
+              ),
+              matcher,
+            );
+            if (url != null) {
+              event.preventDefault();
+              event.stopPropagation();
+              _quill!.formatText(
+                prefetchedSelection.index,
+                prefetchedSelection.length,
+                'link',
+                url.toJS,
+              );
+              _quill!.setSelection(
+                prefetchedSelection.index + prefetchedSelection.length,
+                0,
+              );
+              _isPasteInProgress = false;
+              return;
+            }
+          }
+        }
+
+        var pasteDelta = _deltaFromClipboardJson(deltaJson);
+        if (pasteDelta == null && pasteInterceptor != null) {
+          pasteDelta = pasteInterceptor(plain, htmlContent, deltaJson);
+        }
+        if (pasteDelta == null && matcher != null && plain != null) {
+          pasteDelta = Delta()..insert(plain.replaceAll('\r\n', '\n'));
+        }
         if (pasteDelta == null || pasteDelta.isEmpty) {
           _isPasteInProgress = false;
           return;
@@ -3687,8 +4118,9 @@ $customCss
 
         // Read current selection without forcing focus first, so we don't
         // accidentally collapse a non-collapsed range before applying paste.
-        var sel = _getQuillSelection();
-        sel ??= _getQuillSelection(focus: true);
+        final sel = selectionPrefetched
+            ? prefetchedSelection
+            : (_getQuillSelection() ?? _getQuillSelection(focus: true));
         final index =
             sel?.index ??
             ((_quill!.getLength() > 1) ? _quill!.getLength() - 1 : 0);
@@ -3704,6 +4136,18 @@ $customCss
         _quill!.updateContents(_deltaToJs(combined), 'api'.toJS);
 
         final pasteLength = _deltaLength(pasteDelta);
+        if (matcher != null) {
+          final contents = _getContentsDelta();
+          _applyAutoLinks(
+            linksInRange(
+              Document.plainTextFromDelta(contents),
+              index,
+              index + pasteLength,
+              matcher,
+              linkedIndexTester(contents),
+            ),
+          );
+        }
         _quill!.setSelection(index + pasteLength, 0);
 
         // Re-assert focus after paste and clear the guard. The short
@@ -3953,6 +4397,37 @@ $customCss
 
     // Use capture phase so we fire before Quill's keyboard handler
     _editorDiv!.addEventListener('keydown', _tabKeyHandlerJs, true.toJS);
+  }
+
+  /// One-shot Backspace removes the links just applied by auto-link.
+  void _setupAutoLinkBackspaceHandler() {
+    _autoLinkBackspaceHandlerJs = ((web.Event event) {
+      final keyEvent = event as web.KeyboardEvent;
+      if (keyEvent.key != 'Backspace') return;
+      final autoLink = _lastAutoLink;
+      _lastAutoLink = null;
+      if (autoLink == null || _quill == null) return;
+      final sel = _getQuillSelection();
+      if (sel == null || sel.index != autoLink.cursor || sel.length != 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      for (final link in autoLink.links) {
+        _quill!.formatText(
+          link.start,
+          link.end - link.start,
+          'link',
+          false.toJS,
+        );
+      }
+    }).toJS;
+
+    _editorDiv!.addEventListener(
+      'keydown',
+      _autoLinkBackspaceHandlerJs,
+      true.toJS,
+    );
   }
 
   /// Returns `true` if the current line is allowed to be indented.
@@ -4793,16 +5268,19 @@ $customCss
     final sel = _getQuillSelection();
     final isCollapsed = sel == null || sel.length == 0;
 
-    // For collapsed selections (just cursor), link format shouldn't be active
-    // because typing won't continue the link.
+    // A cursor at a link's edge doesn't show the link, because typing there
+    // won't continue it. A cursor inside the link does.
+    String? link = format['link'] is String ? format['link'] as String : null;
+    if (link != null && isCollapsed) {
+      final range = sel == null ? null : _findLinkRange(sel.index);
+      if (range == null || sel!.index <= range.index) link = null;
+    }
     final state = QuillJsFormatState(
       bold: format['bold'] == true,
       italic: format['italic'] == true,
       underline: format['underline'] == true,
       list: format['list'] is String ? format['list'] as String : null,
-      link: (!isCollapsed && format['link'] is String)
-          ? format['link'] as String
-          : null,
+      link: link,
     );
     widget.controller.updateFormatState(state);
   }

@@ -12,6 +12,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:i18n_extension/i18n_extension.dart';
 
+import '../models/auto_link.dart';
 import '../models/documents/document.dart';
 import '../models/documents/nodes/block.dart';
 import '../models/documents/nodes/container.dart' as container_node;
@@ -234,6 +235,7 @@ class QuillEditor extends StatefulWidget {
     required this.autoFocus,
     required this.readOnly,
     required this.expands,
+    this.linkMatcher,
     this.textSelectionThemeData,
     this.showCursor,
     this.paintCursorAboveText,
@@ -320,6 +322,9 @@ class QuillEditor extends StatefulWidget {
   ///
   /// Must not be null.
   final QuillController controller;
+
+  /// Links URLs on typing and paste. See [QuillController.linkMatcher].
+  final LinkMatcher? linkMatcher;
 
   /// Controls whether this editor has keyboard focus.
   final FocusNode focusNode;
@@ -649,10 +654,20 @@ class QuillEditorState extends State<QuillEditor>
   @override
   void initState() {
     super.initState();
+    widget.controller.linkMatcher = widget.linkMatcher;
     _editorKey = widget.editorKey ?? GlobalKey<EditorState>();
     _selectionGestureDetectorBuilder =
         _QuillEditorSelectionGestureDetectorBuilder(
             this, widget.detectWordBoundary);
+  }
+
+  @override
+  void didUpdateWidget(covariant QuillEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller ||
+        oldWidget.linkMatcher != widget.linkMatcher) {
+      widget.controller.linkMatcher = widget.linkMatcher;
+    }
   }
 
   @override

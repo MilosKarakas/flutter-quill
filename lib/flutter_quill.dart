@@ -2,6 +2,7 @@ library flutter_quill;
 
 export 'package:dart_quill_delta/dart_quill_delta.dart';
 
+export 'src/models/auto_link.dart' show LinkMatch, LinkMatcher;
 export 'src/models/documents/attribute.dart';
 export 'src/models/documents/document.dart';
 export 'src/models/documents/document_exception.dart';

@@ -2162,6 +2162,26 @@ class RawEditorState extends EditorState
     if (widget.readOnly) {
       return;
     }
+    final selection = controller.selection;
+    if (controller.linkMatcher != null && !selection.isCollapsed) {
+      final plain = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+      if (controller.linkSelectionWithPastedText(plain)) {
+        if (cause == SelectionChangedCause.toolbar) hideToolbar();
+        return;
+      }
+    }
+    final start = selection.isValid ? selection.start : 0;
+    final lengthBefore = controller.document.length -
+        (selection.isValid ? selection.end - selection.start : 0);
+    await _pasteTextInternal(cause);
+    final inserted = controller.document.length - lengthBefore;
+    if (inserted > 0) controller.autoLinkRange(start, start + inserted);
+  }
+
+  Future<void> _pasteTextInternal(SelectionChangedCause cause) async {
+    if (widget.readOnly) {
+      return;
+    }
 
     // Hide toolbar immediately when paste is triggered from toolbar
     if (cause == SelectionChangedCause.toolbar) {

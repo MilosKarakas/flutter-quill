@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../widgets/embeds.dart';
 import 'package:dart_quill_delta/dart_quill_delta.dart';
+import '../auto_link.dart';
 import '../rules/rule.dart';
 import '../structs/doc_change.dart';
 import '../structs/history_changed.dart';
@@ -47,6 +48,10 @@ class Document {
 
   /// Returns contents of this document as [Delta].
   Delta toDelta() => Delta.from(_delta);
+
+  /// When set, URLs are linked by this matcher and the built-in auto-link
+  /// rules are skipped.
+  LinkMatcher? linkMatcher;
 
   final Rules _rules = Rules.getInstance();
 

@@ -1,8 +1,10 @@
-import 'dart:ui' show Color;
+import 'dart:ui' show Color, FontVariation;
 
 import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show EdgeInsets;
 
+import '../../models/auto_link.dart';
 import '../../models/structs/copy_data.dart';
 import '../default_styles.dart';
 
@@ -104,6 +106,46 @@ class QuillJsEditorStyle {
   });
 }
 
+/// Look of the tooltip shown when hovering a link in the editor.
+class QuillJsLinkTooltipStyle {
+  const QuillJsLinkTooltipStyle({
+    this.backgroundColor,
+    this.textColor,
+    this.fontFamily,
+    this.fontSize,
+    this.padding,
+    this.borderRadius,
+    this.verticalOffset = 24,
+    this.margin = 0,
+    this.fontUrl,
+    this.fontVariations,
+    this.letterSpacing,
+    this.minHeight,
+  });
+
+  final Color? backgroundColor;
+  final Color? textColor;
+  final String? fontFamily;
+  final double? fontSize;
+  final EdgeInsets? padding;
+  final double? borderRadius;
+
+  /// Font file for [fontFamily]. The tooltip lives outside the editor
+  /// iframe, so fonts loaded through `customCss` are not available to it.
+  final String? fontUrl;
+
+  final List<FontVariation>? fontVariations;
+  final double? letterSpacing;
+  final double? minHeight;
+
+  /// Distance from the link's vertical centre to the tooltip, like
+  /// Flutter's `Tooltip.verticalOffset`.
+  final double verticalOffset;
+
+  /// Minimum distance from the window edges.
+  final double margin;
+}
+
 /// Configuration for the Quill.js-based web editor.
 class QuillJsEditorConfiguration {
   /// URL to a self-hosted quill.js (or quill.min.js) file.
@@ -146,6 +188,10 @@ class QuillJsEditorConfiguration {
   /// Callback when an existing link is tapped in the editor.
   /// Use this to show a custom edit/remove dialog for existing links.
   final QuillJsLinkTappedCallback? onLinkTapped;
+
+  /// Links URLs on typing and paste, with a one-shot Backspace undo.
+  /// Null keeps Quill's default behaviour.
+  final LinkMatcher? linkMatcher;
 
   /// Called whenever the editor content changes (user edits only).
   final ValueChanged<Delta>? onContentChanged;
@@ -210,6 +256,9 @@ class QuillJsEditorConfiguration {
   ///
   /// When both [styles] and [style] are null, Quill.js theme defaults apply.
   final QuillJsEditorStyle? style;
+
+  /// Tooltip shown when hovering a link. Null leaves hover unchanged.
+  final QuillJsLinkTooltipStyle? linkTooltipStyle;
 
   /// When true, the cursor is moved to the end of the document and the editor
   /// scrolls to make it visible — but only on the **first focus gain**, and
@@ -312,6 +361,7 @@ class QuillJsEditorConfiguration {
     this.readOnly = false,
     this.onLinkCreate,
     this.onLinkTapped,
+    this.linkMatcher,
     this.onContentChanged,
     this.onEditorReady,
     this.onBeforeTextChange,
@@ -320,6 +370,7 @@ class QuillJsEditorConfiguration {
     this.onCopyInterceptor,
     this.styles,
     this.style,
+    this.linkTooltipStyle,
     this.moveCursorToEndOnFirstFocus = false,
     this.unfocusOnTapOutside = true,
     this.enableOuterScrollHandoff = false,

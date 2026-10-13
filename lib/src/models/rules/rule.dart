@@ -87,6 +87,11 @@ class Rules {
       if (rule.type != ruleType) {
         continue;
       }
+      if (document.linkMatcher != null &&
+          (rule is AutoFormatLinksRule ||
+              rule is AutoFormatMultipleLinksRule)) {
+        continue;
+      }
       try {
         final result = rule.apply(delta, index,
             len: len, data: data, attribute: attribute);

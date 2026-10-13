@@ -5,6 +5,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 
+import '../models/auto_link.dart';
 import '../models/documents/attribute.dart';
 import '../models/documents/document.dart';
 import '../models/documents/nodes/block.dart';
@@ -51,12 +52,26 @@ class QuillController extends ChangeNotifier {
 
   set document(doc) {
     _document = doc;
+    _document.linkMatcher = _linkMatcher;
+    _lastAutoLink = null;
 
     // Prevent the selection from
     _selection = const TextSelection(baseOffset: 0, extentOffset: 0);
 
     notifyListeners();
   }
+
+  LinkMatcher? _linkMatcher;
+
+  /// Links URLs on typing and paste. Null keeps the built-in link rules.
+  LinkMatcher? get linkMatcher => _linkMatcher;
+  set linkMatcher(LinkMatcher? value) {
+    _linkMatcher = value;
+    _document.linkMatcher = value;
+    _lastAutoLink = null;
+  }
+
+  ({List<LinkMatch> links, int cursor})? _lastAutoLink;
 
   /// Currently selected text within the [document].
   TextSelection get selection => _selection;
@@ -344,6 +359,27 @@ class QuillController extends ChangeNotifier {
       return;
     }
 
+    final autoLink = _lastAutoLink;
+    _lastAutoLink = null;
+    if (autoLink != null &&
+        data is String &&
+        data.isEmpty &&
+        len == 1 &&
+        index == autoLink.cursor - 1 &&
+        selection == TextSelection.collapsed(offset: autoLink.cursor)) {
+      _removeLinks(autoLink.links);
+      _updateSelection(TextSelection.collapsed(offset: autoLink.cursor),
+          ChangeSource.LOCAL);
+      notifyListeners();
+      return;
+    }
+    if (len > 0 &&
+        data is String &&
+        data.length > 1 &&
+        _linkRange(index, len, data)) {
+      return;
+    }
+
     // Capture current inline styles before the operation if we need to preserve
     // them on newline insertion.
     final isNewlineInsert = data is String && data.contains('\n');
@@ -416,6 +452,13 @@ class QuillController extends ChangeNotifier {
     if (ignoreFocus) {
       ignoreFocusOnTextChange = true;
     }
+    if (_linkMatcher != null &&
+        data is String &&
+        data.isNotEmpty &&
+        delta != null &&
+        delta.isNotEmpty) {
+      _autoLinkAfterInsert(index, data);
+    }
     notifyListeners();
     ignoreFocusOnTextChange = false;
   }
@@ -435,6 +478,7 @@ class QuillController extends ChangeNotifier {
   }
 
   void formatText(int index, int len, Attribute? attribute) {
+    _lastAutoLink = null;
     if (len == 0 &&
         attribute!.isInline &&
         attribute.key != Attribute.link.key) {
@@ -477,8 +521,69 @@ class QuillController extends ChangeNotifier {
   }
 
   void updateSelection(TextSelection textSelection, ChangeSource source) {
+    if (_lastAutoLink != null &&
+        textSelection !=
+            TextSelection.collapsed(offset: _lastAutoLink!.cursor)) {
+      _lastAutoLink = null;
+    }
     _updateSelection(textSelection, source);
     notifyListeners();
+  }
+
+  /// Links the selection with [pastedText] when it is exactly one URL.
+  bool linkSelectionWithPastedText(String? pastedText) {
+    if (pastedText == null || selection.isCollapsed) return false;
+    return _linkRange(selection.start, selection.end - selection.start,
+        pastedText);
+  }
+
+  /// Links unlinked URLs inside [start, end).
+  void autoLinkRange(int start, int end) {
+    final matcher = _linkMatcher;
+    if (matcher == null) return;
+    final delta = document.toDelta();
+    _applyLinks(linksInRange(Document.plainTextFromDelta(delta), start, end,
+        matcher, linkedIndexTester(delta)));
+  }
+
+  bool _linkRange(int index, int len, String pastedText) {
+    final matcher = _linkMatcher;
+    if (matcher == null) return false;
+    final url = linkForPasteOverSelection(
+        pastedText, document.getPlainText(index, len), matcher);
+    if (url == null) return false;
+    document.format(index, len, LinkAttribute(url));
+    _updateSelection(TextSelection.collapsed(offset: index + len),
+        ChangeSource.LOCAL);
+    notifyListeners();
+    return true;
+  }
+
+  void _autoLinkAfterInsert(int index, String data) {
+    if (!autoLinkTriggers.contains(data)) {
+      if (data.length > 1) autoLinkRange(index, index + data.length);
+      return;
+    }
+    final delta = document.toDelta();
+    final links = linkBeforeTrigger(Document.plainTextFromDelta(delta), index,
+        _linkMatcher!, linkedIndexTester(delta));
+    if (links.isEmpty) return;
+    _applyLinks(links);
+    _lastAutoLink = (links: links, cursor: index + 1);
+  }
+
+  void _applyLinks(List<LinkMatch> links) {
+    for (final link in links) {
+      document.format(
+          link.start, link.end - link.start, LinkAttribute(link.url));
+    }
+  }
+
+  void _removeLinks(List<LinkMatch> links) {
+    for (final link in links) {
+      document.format(link.start, link.end - link.start,
+          Attribute.clone(Attribute.link, null));
+    }
   }
 
   void compose(Delta delta, TextSelection textSelection, ChangeSource source) {
