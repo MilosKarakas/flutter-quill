@@ -20,6 +20,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:web/web.dart' as web;
 
 import '../../models/structs/copy_data.dart';
+import '../../utils/delta.dart';
 import '../default_styles.dart';
 import 'inline_mark_css.dart';
 import 'link_range_resolution.dart';
@@ -2258,6 +2259,45 @@ $customCss
     });
   }
 
+  /// Quill's default `list autofill` space binding fires for any number and
+  /// also inside list items, so typing e.g. "27. " turns the line into a
+  /// numbered item starting at 1 and deletes the typed text. Like Google Docs,
+  /// only "1. " starts a numbered list, and only on lines that are not lists.
+  ///
+  /// The bindings array lives in the iframe's JS realm, so it is read by index
+  /// instead of being cast to [JSArray].
+  void _restrictListAutofill() {
+    try {
+      _applyListAutofillRestriction();
+    } catch (e) {
+      debugPrint('Failed to restrict Quill list autofill: $e');
+    }
+  }
+
+  void _applyListAutofillRestriction() {
+    final keyboard = _quill!['keyboard'] as JSObject?;
+    final bindings = keyboard?['bindings'] as JSObject?;
+    final spaceBindings = bindings?[' '] as JSObject?;
+    if (spaceBindings == null) return;
+
+    final count = (spaceBindings['length'] as JSNumber?)?.toDartInt ?? 0;
+    for (var i = 0; i < count; i++) {
+      final binding = spaceBindings[i.toString()] as JSObject?;
+      if (binding == null) continue;
+      final prefix = binding['prefix'] as JSObject?;
+      final format = binding['format'] as JSObject?;
+      final source = (prefix?['source'] as JSString?)?.toDart;
+      if (format == null || source == null || !source.contains(r'\d+\.')) {
+        continue;
+      }
+      format['list'] = false.toJS;
+      binding['prefix'] = (globalContext['RegExp'] as JSFunction)
+          .callAsConstructor<JSObject>(
+            source.replaceFirst(r'\d+\.', r'1\.').toJS,
+          );
+    }
+  }
+
   void _setupQuill(JSObject iframeWindow) {
     final config = widget.configuration;
 
@@ -2289,6 +2329,7 @@ $customCss
       options,
     );
     _quill = jsQuill as _QuillJsInstance;
+    _restrictListAutofill();
 
     // Set initial content
     if (config.initialContent != null) {
@@ -3685,8 +3726,11 @@ $customCss
         if (sel == null || sel.length == 0) return;
 
         final plainText = _quill!.getText(sel.index, sel.length);
-        final selDelta = _quill!.getContentsRange(sel.index, sel.length);
-        final delta = _jsToDelta(selDelta);
+        final delta = sliceDeltaForCopy(
+          _jsToDelta(_quill!.getContents()),
+          sel.index,
+          sel.index + sel.length,
+        );
 
         final result = copyInterceptor(plainText, delta);
         if (result == null) return;
@@ -3713,8 +3757,11 @@ $customCss
         if (sel == null || sel.length == 0) return;
 
         final plainText = _quill!.getText(sel.index, sel.length);
-        final selDelta = _quill!.getContentsRange(sel.index, sel.length);
-        final delta = _jsToDelta(selDelta);
+        final delta = sliceDeltaForCopy(
+          _jsToDelta(_quill!.getContents()),
+          sel.index,
+          sel.index + sel.length,
+        );
 
         final result = copyInterceptor(plainText, delta);
         if (result == null) return;
