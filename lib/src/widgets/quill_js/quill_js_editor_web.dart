@@ -1336,7 +1336,13 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   bool _isImeComposing = false;
   bool _isSelectionGestureActive = false;
   int _lastSelectionLength = 0;
-  double? _touchLastClientY;
+  /// Last [Touch.screenY] for the active gesture.
+  ///
+  /// clientY is relative to the visual viewport. With the iOS keyboard open,
+  /// Safari reports a stale clientY on alternate touchmove events while this
+  /// iframe is being moved, and storing that sample reverses the next delta.
+  /// screenY is the finger position on the screen, in CSS pixels.
+  double? _touchLastScreenY;
   bool _touchGestureActive = false;
   _TouchScrollOwner _touchScrollOwner = _TouchScrollOwner.undecided;
   double _touchGestureDistancePx = 0.0;
@@ -4731,9 +4737,9 @@ $customCss
       _stopOuterFling();
       _resetTouchHandoffState();
       _touchGestureActive = true;
-      final clientY = _readDomClientCoord(touch, 'clientY');
-      _touchLastClientY = clientY;
-      _recordVelocitySample(clientY);
+      final screenY = _readDomClientCoord(touch, 'screenY');
+      _touchLastScreenY = screenY;
+      _recordVelocitySample(screenY);
       if (!_isEditorVerticallyScrollable()) {
         _touchScrollOwner = _TouchScrollOwner.outer;
       }
@@ -4766,9 +4772,9 @@ $customCss
         _pendingEmptyTouchTapPoint = null;
       }
 
-      final currentY = _readDomClientCoord(touch, 'clientY');
-      final previousY = _touchLastClientY;
-      _touchLastClientY = currentY;
+      final currentY = _readDomClientCoord(touch, 'screenY');
+      final previousY = _touchLastScreenY;
+      _touchLastScreenY = currentY;
       if (previousY == null) return;
       _recordVelocitySample(currentY);
       final dy = previousY - currentY;
@@ -4991,7 +4997,7 @@ $customCss
   }
 
   void _resetTouchHandoffState() {
-    _touchLastClientY = null;
+    _touchLastScreenY = null;
     _touchScrollOwner = _TouchScrollOwner.undecided;
     _touchGestureDistancePx = 0.0;
     _pendingOuterTouchDelta = 0.0;
