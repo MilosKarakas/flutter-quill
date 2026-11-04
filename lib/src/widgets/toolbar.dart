@@ -18,10 +18,12 @@ import 'toolbar/enum.dart';
 import 'toolbar/history_button.dart';
 import 'toolbar/indent_button.dart';
 import 'toolbar/link_style_button.dart';
+import 'toolbar/media_embed_button.dart';
 import 'toolbar/quill_font_family_button.dart';
 import 'toolbar/quill_font_size_button.dart';
 import 'toolbar/search_button.dart';
 import 'toolbar/select_alignment_button.dart';
+import 'toolbar/select_block_style_button.dart';
 import 'toolbar/select_header_style_button.dart';
 import 'toolbar/toggle_check_list_button.dart';
 import 'toolbar/toggle_style_button.dart';
@@ -106,6 +108,9 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
     bool showQuote = true,
     bool showIndent = true,
     bool showLink = true,
+    bool showImage = false,
+    bool showVideo = false,
+    List<String> enabledFormats = QuillJsEditorConfiguration.defaultFormats,
     bool showUndo = true,
     bool showRedo = true,
     bool showDirection = false,
@@ -204,6 +209,11 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
     // work with QuillController are hidden when it is null.
     final hasClassic = controller != null;
 
+    final showClassicHeader = showHeaderStyle && controller != null && quillJsController == null;
+    final showWebBlockMenu = showHeaderStyle &&
+        quillJsController != null &&
+        enabledFormats.contains('header');
+
     final isButtonGroupShown = [
       (showFontFamily && hasClassic) ||
           (showFontSize && hasClassic) ||
@@ -223,7 +233,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
           (showJustifyAlignment && hasClassic) ||
           (showDirection && hasClassic),
       showLink || (showSearchButton && hasClassic),
-      showHeaderStyle && hasClassic,
+      showClassicHeader || showWebBlockMenu,
       showListNumbers ||
           showListBullets ||
           (showListCheck && hasClassic) ||
@@ -289,6 +299,8 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
           ToolbarButtons.indentIncrease: 'Increase indent'.i18n,
           ToolbarButtons.indentDecrease: 'Decrease indent'.i18n,
           ToolbarButtons.link: 'Insert URL'.i18n,
+          ToolbarButtons.image: 'Insert image'.i18n,
+          ToolbarButtons.video: 'Insert video'.i18n,
           ToolbarButtons.search: 'Search'.i18n,
         };
 
@@ -506,6 +518,36 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.link],
             focusNode: focusOf(ToolbarButtons.link),
           ),
+        if (showImage &&
+            quillJsController != null &&
+            enabledFormats.contains('image'))
+          MediaEmbedButton(
+            icon: Icons.image_outlined,
+            tooltip: buttonTooltips[ToolbarButtons.image] ?? 'Insert image'.i18n,
+            iconSize: toolbarIconSize,
+            iconTheme: iconTheme,
+            afterButtonPressed: afterButtonPressed,
+            semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.image],
+            focusNode: focusOf(ToolbarButtons.image),
+            onPressed: () {
+              quillJsController!.requestImageEmbed();
+            },
+          ),
+        if (showVideo &&
+            quillJsController != null &&
+            enabledFormats.contains('video'))
+          MediaEmbedButton(
+            icon: Icons.videocam_outlined,
+            tooltip: buttonTooltips[ToolbarButtons.video] ?? 'Insert video'.i18n,
+            iconSize: toolbarIconSize,
+            iconTheme: iconTheme,
+            afterButtonPressed: afterButtonPressed,
+            semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.video],
+            focusNode: focusOf(ToolbarButtons.video),
+            onPressed: () {
+              quillJsController!.requestVideoEmbed();
+            },
+          ),
         if (showSearchButton && controller != null)
           SearchButton(
             icon: Icons.search,
@@ -573,14 +615,24 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             space: sectionDividerSpace,
           ),
 
-        if (showHeaderStyle && controller != null)
+        if (showClassicHeader)
           SelectHeaderStyleButton(
             tooltip: buttonTooltips[ToolbarButtons.headerStyle],
-            controller: controller,
+            controller: controller!,
             axis: axis,
             iconSize: toolbarIconSize,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
+          ),
+        if (showWebBlockMenu)
+          SelectBlockStyleButton(
+            controller: quillJsController!,
+            enabledFormats: enabledFormats,
+            iconSize: toolbarIconSize,
+            iconTheme: iconTheme,
+            afterButtonPressed: afterButtonPressed,
+            tooltip: buttonTooltips[ToolbarButtons.headerStyle] ?? 'Header style'.i18n,
+            focusNode: focusOf(ToolbarButtons.headerStyle),
           ),
         if (showDividers &&
             showHeaderStyle &&

@@ -24,7 +24,10 @@ import '../../models/documents/document.dart';
 import '../../models/structs/copy_data.dart';
 import '../../utils/delta.dart';
 import '../default_styles.dart';
+import 'block_style.dart';
 import 'inline_mark_css.dart';
+import 'inline_media.dart';
+import 'inline_media_iframe.dart';
 import 'link_range_resolution.dart';
 import 'quill_js_configurations.dart';
 import 'quill_js_escape_dismiss.dart';
@@ -50,6 +53,7 @@ extension type _JsRange._(JSObject _) implements JSObject {
 extension type _QuillJsInstance._(JSObject _) implements JSObject {
   external void format(String name, JSAny? value);
   external void formatText(int index, int length, String name, JSAny? value);
+  external void insertEmbed(int index, String type, String value, [JSString? source]);
   external JSObject? getFormat();
 
   /// Overload of `getFormat` that accepts an index and length, returning the
@@ -414,6 +418,10 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
 
   late final String _viewType;
   late final web.HTMLIFrameElement _iframe;
+  final List<({web.HTMLElement element, String value, String priority})>
+      _pointerSuppressed =
+      <({web.HTMLElement element, String value, String priority})>[];
+  web.HTMLDivElement? _pointerShield;
 
   /// Reference to the Quill.js editor div inside the iframe (`#editor`).
   /// Set after the iframe loads and Quill is initialised.
@@ -1330,6 +1338,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
 
   // Prevents duplicate link dialogs when toolbar is tapped repeatedly.
   bool _isHandlingLinkRequest = false;
+  bool _isHandlingMediaRequest = false;
   bool _isHandlingLinkTapAction = false;
   bool _skipNextLinkClick = false;
   Delta _contentForAutoResize = Delta()..insert('\n');
@@ -1629,6 +1638,14 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
 
     if (widget.configuration.readOnly != oldWidget.configuration.readOnly) {
       _quill?.enable(!widget.configuration.readOnly);
+      final syncReadOnly =
+          (_iframe.contentWindow as JSObject?)?['__inlineMediaSetReadOnly'];
+      if (syncReadOnly is JSFunction) {
+        syncReadOnly.callAsFunction(
+          null,
+          widget.configuration.readOnly.toJS,
+        );
+      }
     }
 
     if (widget.focusNode != oldWidget.focusNode) {
@@ -1673,6 +1690,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
 
   @override
   void dispose() {
+    _setEditorIgnoresPointers(false);
     _cancelAcquisitionStableFromSelectionSchedule();
     _pendingJsToFlutterFocusSync = null;
     _flutterFocusSyncToJsScheduled = false;
@@ -2391,15 +2409,12 @@ $customCss
               'theme': 'snow',
               'modules': <String, dynamic>{
                 'toolbar': false, // toolbar is handled by Flutter
+                // Quill lodash-merges this with the default png/jpeg list.
+                // An empty list does not replace it; null accepts nothing.
+                if (config.effectiveFormats.contains('image'))
+                  'uploader': <String, dynamic>{'mimetypes': null},
               },
-              'formats': <String>[
-                'bold',
-                'italic',
-                'underline',
-                'list',
-                'link',
-                'indent',
-              ],
+              'formats': config.effectiveFormats,
               if (config.placeholder != null) 'placeholder': config.placeholder,
               'readOnly': config.readOnly,
             }.jsify()
@@ -2409,11 +2424,26 @@ $customCss
     // the editor instance inside the iframe's document.
     final quillConstructor = iframeWindow['Quill'] as JSFunction;
     _quillConstructor = quillConstructor as _QuillJsConstructor;
+    final effectiveFormats = config.effectiveFormats;
+    if (inlineMediaInstallsFor(effectiveFormats)) {
+      final iframeDoc = iframeWindow['document'] as web.Document;
+      final script =
+          iframeDoc.createElement('script') as web.HTMLScriptElement;
+      script.text = inlineMediaIframeScript();
+      iframeDoc.head!.append(script);
+      (iframeWindow['registerInlineMedia'] as JSFunction).callAsFunction(
+        null,
+        quillConstructor,
+      );
+    }
     final jsQuill = quillConstructor.callAsConstructor<JSObject>(
       _editorDiv!,
       options,
     );
     _quill = jsQuill as _QuillJsInstance;
+    if (inlineMediaInstallsFor(effectiveFormats)) {
+      _installInlineMedia(iframeWindow, jsQuill, effectiveFormats);
+    }
     _restrictListAutofill();
 
     // Set initial content
@@ -4187,6 +4217,13 @@ $customCss
         _cancelPendingNullSelectionFocusLoss();
         _editorHasFocus = true;
 
+        if (widget.configuration.readOnly) {
+          event.preventDefault();
+          event.stopPropagation();
+          _isPasteInProgress = false;
+          return;
+        }
+
         final clipEvent = event as web.ClipboardEvent;
         final data = clipEvent.clipboardData;
         if (data == null) {
@@ -5390,7 +5427,167 @@ $customCss
       },
       focus: () => _quill!.focus(),
       blur: () => _quill!.blur(),
+      requestImageEmbed: () => _editMedia(MediaEditKind.image),
+      requestVideoEmbed: () => _editMedia(MediaEditKind.video),
+      applyBlockStyle: _applyBlockStyle,
+      setEditorIgnoresPointers: _setEditorIgnoresPointers,
     );
+  }
+
+  /// The editor iframe is a platform view, so it takes taps that land on a
+  /// Flutter menu drawn over it. While a menu is open, that slot ignores
+  /// pointers and a transparent element in the same shadow tree receives them,
+  /// so Flutter can hit-test the menu.
+  void _setEditorIgnoresPointers(bool ignoring) {
+    if (!ignoring) {
+      _pointerShield?.remove();
+      _pointerShield = null;
+      for (final saved in _pointerSuppressed) {
+        // The platform-view slot's inline `auto` is what overrides the scene
+        // host's `none`. Clearing the property leaves the editor untappable.
+        if (saved.value.isEmpty) {
+          saved.element.style.removeProperty('pointer-events');
+        } else {
+          saved.element.style.setProperty(
+            'pointer-events',
+            saved.value,
+            saved.priority,
+          );
+        }
+      }
+      _pointerSuppressed.clear();
+      return;
+    }
+    if (_pointerShield != null || _pointerSuppressed.isNotEmpty) return;
+    web.Element? node = _iframe;
+    while (node != null) {
+      if (node is web.HTMLElement) {
+        _suppressPointerEvents(node);
+      }
+      final parent = node.parentElement;
+      if (parent == null) break;
+      final parentTag = parent.tagName.toUpperCase();
+      if (parentTag == 'FLT-GLASS-PANE') {
+        _suppressHostingSlot(node);
+        break;
+      }
+      if (parentTag == 'FLUTTER-VIEW' || parentTag == 'BODY') break;
+      node = parent;
+    }
+  }
+
+  /// Flutter draws the editor in a shadow-DOM slot that is the real hit
+  /// target. The iframe's own pointer-events do not stop that slot.
+  ///
+  /// A shield in that shadow tree keeps the event target inside the shadow.
+  /// If the event lands on the Flutter view itself, the engine treats it as a
+  /// focus change and the menu item never receives the tap.
+  void _suppressHostingSlot(web.Element platformView) {
+    final slotName = platformView.getAttribute('slot');
+    final glassPane = platformView.parentElement;
+    final shadow = glassPane?.shadowRoot;
+    if (slotName == null || shadow == null) return;
+    final slots = shadow.querySelectorAll('slot');
+    for (var i = 0; i < slots.length; i++) {
+      final slot = slots.item(i);
+      if (slot is! web.Element || slot.getAttribute('name') != slotName) {
+        continue;
+      }
+      final host = slot.parentElement;
+      if (host is! web.HTMLElement) return;
+      _suppressPointerEvents(host);
+      _installPointerShield(shadow, host);
+      return;
+    }
+  }
+
+  void _suppressPointerEvents(web.HTMLElement element) {
+    _pointerSuppressed.add((
+      element: element,
+      value: element.style.getPropertyValue('pointer-events'),
+      priority: element.style.getPropertyPriority('pointer-events'),
+    ));
+    element.style.setProperty('pointer-events', 'none', 'important');
+  }
+
+  void _installPointerShield(web.ShadowRoot shadow, web.HTMLElement slotHost) {
+    final shield = web.document.createElement('div') as web.HTMLDivElement;
+    final style = slotHost.style;
+    shield.style
+      ..setProperty('position', 'absolute')
+      ..setProperty('width', style.getPropertyValue('width'))
+      ..setProperty('height', style.getPropertyValue('height'))
+      ..setProperty('transform', style.getPropertyValue('transform'))
+      ..setProperty('transform-origin', style.getPropertyValue('transform-origin'))
+      ..setProperty('z-index', '1')
+      ..setProperty('background-color', 'transparent');
+    shield.addEventListener(
+      'mousedown',
+      (web.Event event) {
+        event.preventDefault();
+      }.toJS,
+    );
+    shadow.appendChild(shield);
+    _pointerShield = shield;
+  }
+
+  bool _applyBlockStyle(BlockStyleChoice choice) {
+    final quill = _quill;
+    if (quill == null || widget.configuration.readOnly) return false;
+    final commands = blockStyleCommands(
+      choice: choice,
+      readOnly: widget.configuration.readOnly,
+      enabledFormats: widget.configuration.effectiveFormats,
+    );
+    if (commands.isEmpty) return false;
+    final before = _getQuillSelection();
+    for (final command in commands) {
+      final Object value = command.value;
+      final JSAny jsValue = value is bool
+          ? value.toJS
+          : value is int
+              ? value.toJS
+              : value.toString().toJS;
+      _formatWithScrollPreservation(command.name, jsValue);
+    }
+    _placeCaretAfterBlockStyle(before);
+    _syncFormatState();
+    return true;
+  }
+
+  /// Block formatting replaces the line's element, and the browser then
+  /// selects that whole line. The menu also keeps Flutter focus, so the
+  /// editor stays blurred and the selection sits there with no caret.
+  void _placeCaretAfterBlockStyle(_QuillSelection? before) {
+    final quill = _quill;
+    if (quill == null) return;
+    final docLength = quill.getLength();
+    final maxIndex = docLength > 0 ? docLength - 1 : 0;
+    final anchor = before ?? _getQuillSelection();
+    final index = anchor == null
+        ? maxIndex
+        : (anchor.index + anchor.length).clamp(0, maxIndex).toInt();
+    _lastKnownSelection = (index: index, length: 0);
+    _lastSelectionLength = 0;
+    _editorHasFocus = true;
+    _didUserInteractWithSelection = true;
+    quill.setSelection(index, 0);
+    final node = widget.focusNode;
+    if (node != null && node.canRequestFocus) {
+      node.requestFocus();
+    }
+    quill.focus();
+    _quillEditorElement()?.focus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _quill == null) return;
+      final current = _getQuillSelection();
+      if (current != null && current.length == 0 && current.index == index) {
+        return;
+      }
+      _lastKnownSelection = (index: index, length: 0);
+      _lastSelectionLength = 0;
+      _quill!.setSelection(index, 0);
+    });
   }
 
   void _detachController() {
@@ -5402,9 +5599,10 @@ $customCss
     final format = _getFormat();
     final sel = _getQuillSelection();
     final isCollapsed = sel == null || sel.length == 0;
+    final blockFormat = sel == null
+        ? const <String, dynamic>{}
+        : _getFormatAt(sel.index, 0);
 
-    // A cursor at a link's edge doesn't show the link, because typing there
-    // won't continue it. A cursor inside the link does.
     String? link = format['link'] is String ? format['link'] as String : null;
     if (link != null && isCollapsed) {
       final range = sel == null ? null : _findLinkRange(sel.index);
@@ -5416,6 +5614,7 @@ $customCss
       underline: format['underline'] == true,
       list: format['list'] is String ? format['list'] as String : null,
       link: link,
+      blockStyle: blockStyleFromFormat(blockFormat),
     );
     widget.controller.updateFormatState(state);
   }
@@ -5527,6 +5726,263 @@ $customCss
     }
 
     return null;
+  }
+
+  // ------------------------------------------------------------------
+  // Image / video embed insert and edit
+  // ------------------------------------------------------------------
+
+  void _installInlineMedia(
+    JSObject iframeWindow,
+    JSObject jsQuill,
+    List<String> formats,
+  ) {
+    final installFn = iframeWindow['installInlineMedia'] as JSFunction;
+    final options =
+        <String, dynamic>{
+              'image': formats.contains('image'),
+              'video': formats.contains('video'),
+              'readOnly': widget.configuration.readOnly,
+              'onImageDrop':
+                  (
+                    JSString dataUrl,
+                    JSNumber naturalWidth,
+                    JSNumber naturalHeight,
+                    JSNumber contentWidth,
+                  ) {
+                    _handleInlineMediaImageDrop(
+                      dataUrl.toDart,
+                      naturalWidth.toDartInt,
+                      naturalHeight.toDartInt,
+                      contentWidth.toDartDouble,
+                    );
+                  }.toJS,
+              'onImageLoad':
+                  (
+                    JSNumber index,
+                    JSNumber naturalWidth,
+                    JSNumber naturalHeight,
+                    JSNumber contentWidth,
+                  ) {
+                    _handleInlineMediaImageLoad(
+                      index.toDartInt,
+                      naturalWidth.toDartInt,
+                      naturalHeight.toDartInt,
+                      contentWidth.toDartDouble,
+                    );
+                  }.toJS,
+              'onResize':
+                  (
+                    JSNumber index,
+                    JSNumber originWidth,
+                    JSNumber originHeight,
+                    JSNumber dx,
+                    JSNumber dy,
+                    JSString handle,
+                  ) {
+                    _handleInlineMediaResize(
+                      index.toDartInt,
+                      originWidth.toDartInt,
+                      originHeight.toDartInt,
+                      dx.toDartDouble,
+                      dy.toDartDouble,
+                      handle.toDart,
+                    );
+                  }.toJS,
+              'onImageDoubleClick': () {
+                unawaited(_editMedia(MediaEditKind.image));
+              }.toJS,
+              'onVideoDoubleClick': () {
+                unawaited(_editMedia(MediaEditKind.video));
+              }.toJS,
+            }.jsify()
+            as JSObject;
+    installFn.callAsFunction(null, jsQuill, options);
+  }
+
+  void _handleInlineMediaImageDrop(
+    String dataUrl,
+    int naturalWidth,
+    int naturalHeight,
+    double contentWidth,
+  ) {
+    if (widget.configuration.readOnly) return;
+    if (!widget.configuration.effectiveFormats.contains('image')) return;
+    final quill = _quill;
+    if (quill == null || !mounted) return;
+    final size = fitToContentWidth(
+      EmbedSize(naturalWidth, naturalHeight),
+      contentWidth,
+    );
+    final selection = _getQuillSelection();
+    final docEnd = quill.getLength() - 1;
+    final index = selection?.index ?? (docEnd < 0 ? 0 : docEnd);
+    quill.insertEmbed(index, 'image', dataUrl, 'api'.toJS);
+    final attributes = mediaAttributes(width: size.width, height: size.height);
+    attributes?.forEach((name, attributeValue) {
+      quill.formatText(index, 1, name, attributeValue.toString().toJS);
+    });
+    quill.setSelection(index + 1, 0);
+  }
+
+  void _handleInlineMediaImageLoad(
+    int index,
+    int naturalWidth,
+    int naturalHeight,
+    double contentWidth,
+  ) {
+    if (widget.configuration.readOnly) return;
+    final quill = _quill;
+    if (quill == null || !mounted) return;
+    final format = _getFormatAt(index, 1);
+    final width = int.tryParse('${format['width'] ?? ''}');
+    final height = int.tryParse('${format['height'] ?? ''}');
+    var resolved = resolveImageLoadSize(
+      width: width,
+      height: height,
+      naturalWidth: naturalWidth,
+      naturalHeight: naturalHeight,
+    );
+    if (resolved == null) return;
+    final missingBoth = (width == null || width <= 0) && (height == null || height <= 0);
+    if (missingBoth) {
+      resolved = fitToContentWidth(resolved, contentWidth);
+    }
+    if ((width == null || width <= 0) && resolved.width > 0) {
+      quill.formatText(index, 1, 'width', resolved.width.toString().toJS);
+    }
+    if ((height == null || height <= 0) && resolved.height > 0) {
+      quill.formatText(index, 1, 'height', resolved.height.toString().toJS);
+    }
+  }
+
+  void _handleInlineMediaResize(
+    int index,
+    int originWidth,
+    int originHeight,
+    double dx,
+    double dy,
+    String handle,
+  ) {
+    if (widget.configuration.readOnly) return;
+    final quill = _quill;
+    if (quill == null || !mounted) return;
+    final size = resizeFromCorner(
+      originWidth: originWidth,
+      originHeight: originHeight,
+      dx: dx,
+      dy: dy,
+      handle: handle,
+    );
+    quill.formatText(index, 1, 'width', size.width.toString().toJS);
+    quill.formatText(index, 1, 'height', size.height.toString().toJS);
+  }
+
+  Future<void> _editMedia(MediaEditKind kind) async {
+    final quill = _quill;
+    if (_isHandlingMediaRequest || quill == null) return;
+    if (widget.configuration.readOnly) return;
+    final formats = widget.configuration.effectiveFormats;
+    final formatName = kind == MediaEditKind.image ? 'image' : 'video';
+    if (!formats.contains(formatName)) return;
+    final callback = kind == MediaEditKind.image
+        ? widget.configuration.onImageEdit
+        : widget.configuration.onVideoEdit;
+    if (callback == null) return;
+
+    _isHandlingMediaRequest = true;
+    try {
+      final selection = _getQuillSelection();
+      final current = _selectedMedia(formatName, selection);
+      final result = await callback(current?.value);
+      if (!mounted || _quill == null) return;
+      final decision = MediaEditDecision.fromResult(kind: kind, result: result);
+      if (!decision.apply || decision.value == null) return;
+      _insertMediaAtSelection(
+        formatName,
+        decision.value!,
+        replace: current != null,
+        selection: current == null
+            ? selection
+            : (index: current.index, length: 1),
+      );
+    } finally {
+      _isHandlingMediaRequest = false;
+    }
+  }
+
+  void _insertMediaAtSelection(
+    String formatName,
+    QuillJsMediaValue value, {
+    required bool replace,
+    required _QuillSelection? selection,
+  }) {
+    final quill = _quill;
+    if (quill == null) return;
+    final docEnd = quill.getLength() - 1;
+    final index = selection?.index ?? (docEnd < 0 ? 0 : docEnd);
+    final length = replace ? 1 : (selection?.length ?? 0);
+    if (length > 0) quill.deleteText(index, length);
+    quill.insertEmbed(index, formatName, value.source, 'api'.toJS);
+    var width = value.width;
+    var height = value.height;
+    if (formatName == 'video') {
+      final size = resolveLoadedSize(width: width, height: height, isVideo: true);
+      width = size.width;
+      height = size.height;
+    }
+    final applyFn =
+        (_iframe.contentWindow as JSObject?)?['__inlineMediaApplyAttributes'];
+    if (applyFn is JSFunction) {
+      applyFn.callAsFunction(
+        null,
+        index.toJS,
+        value.alt?.toJS,
+        width?.toJS,
+        height?.toJS,
+      );
+    }
+    final attributes = mediaAttributes(alt: value.alt, width: width, height: height);
+    attributes?.forEach((name, attributeValue) {
+      quill.formatText(index, 1, name, attributeValue.toString().toJS);
+    });
+    quill.setSelection(index + 1, 0);
+  }
+
+  ({QuillJsMediaValue value, int index})? _selectedMedia(
+    String formatName,
+    _QuillSelection? selection,
+  ) {
+    final quill = _quill;
+    if (quill == null || selection == null) return null;
+    final atCaret = _mediaValueAt(quill, formatName, selection.index);
+    if (atCaret != null) return (value: atCaret, index: selection.index);
+    if (selection.length == 0 && selection.index > 0) {
+      final before = _mediaValueAt(quill, formatName, selection.index - 1);
+      if (before != null) return (value: before, index: selection.index - 1);
+    }
+    return null;
+  }
+
+  QuillJsMediaValue? _mediaValueAt(
+    _QuillJsInstance quill,
+    String formatName,
+    int index,
+  ) {
+    final contents = _jsToDelta(quill.getContentsRange(index, 1));
+    if (contents.isEmpty) return null;
+    final op = contents.toList().first;
+    final data = op.data;
+    if (data is! Map) return null;
+    final source = data[formatName];
+    if (source is! String || source.isEmpty) return null;
+    final attrs = op.attributes;
+    return QuillJsMediaValue(
+      source: source,
+      alt: attrs?['alt']?.toString(),
+      width: int.tryParse('${attrs?['width'] ?? ''}'),
+      height: int.tryParse('${attrs?['height'] ?? ''}'),
+    );
   }
 
   // ------------------------------------------------------------------

@@ -74,7 +74,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'en_us': {
           'Paste a link': 'Paste a link',
@@ -145,7 +155,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'ar': {
           'Paste a link': 'نسخ الرابط',
@@ -220,7 +240,17 @@ extension Localization on String {
           'Error while saving image': 'حدث خطأ أثناء حفظ الصورة',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'da': {
           'Paste a link': 'Indsæt link',
@@ -288,7 +318,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'de': {
           'Paste a link': 'Link hinzufügen',
@@ -356,7 +396,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'fr': {
           'Paste a link': 'Coller un lien',
@@ -424,7 +474,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'zh_cn': {
           'Paste a link': '粘贴链接',
@@ -492,7 +552,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'zh_hk': {
           'Paste a link': '貼上連結',
@@ -560,7 +630,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'ja': {
           'Paste a link': 'リンクをペースト',
@@ -628,7 +708,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'ko': {
           'Paste a link': '링크를 붙여넣어 주세요.',
@@ -696,7 +786,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'ru': {
           'Paste a link': 'Вставить ссылку',
@@ -764,7 +864,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'es': {
           'Paste a link': 'Pega un enlace',
@@ -832,7 +942,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'tr': {
           'Paste a link': 'Bağlantıyı Yapıştır',
@@ -900,7 +1020,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'uk': {
           'Paste a link': 'Вставити посилання',
@@ -968,7 +1098,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'pt': {
           'Paste a link': 'Colar um link',
@@ -1037,7 +1177,17 @@ extension Localization on String {
           'Error while saving image': 'Erro a gravar imagem',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'pt_br': {
           'Paste a link': 'Colar um link',
@@ -1105,7 +1255,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'pl': {
           'Paste a link': 'Wklej link',
@@ -1173,7 +1333,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'vi': {
           'Paste a link': 'Chèn liên kết',
@@ -1241,7 +1411,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'ur': {
           'Paste a link': 'لنک پیسٹ کریں',
@@ -1309,7 +1489,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'id': {
           'Paste a link': 'Tempel tautan',
@@ -1377,7 +1567,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'no': {
           'Paste a link': 'Lim inn lenke',
@@ -1445,7 +1645,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'fa': {
           'Paste a link': 'جایگذاری لینک',
@@ -1513,7 +1723,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'hi': {
           'Paste a link': 'लिंक पेस्ट करें',
@@ -1581,7 +1801,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'nl': {
           'Paste a link': 'Plak een link',
@@ -1649,7 +1879,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'sr': {
           'Paste a link': 'Nalepi vezu',
@@ -1717,7 +1957,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'cs': {
           'Paste a link': 'Vložit odkaz',
@@ -1788,7 +2038,17 @@ extension Localization on String {
           'Error while saving image': 'Chyba při ukládání obrázku',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'he': {
           'Paste a link': 'הדבק את הלינק',
@@ -1856,7 +2116,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'ms': {
           'Paste a link': 'Tampal Pautan',
@@ -1924,7 +2194,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'it': {
           'Paste a link': 'Incolla un collegamento',
@@ -1992,7 +2272,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'bn': {
           'Paste a link': 'লিঙ্ক পেস্ট করুন',
@@ -2063,7 +2353,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'tk': {
           'Paste a link': 'Baglanyşygy goýuň',
@@ -2134,7 +2434,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'bg': {
           'Paste a link': 'Поставете връзка',
@@ -2205,7 +2515,17 @@ extension Localization on String {
           'Error while saving image': 'Error while saving image',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'sw': {
           'Paste a link': 'Bandika Kiungo',
@@ -2276,7 +2596,17 @@ extension Localization on String {
           'Error while saving image': 'Hitilafu Wakati wa Kuhifadhi Picha',
           'Please enter a text for your link': "e.g., 'Learn more)",
           'Please enter the link url': "e.g., 'https://example.com'",
-          'Please enter a valid image url': 'Please enter a valid image url'
+          'Please enter a valid image url': 'Please enter a valid image url',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'sr_latn': {
           'Paste a link': 'Nalepi vezu',
@@ -2350,7 +2680,17 @@ extension Localization on String {
           'Error while saving image': 'Greška tokom čuvanja slike',
           'Please enter a text for your link': "npr. , 'Saznaj više')",
           'Please enter the link url': "npr., 'https://example.com'",
-          'Please enter a valid image url': 'Molimo unesite ispravan link slike'
+          'Please enter a valid image url': 'Molimo unesite ispravan link slike',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
         'sr_cyrl': {
           'Paste a link': 'Налепи везу',
@@ -2421,7 +2761,17 @@ extension Localization on String {
           'Error while saving image': 'Грешка током чувања слике',
           'Please enter a text for your link': "нпр. , 'Сазнај више')",
           'Please enter the link url': "нпр., 'https://example.com'",
-          'Please enter a valid image url': 'Молимо унесите исправан линк слике'
+          'Please enter a valid image url': 'Молимо унесите исправан линк слике',
+          'Insert image': 'Insert image',
+          'Insert video': 'Insert video',
+          'Paragraph': 'Paragraph',
+          'Heading 1': 'Heading 1',
+          'Heading 2': 'Heading 2',
+          'Heading 3': 'Heading 3',
+          'Heading 4': 'Heading 4',
+          'Heading 5': 'Heading 5',
+          'Heading 6': 'Heading 6',
+          'Preformatted': 'Preformatted'
         },
       };
 

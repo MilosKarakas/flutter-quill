@@ -7,6 +7,7 @@ import 'package:flutter/painting.dart' show BoxShadow, EdgeInsets;
 import '../../models/auto_link.dart';
 import '../../models/structs/copy_data.dart';
 import '../default_styles.dart';
+import 'block_style.dart';
 
 /// Data representing a link (used in create/edit callbacks).
 class QuillJsLinkData {
@@ -170,8 +171,27 @@ class QuillJsLinkTooltipStyle {
   final double pointerGap;
 }
 
+class QuillJsMediaValue {
+  const QuillJsMediaValue({required this.source, this.alt, this.width, this.height});
+
+  final String source;
+  final String? alt;
+  final int? width;
+  final int? height;
+}
+
+typedef QuillJsMediaEditCallback = Future<QuillJsMediaValue?> Function(QuillJsMediaValue? current);
+
 /// Configuration for the Quill.js-based web editor.
 class QuillJsEditorConfiguration {
+  static const List<String> defaultFormats = <String>[
+    'bold',
+    'italic',
+    'underline',
+    'list',
+    'link',
+    'indent',
+  ];
   /// URL to a self-hosted quill.js (or quill.min.js) file.
   ///
   /// When null (the default), the bundled quill.min.js shipped with
@@ -376,6 +396,13 @@ class QuillJsEditorConfiguration {
   /// `someFocusNode.requestFocus()`.
   final VoidCallback? onShiftTabPressed;
 
+  final List<String>? formats;
+
+  List<String> get effectiveFormats => formats ?? defaultFormats;
+
+  final QuillJsMediaEditCallback? onImageEdit;
+  final QuillJsMediaEditCallback? onVideoEdit;
+
   const QuillJsEditorConfiguration({
     this.quillJsUrl,
     this.quillCssUrl,
@@ -406,6 +433,9 @@ class QuillJsEditorConfiguration {
     this.autoResizeVerticalPadding = 24,
     this.onEscapePressed,
     this.onShiftTabPressed,
+    this.formats,
+    this.onImageEdit,
+    this.onVideoEdit,
   }) : assert(minLines > 0),
        assert(maxLines >= minLines),
        assert(autoResizeHorizontalPadding >= 0),
@@ -425,12 +455,15 @@ class QuillJsFormatState {
   /// The current link URL, or `null` if the cursor is not inside a link.
   final String? link;
 
+  final BlockStyleChoice blockStyle;
+
   const QuillJsFormatState({
     this.bold = false,
     this.italic = false,
     this.underline = false,
     this.list,
     this.link,
+    this.blockStyle = BlockStyleChoice.paragraph,
   });
 
   @override
@@ -441,10 +474,12 @@ class QuillJsFormatState {
           italic == other.italic &&
           underline == other.underline &&
           list == other.list &&
-          link == other.link;
+          link == other.link &&
+          blockStyle == other.blockStyle;
 
   @override
-  int get hashCode => Object.hash(bold, italic, underline, list, link);
+  int get hashCode =>
+      Object.hash(bold, italic, underline, list, link, blockStyle);
 }
 
 /// Controller for the Quill.js web editor.
@@ -528,6 +563,24 @@ class QuillJsEditorController extends ChangeNotifier {
   Future<void> requestLink() =>
       _callbacks?.requestLink.call() ?? Future<void>.value();
 
+  Future<void> requestImageEmbed() =>
+      _callbacks?.requestImageEmbed?.call() ?? Future<void>.value();
+
+  Future<void> requestVideoEmbed() =>
+      _callbacks?.requestVideoEmbed?.call() ?? Future<void>.value();
+
+  bool applyBlockStyle(BlockStyleChoice choice) {
+    return _callbacks?.applyBlockStyle?.call(choice) ?? false;
+  }
+
+  /// Lets the editor iframe ignore pointer events while a toolbar menu is open.
+  ///
+  /// The iframe sits above Flutter overlays, so a menu drawn over the editor
+  /// cannot be tapped until the iframe stops taking those events.
+  void setEditorIgnoresPointers(bool ignoring) {
+    _callbacks?.setEditorIgnoresPointers?.call(ignoring);
+  }
+
   /// Gets the current editor content as a [Delta].
   Delta get contents =>
       _callbacks?.getContents.call() ?? (Delta()..insert('\n'));
@@ -608,6 +661,10 @@ class QuillJsEditorController extends ChangeNotifier {
     required void Function(String text) insertTextAtCursor,
     required VoidCallback focus,
     required VoidCallback blur,
+    Future<void> Function()? requestImageEmbed,
+    Future<void> Function()? requestVideoEmbed,
+    bool Function(BlockStyleChoice choice)? applyBlockStyle,
+    void Function(bool ignoring)? setEditorIgnoresPointers,
   }) {
     _callbacks = _EditorCallbacks(
       toggleBold: toggleBold,
@@ -627,6 +684,10 @@ class QuillJsEditorController extends ChangeNotifier {
       insertTextAtCursor: insertTextAtCursor,
       focus: focus,
       blur: blur,
+      requestImageEmbed: requestImageEmbed,
+      requestVideoEmbed: requestVideoEmbed,
+      applyBlockStyle: applyBlockStyle,
+      setEditorIgnoresPointers: setEditorIgnoresPointers,
     );
   }
 
@@ -662,6 +723,10 @@ class _EditorCallbacks {
   final void Function(String text) insertTextAtCursor;
   final VoidCallback focus;
   final VoidCallback blur;
+  final Future<void> Function()? requestImageEmbed;
+  final Future<void> Function()? requestVideoEmbed;
+  final bool Function(BlockStyleChoice choice)? applyBlockStyle;
+  final void Function(bool ignoring)? setEditorIgnoresPointers;
 
   const _EditorCallbacks({
     required this.toggleBold,
@@ -681,5 +746,9 @@ class _EditorCallbacks {
     required this.insertTextAtCursor,
     required this.focus,
     required this.blur,
+    this.requestImageEmbed,
+    this.requestVideoEmbed,
+    this.applyBlockStyle,
+    this.setEditorIgnoresPointers,
   });
 }
