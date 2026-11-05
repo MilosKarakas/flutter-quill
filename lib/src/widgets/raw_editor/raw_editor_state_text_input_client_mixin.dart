@@ -823,6 +823,11 @@ mixin RawEditorStateTextInputClientMixin on EditorState
     // an exception
   }
 
+  /// Flutter 3.44+ requires this [TextInputClient] member.
+  /// The editor owns focus itself, so platform focus restoration is ignored.
+  @override
+  bool onFocusReceived() => false;
+
   @override
   void connectionClosed() {
     if (!hasConnection) {
