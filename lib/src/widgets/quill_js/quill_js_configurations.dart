@@ -171,16 +171,36 @@ class QuillJsLinkTooltipStyle {
   final double pointerGap;
 }
 
+/// Values the host dialog returns for an image or a video.
+///
+/// [source] is written to the embed URL. [alt] is the image `alt`, and the
+/// iframe `title` for a video. An empty [alt] is omitted. [width] and
+/// [height] are pixel sizes. A null size is omitted: a new image then uses
+/// its intrinsic size, and a new video uses 560 by 315.
 class QuillJsMediaValue {
   const QuillJsMediaValue({required this.source, this.alt, this.width, this.height});
 
+  /// Image or video source. A video source must be an `http` or `https` URL.
   final String source;
+
+  /// Image alt text, or the video iframe title.
   final String? alt;
+
+  /// Width in pixels.
   final int? width;
+
+  /// Height in pixels.
   final int? height;
 }
 
-typedef QuillJsMediaEditCallback = Future<QuillJsMediaValue?> Function(QuillJsMediaValue? current);
+/// Callback for inserting or editing an image or a video through a host dialog.
+///
+/// [current] is null when inserting. When editing, it is the embed's current
+/// source, alt, width, and height. Return a [QuillJsMediaValue] to write the
+/// embed, or `null` to leave the document unchanged.
+///
+/// The editor does not provide this dialog. This matches [onLinkCreate].
+typedef QuillJsMediaCreateCallback = Future<QuillJsMediaValue?> Function(QuillJsMediaValue? current);
 
 /// Configuration for the Quill.js-based web editor.
 class QuillJsEditorConfiguration {
@@ -400,8 +420,17 @@ class QuillJsEditorConfiguration {
 
   List<String> get effectiveFormats => formats ?? defaultFormats;
 
-  final QuillJsMediaEditCallback? onImageEdit;
-  final QuillJsMediaEditCallback? onVideoEdit;
+  /// Opens the host dialog for a new or existing image.
+  ///
+  /// The toolbar image button and a double-click both call this. A missing
+  /// callback does not change the document.
+  final QuillJsMediaCreateCallback? onImageCreate;
+
+  /// Opens the host dialog for a new or existing video.
+  ///
+  /// The toolbar video button and a double-click both call this. A missing
+  /// callback does not change the document.
+  final QuillJsMediaCreateCallback? onVideoCreate;
 
   const QuillJsEditorConfiguration({
     this.quillJsUrl,
@@ -434,8 +463,8 @@ class QuillJsEditorConfiguration {
     this.onEscapePressed,
     this.onShiftTabPressed,
     this.formats,
-    this.onImageEdit,
-    this.onVideoEdit,
+    this.onImageCreate,
+    this.onVideoCreate,
   }) : assert(minLines > 0),
        assert(maxLines >= minLines),
        assert(autoResizeHorizontalPadding >= 0),
@@ -563,9 +592,15 @@ class QuillJsEditorController extends ChangeNotifier {
   Future<void> requestLink() =>
       _callbacks?.requestLink.call() ?? Future<void>.value();
 
+  /// Opens the host image dialog through [QuillJsEditorConfiguration.onImageCreate].
+  ///
+  /// Does nothing when the editor is not attached or that callback is null.
   Future<void> requestImageEmbed() =>
       _callbacks?.requestImageEmbed?.call() ?? Future<void>.value();
 
+  /// Opens the host video dialog through [QuillJsEditorConfiguration.onVideoCreate].
+  ///
+  /// Does nothing when the editor is not attached or that callback is null.
   Future<void> requestVideoEmbed() =>
       _callbacks?.requestVideoEmbed?.call() ?? Future<void>.value();
 

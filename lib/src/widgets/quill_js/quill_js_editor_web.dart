@@ -2265,6 +2265,14 @@ html, body {
 .ql-code-block-container .ql-ui { right: 5px; top: 5px; }
 
 /* --- Editor overrides (applied after theme) --- */
+.ql-snow .ql-editor .ql-code-block-container {
+  background-color: transparent;
+  color: inherit;
+  border-radius: 0;
+  margin: 0;
+  padding: 0;
+  font-family: monospace;
+}
 .ql-container.ql-snow { border: none !important; font-size: 16px; }
 .ql-editor {
   padding: 12px 16px;
@@ -5886,8 +5894,8 @@ $customCss
     final formatName = kind == MediaEditKind.image ? 'image' : 'video';
     if (!formats.contains(formatName)) return;
     final callback = kind == MediaEditKind.image
-        ? widget.configuration.onImageEdit
-        : widget.configuration.onVideoEdit;
+        ? widget.configuration.onImageCreate
+        : widget.configuration.onVideoCreate;
     if (callback == null) return;
 
     _isHandlingMediaRequest = true;
