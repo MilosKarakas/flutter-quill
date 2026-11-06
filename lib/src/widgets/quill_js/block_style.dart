@@ -55,6 +55,28 @@ const List<BlockStyleChoice> _headings = <BlockStyleChoice>[
   BlockStyleChoice.heading6,
 ];
 
+bool _listHasDifferingValues(List<dynamic> values) {
+  if (values.length <= 1) return false;
+  final first = values.first;
+  for (var i = 1; i < values.length; i++) {
+    if (values[i] != first) return true;
+  }
+  return false;
+}
+
+/// Whether Quill [format] represents a mixed block-style selection.
+bool blockStyleIsMixed(Map<String, dynamic>? format) {
+  if (format == null) return false;
+  final header = format['header'];
+  if (header is List) {
+    if (_listHasDifferingValues(header)) return true;
+    return header.isNotEmpty;
+  }
+  final code = format['code-block'];
+  if (code is List && _listHasDifferingValues(code)) return true;
+  return false;
+}
+
 BlockStyleChoice blockStyleFromFormat(Map<String, dynamic>? format) {
   if (format == null) return BlockStyleChoice.paragraph;
   final code = format['code-block'];
@@ -70,10 +92,12 @@ BlockStyleChoice blockStyleFromFormat(Map<String, dynamic>? format) {
 }
 
 List<BlockStyleChoice> blockStyleMenu(List<String> enabledFormats) {
+  final header = enabledFormats.contains('header');
+  final code = enabledFormats.contains('code-block');
   return <BlockStyleChoice>[
     BlockStyleChoice.paragraph,
-    ..._headings,
-    if (enabledFormats.contains('code-block')) BlockStyleChoice.preformatted,
+    if (header) ..._headings,
+    if (code) BlockStyleChoice.preformatted,
   ];
 }
 

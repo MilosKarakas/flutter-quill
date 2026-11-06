@@ -14,8 +14,19 @@ class MediaEditDecision {
   }) {
     if (result == null) return const MediaEditDecision._(apply: false);
     if (containsSvgSource(result.source)) return const MediaEditDecision._(apply: false);
-    if (kind == MediaEditKind.video && !isHttpVideoSource(result.source)) {
-      return const MediaEditDecision._(apply: false);
+    if (kind == MediaEditKind.video) {
+      final normalized = normalizeVideoEmbedUrl(result.source);
+      if (normalized == null) return const MediaEditDecision._(apply: false);
+      return MediaEditDecision._(
+        apply: true,
+        value: QuillJsMediaValue(
+          source: normalized,
+          alt: result.alt,
+          width: result.width,
+          height: result.height,
+          embedded: result.embedded,
+        ),
+      );
     }
     return MediaEditDecision._(apply: true, value: result);
   }
@@ -66,8 +77,102 @@ bool isHttpVideoSource(String source) {
 }
 
 bool containsSvgSource(String source) {
-  final lower = source.toLowerCase();
-  return lower.contains('.svg') || lower.contains('image/svg');
+  final lower = source.toLowerCase().trim();
+  if (lower.startsWith('data:image/svg+xml')) return true;
+  final path = lower.split('#').first.split('?').first;
+  return path.endsWith('.svg');
+}
+
+/// Normalizes a pasted or typed video URL to an embeddable https URL.
+///
+/// Returns `null` when [input] is not an http(s) URL. Upgrades `http:` to
+/// `https:` and maps known hosts (YouTube, Vimeo, Loom) to their embed forms.
+String? normalizeVideoEmbedUrl(String input) {
+  final trimmed = input.trim();
+  if (trimmed.isEmpty) return null;
+  var uri = Uri.tryParse(trimmed);
+  if (uri == null || !uri.hasScheme) return null;
+  if (uri.scheme != 'http' && uri.scheme != 'https') return null;
+
+  final host = uri.host.toLowerCase();
+  final isYoutube =
+      host == 'youtube.com' ||
+      host == 'www.youtube.com' ||
+      host == 'm.youtube.com' ||
+      host == 'youtu.be';
+  if (isYoutube) {
+    String? id;
+    if (host == 'youtu.be') {
+      id = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
+    } else if (uri.pathSegments.isNotEmpty) {
+      final first = uri.pathSegments.first;
+      if (first == 'watch') {
+        id = uri.queryParameters['v'];
+      } else if (first == 'embed') {
+        id = uri.pathSegments.length > 1 ? uri.pathSegments[1] : null;
+      } else if (first == 'shorts' || first == 'live') {
+        id = uri.pathSegments.length > 1 ? uri.pathSegments[1] : null;
+      }
+    }
+    if (id == null || id.isEmpty) return null;
+    final start = _youtubeStartSeconds(uri);
+    final embed = Uri.https('www.youtube.com', '/embed/$id', start == null ? null : {'start': '$start'});
+    return embed.toString();
+  }
+
+  if (host == 'vimeo.com' || host == 'www.vimeo.com') {
+    String? id;
+    for (final segment in uri.pathSegments) {
+      if (RegExp(r'^\d+$').hasMatch(segment)) {
+        id = segment;
+        break;
+      }
+    }
+    if (id == null) return null;
+    return Uri.https('player.vimeo.com', '/video/$id').toString();
+  }
+
+  if (host == 'www.loom.com' || host == 'loom.com') {
+    final shareIdx = uri.pathSegments.indexOf('share');
+    if (shareIdx >= 0 && shareIdx + 1 < uri.pathSegments.length) {
+      final id = uri.pathSegments[shareIdx + 1];
+      return Uri.https('www.loom.com', '/embed/$id').toString();
+    }
+    return null;
+  }
+
+  if (uri.scheme == 'http') {
+    uri = uri.replace(scheme: 'https');
+  }
+  return uri.toString();
+}
+
+int? _youtubeStartSeconds(Uri uri) {
+  final t = uri.queryParameters['t'] ?? uri.queryParameters['start'];
+  if (t == null || t.isEmpty) return null;
+  return _parseYoutubeTime(t);
+}
+
+int? _parseYoutubeTime(String raw) {
+  final trimmed = raw.trim().toLowerCase();
+  if (trimmed.isEmpty) return null;
+  if (RegExp(r'^\d+$').hasMatch(trimmed)) {
+    return int.tryParse(trimmed);
+  }
+  if (trimmed.endsWith('s') && RegExp(r'^\d+s$').hasMatch(trimmed)) {
+    return int.tryParse(trimmed.substring(0, trimmed.length - 1));
+  }
+  var hours = 0;
+  var minutes = 0;
+  var seconds = 0;
+  final h = RegExp(r'(\d+)h').firstMatch(trimmed);
+  final m = RegExp(r'(\d+)m').firstMatch(trimmed);
+  final s = RegExp(r'(\d+)s').firstMatch(trimmed);
+  if (h != null) hours = int.parse(h.group(1)!);
+  if (m != null) minutes = int.parse(m.group(1)!);
+  if (s != null) seconds = int.parse(s.group(1)!);
+  if (h == null && m == null && s == null) return null;
+  return hours * 3600 + minutes * 60 + seconds;
 }
 
 Map<String, dynamic>? mediaAttributes({String? alt, int? width, int? height}) {
@@ -87,13 +192,28 @@ EmbedSize resizeFromCorner({
   required double dy,
   String? handle,
   int minSide = minEmbedSide,
+  double? maxWidth,
 }) {
+  EmbedSize clampMax(EmbedSize size) {
+    if (maxWidth == null || maxWidth <= 0 || size.width <= maxWidth) {
+      return size;
+    }
+    final ratio = size.width / size.height;
+    final width = maxWidth.floor();
+    final height = (width / ratio).round();
+    return EmbedSize(width, height < 1 ? 1 : height);
+  }
+
   if (dx == 0 && dy == 0) return EmbedSize(originWidth, originHeight);
   if (handle == 'n' || handle == 's') {
-    return EmbedSize(originWidth, _resizedEdge(originHeight, dy, minSide));
+    return clampMax(
+      EmbedSize(originWidth, _resizedEdge(originHeight, dy, minSide)),
+    );
   }
   if (handle == 'e' || handle == 'w') {
-    return EmbedSize(_resizedEdge(originWidth, dx, minSide), originHeight);
+    return clampMax(
+      EmbedSize(_resizedEdge(originWidth, dx, minSide), originHeight),
+    );
   }
   final width = originWidth <= 0 ? minSide : originWidth;
   final height = originHeight <= 0 ? minSide : originHeight;
@@ -101,7 +221,7 @@ EmbedSize resizeFromCorner({
   final widthDelta = dx / width;
   final heightDelta = dy / height;
   final scaleDelta = widthDelta.abs() >= heightDelta.abs() ? widthDelta : heightDelta;
-  return _floorSize(width * (1 + scaleDelta), ratio, minSide);
+  return clampMax(_floorSize(width * (1 + scaleDelta), ratio, minSide));
 }
 
 /// Form sizes. An unchanged pair is kept, including a side below 48.

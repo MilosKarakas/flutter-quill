@@ -27,10 +27,44 @@ void main() {
   });
 
   group('containsSvgSource', () {
-    test('matches .svg anywhere in the source', () {
+    test('matches svg mime prefix and .svg path suffix only', () {
       expect(containsSvgSource('https://cdn.example/icon.SVG'), isTrue);
       expect(containsSvgSource('https://cdn.example/a.png'), isFalse);
+      expect(containsSvgSource('https://cdn.example/svg/foo.png'), isFalse);
       expect(containsSvgSource('data:image/svg+xml;base64,PHN2Zw'), isTrue);
+    });
+  });
+
+  group('normalizeVideoEmbedUrl', () {
+    test('maps YouTube watch and youtu.be links with start time', () {
+      expect(
+        normalizeVideoEmbedUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=90'),
+        'https://www.youtube.com/embed/dQw4w9WgXcQ?start=90',
+      );
+      expect(
+        normalizeVideoEmbedUrl('https://youtu.be/dQw4w9WgXcQ?t=1m30s'),
+        'https://www.youtube.com/embed/dQw4w9WgXcQ?start=90',
+      );
+      expect(
+        normalizeVideoEmbedUrl('https://youtube.com/shorts/dQw4w9WgXcQ'),
+        'https://www.youtube.com/embed/dQw4w9WgXcQ',
+      );
+    });
+
+    test('maps Vimeo and Loom share URLs', () {
+      expect(
+        normalizeVideoEmbedUrl('https://vimeo.com/123456789'),
+        'https://player.vimeo.com/video/123456789',
+      );
+      expect(
+        normalizeVideoEmbedUrl('https://www.loom.com/share/abc123'),
+        'https://www.loom.com/embed/abc123',
+      );
+    });
+
+    test('rejects non-http schemes', () {
+      expect(normalizeVideoEmbedUrl('javascript:alert(1)'), isNull);
+      expect(normalizeVideoEmbedUrl('ftp://example.com/v'), isNull);
     });
   });
 
@@ -82,6 +116,20 @@ void main() {
       expect(
         resizeFromCorner(originWidth: 30, originHeight: 20, dx: 0, dy: 0),
         const EmbedSize(30, 20),
+      );
+    });
+
+    test('clamps width to maxWidth while keeping ratio', () {
+      expect(
+        resizeFromCorner(
+          originWidth: 800,
+          originHeight: 400,
+          dx: 200,
+          dy: 0,
+          handle: 'se',
+          maxWidth: 500,
+        ),
+        const EmbedSize(500, 250),
       );
     });
 

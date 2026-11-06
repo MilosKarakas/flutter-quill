@@ -40,7 +40,7 @@ void main() {
   });
 
   group('blockStyleMenu', () {
-    test('adds Preformatted only when code-block is enabled', () {
+    test('filters items by enabled header and code-block formats', () {
       expect(
         blockStyleMenu(const ['header']),
         [
@@ -54,9 +54,24 @@ void main() {
         ],
       );
       expect(
+        blockStyleMenu(const ['code-block']),
+        [BlockStyleChoice.paragraph, BlockStyleChoice.preformatted],
+      );
+      expect(
         blockStyleMenu(const ['header', 'code-block']).last,
         BlockStyleChoice.preformatted,
       );
+    });
+  });
+
+  group('blockStyleIsMixed', () {
+    test('detects mixed header and code-block selections', () {
+      expect(blockStyleIsMixed(null), isFalse);
+      expect(blockStyleIsMixed(const {'header': 1}), isFalse);
+      expect(blockStyleIsMixed(const {'header': [1, 2]}), isTrue);
+      expect(blockStyleIsMixed(const {'header': [1, 1]}), isTrue);
+      expect(blockStyleIsMixed(const {'code-block': [true, false]}), isTrue);
+      expect(blockStyleIsMixed(const {'code-block': [true, true]}), isFalse);
     });
   });
 

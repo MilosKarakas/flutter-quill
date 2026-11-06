@@ -209,10 +209,13 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
     // work with QuillController are hidden when it is null.
     final hasClassic = controller != null;
 
-    final showClassicHeader = showHeaderStyle && controller != null && quillJsController == null;
+    final showClassicHeader = showHeaderStyle &&
+        controller != null &&
+        quillJsController == null;
     final showWebBlockMenu = showHeaderStyle &&
         quillJsController != null &&
-        enabledFormats.contains('header');
+        (enabledFormats.contains('header') ||
+            enabledFormats.contains('code-block'));
 
     final isButtonGroupShown = [
       (showFontFamily && hasClassic) ||
@@ -523,14 +526,15 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             enabledFormats.contains('image'))
           MediaEmbedButton(
             icon: Icons.image_outlined,
-            tooltip: buttonTooltips[ToolbarButtons.image] ?? 'Insert image'.i18n,
+            tooltip:
+                buttonTooltips[ToolbarButtons.image] ?? 'Insert image'.i18n,
             iconSize: toolbarIconSize,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
             semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.image],
             focusNode: focusOf(ToolbarButtons.image),
             onPressed: () {
-              quillJsController!.requestImageEmbed();
+              quillJsController.requestImageEmbed();
             },
           ),
         if (showVideo &&
@@ -538,14 +542,15 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
             enabledFormats.contains('video'))
           MediaEmbedButton(
             icon: Icons.videocam_outlined,
-            tooltip: buttonTooltips[ToolbarButtons.video] ?? 'Insert video'.i18n,
+            tooltip:
+                buttonTooltips[ToolbarButtons.video] ?? 'Insert video'.i18n,
             iconSize: toolbarIconSize,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
             semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.video],
             focusNode: focusOf(ToolbarButtons.video),
             onPressed: () {
-              quillJsController!.requestVideoEmbed();
+              quillJsController.requestVideoEmbed();
             },
           ),
         if (showSearchButton && controller != null)
@@ -618,7 +623,7 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
         if (showClassicHeader)
           SelectHeaderStyleButton(
             tooltip: buttonTooltips[ToolbarButtons.headerStyle],
-            controller: controller!,
+            controller: controller,
             axis: axis,
             iconSize: toolbarIconSize,
             iconTheme: iconTheme,
@@ -626,12 +631,13 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
           ),
         if (showWebBlockMenu)
           SelectBlockStyleButton(
-            controller: quillJsController!,
+            controller: quillJsController,
             enabledFormats: enabledFormats,
             iconSize: toolbarIconSize,
             iconTheme: iconTheme,
             afterButtonPressed: afterButtonPressed,
-            tooltip: buttonTooltips[ToolbarButtons.headerStyle] ?? 'Header style'.i18n,
+            tooltip: buttonTooltips[ToolbarButtons.headerStyle] ??
+                'Header style'.i18n,
             focusNode: focusOf(ToolbarButtons.headerStyle),
           ),
         if (showDividers &&

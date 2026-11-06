@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../models/themes/quill_icon_theme.dart';
-import '../toolbar.dart';
 import 'quill_icon_button.dart';
+
+const double _kDefaultIconSize = 18;
+const double _kIconButtonFactor = 1.77;
 
 class MediaEmbedButton extends StatelessWidget {
   const MediaEmbedButton({
     required this.icon,
     required this.tooltip,
     required this.onPressed,
-    this.iconSize = kDefaultIconSize,
+    this.iconSize = _kDefaultIconSize,
     this.iconTheme,
     this.afterButtonPressed,
     this.semanticsIdentifier,
@@ -33,7 +35,7 @@ class MediaEmbedButton extends StatelessWidget {
       tooltip: tooltip,
       highlightElevation: 0,
       hoverElevation: 0,
-      size: iconSize * kIconButtonFactor,
+      size: iconSize * _kIconButtonFactor,
       icon: Icon(
         icon,
         size: iconSize,

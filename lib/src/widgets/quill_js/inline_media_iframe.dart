@@ -14,14 +14,27 @@ function isHttpVideoSource(value) {
   return scheme === 'http' || scheme === 'https';
 }
 
-function writeEmbedSide(node, name, value) {
-  if (value) {
-    var px = String(value).replace(/px$/, '');
-    node.setAttribute(name, px);
-    node.style.setProperty(name, px + 'px');
+function applyEmbedDimensions(node, width, height) {
+  var w = width != null && width !== '' ? String(width).replace(/px$/, '') : null;
+  var h = height != null && height !== '' ? String(height).replace(/px$/, '') : null;
+  if (w) {
+    node.setAttribute('width', w);
+    node.style.width = w + 'px';
+    node.style.maxWidth = '100%';
   } else {
-    node.removeAttribute(name);
-    node.style.removeProperty(name);
+    node.removeAttribute('width');
+    node.style.removeProperty('width');
+    node.style.removeProperty('max-width');
+  }
+  if (h) {
+    node.setAttribute('height', h);
+    node.style.height = 'auto';
+    if (w) node.style.aspectRatio = w + ' / ' + h;
+    else node.style.removeProperty('aspect-ratio');
+  } else {
+    node.removeAttribute('height');
+    node.style.removeProperty('height');
+    node.style.removeProperty('aspect-ratio');
   }
 }
 
@@ -39,6 +52,7 @@ function registerInlineMedia(Quill) {
   function attachImageLoad(node) {
     if (node.__inlineMediaLoadAttached) return;
     node.__inlineMediaLoadAttached = true;
+    node.loading = 'lazy';
     node.decoding = 'async';
     function onLoad() {
       if (node.__inlineMediaLoadHandled) return;
@@ -58,7 +72,7 @@ function registerInlineMedia(Quill) {
         quill.getIndex(blot),
         node.naturalWidth,
         node.naturalHeight,
-        (editor && editor.clientWidth) || 0
+        editorContentMaxWidth(editor || node)
       );
     }
     node.addEventListener('load', onLoad);
@@ -66,15 +80,30 @@ function registerInlineMedia(Quill) {
   }
 
   function isSvgImageSource(value) {
-    var lower = String(value || '').toLowerCase();
-    return lower.indexOf('.svg') >= 0 || lower.indexOf('image/svg') >= 0;
+    var s = String(value || '');
+    var lower = s.toLowerCase();
+    if (lower.indexOf('data:image/svg+xml') === 0) return true;
+    var path = lower.split('#')[0].split('?')[0];
+    return path.endsWith('.svg');
   }
 
   class CustomImageBlot extends BlockEmbed {
+    static sanitize(url) {
+      if (typeof url !== 'string') return ImageBlot.sanitize(url);
+      var trimmed = url.replace(/^\s+|\s+$/g, '');
+      if (trimmed.indexOf('blob:') === 0) return trimmed;
+      if (trimmed.indexOf('data:') === 0) return trimmed;
+      return ImageBlot.sanitize(trimmed);
+    }
+
     static create(value) {
       var node = super.create(value);
-      if (typeof value === 'string') {
-        node.setAttribute('src', isSvgImageSource(value) ? '//:0' : ImageBlot.sanitize(value));
+      var str = typeof value === 'string' ? value : '';
+      if (isSvgImageSource(str)) {
+        node.setAttribute('data-src', str);
+        node.setAttribute('src', '//:0');
+      } else {
+        node.setAttribute('src', CustomImageBlot.sanitize(str));
       }
       node.style.display = 'block';
       attachImageLoad(node);
@@ -82,7 +111,7 @@ function registerInlineMedia(Quill) {
     }
 
     static value(node) {
-      return node.getAttribute('src');
+      return node.getAttribute('data-src') || node.getAttribute('src') || '';
     }
 
     static formats(node) {
@@ -101,7 +130,11 @@ function registerInlineMedia(Quill) {
         if (value) this.domNode.setAttribute('alt', value);
         else this.domNode.removeAttribute('alt');
       } else if (name === 'width' || name === 'height') {
-        writeEmbedSide(this.domNode, name, value);
+        var w = readSizeAttr(this.domNode, 'width');
+        var h = readSizeAttr(this.domNode, 'height');
+        if (name === 'width') w = value;
+        else h = value;
+        applyEmbedDimensions(this.domNode, w, h);
       } else {
         super.format(name, value);
       }
@@ -116,7 +149,18 @@ function registerInlineMedia(Quill) {
       var node = super.create(value);
       node.setAttribute('frameborder', '0');
       node.setAttribute('allowfullscreen', 'true');
-      node.style.pointerEvents = 'none';
+      node.setAttribute('loading', 'lazy');
+      node.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      node.setAttribute(
+        'allow',
+        'autoplay; encrypted-media; picture-in-picture; fullscreen'
+      );
+      node.setAttribute(
+        'sandbox',
+        'allow-scripts allow-same-origin allow-presentation allow-popups ' +
+          'allow-popups-to-escape-sandbox'
+      );
+      node.classList.add('ql-video');
       node.style.border = '0';
       node.style.display = 'block';
       if (isHttpVideoSource(value)) node.setAttribute('src', value);
@@ -139,11 +183,14 @@ function registerInlineMedia(Quill) {
         if (value) this.domNode.setAttribute('title', value);
         else this.domNode.removeAttribute('title');
       } else if (name === 'width' || name === 'height') {
-        writeEmbedSide(this.domNode, name, value);
+        var w = readSizeAttr(this.domNode, 'width');
+        var h = readSizeAttr(this.domNode, 'height');
+        if (name === 'width') w = value;
+        else h = value;
+        applyEmbedDimensions(this.domNode, w, h);
       } else {
         super.format(name, value);
       }
-      this.domNode.style.pointerEvents = 'none';
       this.domNode.style.border = '0';
       this.domNode.style.display = 'block';
     }
@@ -182,6 +229,17 @@ function contentWidthLimit(node) {
   return width;
 }
 
+function editorContentMaxWidth(editorNode) {
+  if (!editorNode) return contentWidthLimit(null);
+  var style = editorNode.ownerDocument.defaultView.getComputedStyle(editorNode);
+  var pl = parseFloat(style.paddingLeft) || 0;
+  var pr = parseFloat(style.paddingRight) || 0;
+  var w = editorNode.clientWidth - pl - pr;
+  if (!w || w < 48) return contentWidthLimit(editorNode);
+  if (w > 1600) w = 1600;
+  return w;
+}
+
 function imageFilesFromClipboard(data) {
   var accepted = [];
   if (!data) return accepted;
@@ -204,9 +262,7 @@ function imageFilesFromClipboard(data) {
   return accepted;
 }
 
-function scaledBitmap(img, cssWidth) {
-  var nw = img.naturalWidth || 1;
-  var nh = img.naturalHeight || 1;
+function displaySizeForBitmap(nw, nh, cssWidth) {
   var layoutW = cssWidth > 48 ? cssWidth : 800;
   if (layoutW > 1600) layoutW = 1600;
   var displayScale = nw > layoutW ? layoutW / nw : 1;
@@ -214,33 +270,168 @@ function scaledBitmap(img, cssWidth) {
   var displayH = Math.max(1, Math.round(nh * displayScale));
   var pixelLimit = Math.min(1600, Math.max(displayW * 2, displayW));
   var pixelScale = nw > pixelLimit ? pixelLimit / nw : 1;
-  var src = '';
-  if (img.getAttribute) src = img.getAttribute('src') || '';
-  if (!src) src = img.src || '';
-  var isData = src.indexOf('data:') === 0;
-  var payload = isData ? src.length : 0;
-  var alreadyJpeg = src.indexOf('data:image/jpeg') === 0 || src.indexOf('data:image/jpg') === 0;
-  if (!isData || (pixelScale === 1 && (payload < 280000 || alreadyJpeg))) {
-    return { url: src, width: displayW, height: displayH, changed: false };
+  return { displayW: displayW, displayH: displayH, pixelScale: pixelScale };
+}
+
+function bitmapFromFile(file) {
+  if (typeof createImageBitmap === 'function') {
+    return createImageBitmap(file).catch(function () {
+      return bitmapFromFileViaImage(file);
+    });
   }
-  var owner = img.ownerDocument || document;
+  return bitmapFromFileViaImage(file);
+}
+
+function bitmapFromFileViaImage(file) {
+  var url = URL.createObjectURL(file);
+  return new Promise(function (resolve, reject) {
+    var img = new Image();
+    img.onload = function () {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = function (err) {
+      URL.revokeObjectURL(url);
+      reject(err);
+    };
+    img.src = url;
+  });
+}
+
+function readBlobAsDataUrl(blob) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      resolve(ev.target.result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function canvasToBlobPromise(canvas, type, quality) {
+  return new Promise(function (resolve, reject) {
+    if (!canvas.toBlob) {
+      reject(new Error('toBlob unavailable'));
+      return;
+    }
+    canvas.toBlob(
+      function (blob) {
+        if (blob) resolve(blob);
+        else reject(new Error('empty blob'));
+      },
+      type,
+      quality
+    );
+  });
+}
+
+function encodeProcessedImage(source, file, cssWidth) {
+  var nw = source.width || source.naturalWidth || 1;
+  var nh = source.height || source.naturalHeight || 1;
+  var sizes = displaySizeForBitmap(nw, nh, cssWidth);
+  var mime = (file.type || '').toLowerCase();
+  var fileSize = file.size || 0;
+  var isJpeg = mime === 'image/jpeg' || mime === 'image/jpg';
+  var isPngOrWebp = mime === 'image/png' || mime === 'image/webp';
+  var keepOriginal = {
+    blob: file,
+    displayW: sizes.displayW,
+    displayH: sizes.displayH,
+  };
+  if (sizes.pixelScale === 1 && (isJpeg || (isPngOrWebp && fileSize < 280000))) {
+    return Promise.resolve(keepOriginal);
+  }
+  var owner = source.ownerDocument || document;
   var canvas = owner.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(nw * pixelScale));
-  canvas.height = Math.max(1, Math.round(nh * pixelScale));
+  canvas.width = Math.max(1, Math.round(nw * sizes.pixelScale));
+  canvas.height = Math.max(1, Math.round(nh * sizes.pixelScale));
   var ctx = canvas.getContext('2d');
-  if (!ctx) return { url: src, width: displayW, height: displayH, changed: false };
-  try {
+  if (!ctx) return Promise.resolve(keepOriginal);
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+
+  function encodeJpeg() {
+    // JPEG has no alpha; paint white behind transparent pixels.
+    ctx.globalCompositeOperation = 'destination-over';
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    var url = canvas.toDataURL('image/jpeg', 0.82);
-    if (!url || (pixelScale === 1 && url.length >= src.length)) {
-      return { url: src, width: displayW, height: displayH, changed: false };
-    }
-    return { url: url, width: displayW, height: displayH, changed: true };
-  } catch (err) {
-    return { url: src, width: displayW, height: displayH, changed: false };
+    ctx.globalCompositeOperation = 'source-over';
+    return canvasToBlobPromise(canvas, 'image/jpeg', 0.82);
   }
+
+  var encoded = isJpeg
+    ? encodeJpeg()
+    : canvasToBlobPromise(canvas, 'image/webp', 0.85)
+        .then(function (blob) {
+          return blob.type === 'image/webp' ? blob : encodeJpeg();
+        })
+        .catch(encodeJpeg);
+  return encoded.then(function (blob) {
+    var smaller = blob.size < fileSize || sizes.pixelScale < 1;
+    return {
+      blob: smaller ? blob : file,
+      displayW: sizes.displayW,
+      displayH: sizes.displayH,
+    };
+  });
+}
+
+function processImageFile(file, cssWidth) {
+  return bitmapFromFile(file).then(function (bitmap) {
+    return encodeProcessedImage(bitmap, file, cssWidth).then(
+      function (result) {
+        if (bitmap.close) bitmap.close();
+        return readBlobAsDataUrl(result.blob).then(function (dataUrl) {
+          return {
+            blobUrl: URL.createObjectURL(result.blob),
+            dataUrl: dataUrl,
+            width: result.displayW,
+            height: result.displayH,
+          };
+        });
+      },
+      function (err) {
+        if (bitmap.close) bitmap.close();
+        throw err;
+      }
+    );
+  });
+}
+
+function processScaledFiles(accepted, k, root, onDrop) {
+  if (!onDrop || k >= accepted.length) return;
+  function next() {
+    processScaledFiles(accepted, k + 1, root, onDrop);
+  }
+  processImageFile(accepted[k], editorContentMaxWidth(root))
+    .then(function (image) {
+      onDrop(
+        image.blobUrl,
+        image.dataUrl,
+        image.width,
+        image.height,
+        root.clientWidth || image.width
+      );
+    })
+    .catch(function () {})
+    .then(next);
+}
+
+function dataUrlToBlob(dataUrl) {
+  var comma = dataUrl.indexOf(',');
+  var header = dataUrl.substring(0, comma);
+  var mimeMatch = /^data:([^;,]+)/i.exec(header);
+  var mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+  var body = dataUrl.substring(comma + 1);
+  var bytes;
+  if (/;base64/i.test(header)) {
+    var binary = atob(body.replace(/\s+/g, ''));
+    bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  } else {
+    bytes = new TextEncoder().encode(decodeURIComponent(body));
+  }
+  return new Blob([bytes], { type: mime });
 }
 
 function indexFromPointNode(QuillGlobal, quill, node, offset) {
@@ -273,7 +464,12 @@ function indexAtPoint(QuillGlobal, quill, x, y) {
   if (doc.caretRangeFromPoint) {
     var range = doc.caretRangeFromPoint(x, y);
     if (range) {
-      var index2 = indexFromPointNode(QuillGlobal, quill, range.startContainer, range.startOffset || 0);
+      var index2 = indexFromPointNode(
+        QuillGlobal,
+        quill,
+        range.startContainer,
+        range.startOffset || 0
+      );
       if (index2 != null) return index2;
     }
   }
@@ -291,60 +487,154 @@ function installInlineMedia(quill, options) {
     drag: null,
     index: null,
     node: null,
+    batchOpen: false,
+    scrollFrame: 0,
+    dragOverFrame: 0,
+    dragOverPending: null,
   };
 
   var root = quill.root;
   var doc = root.ownerDocument;
+  var win = doc.defaultView;
+
+  var styleEl = doc.createElement('style');
+  styleEl.textContent =
+    '.ql-media-editing iframe.ql-video { pointer-events: none; }' +
+    '.ql-media-selected { caret-color: transparent; }';
+  doc.head.appendChild(styleEl);
 
   function editingLocked() {
     return !!options.readOnly || !!(quill.isEnabled && !quill.isEnabled());
   }
 
+  function syncMediaEditingClass() {
+    if (editingLocked()) root.classList.remove('ql-media-editing');
+    else root.classList.add('ql-media-editing');
+  }
+  syncMediaEditingClass();
+
   window.__inlineMediaSetReadOnly = function (value) {
     options.readOnly = !!value;
+    syncMediaEditingClass();
     if (editingLocked()) hideResizeOverlay();
   };
+
+  // The native caret is not painted while another app (the file source) is
+  // the active window, so a file drag shows its own drop indicator.
+  var dropCaret = null;
+  var fileDragActive = false;
+  var dragLeaveTimer = 0;
+
+  function showDropCaret(index) {
+    var container = root.parentNode;
+    if (!container) return;
+    var bounds = quill.getBounds(index, 0);
+    if (!bounds) return;
+    if (!dropCaret) {
+      dropCaret = doc.createElement('div');
+      dropCaret.className = 'inline-media-drop-caret';
+      dropCaret.style.position = 'absolute';
+      dropCaret.style.pointerEvents = 'none';
+      dropCaret.style.zIndex = '30';
+      dropCaret.style.background = '#1a73e8';
+      dropCaret.style.borderRadius = '1px';
+      container.appendChild(dropCaret);
+    }
+    var containerRect = container.getBoundingClientRect();
+    var embed = embedNodeAtIndex(index);
+    var x;
+    var y;
+    if (embed) {
+      var rect = embed.getBoundingClientRect();
+      x = rect.left;
+      y = rect.top - 3;
+      dropCaret.style.width = rect.width + 'px';
+      dropCaret.style.height = '2px';
+    } else {
+      x = containerRect.left + bounds.left - 1;
+      y = containerRect.top + bounds.top;
+      dropCaret.style.width = '2px';
+      dropCaret.style.height = Math.max(bounds.height, 16) + 'px';
+    }
+    var left = x - containerRect.left;
+    var top = y - containerRect.top;
+    dropCaret.style.left = left + 'px';
+    dropCaret.style.top = top + 'px';
+    var placed = dropCaret.getBoundingClientRect();
+    if (Math.abs(placed.left - x) > 0.5 || Math.abs(placed.top - y) > 0.5) {
+      dropCaret.style.left = left + (x - placed.left) + 'px';
+      dropCaret.style.top = top + (y - placed.top) + 'px';
+    }
+  }
+
+  function endFileDrag() {
+    fileDragActive = false;
+    if (dragLeaveTimer) {
+      win.clearTimeout(dragLeaveTimer);
+      dragLeaveTimer = 0;
+    }
+    var state = window.__inlineMediaResize;
+    if (state.dragOverFrame) {
+      win.cancelAnimationFrame(state.dragOverFrame);
+      state.dragOverFrame = 0;
+    }
+    state.dragOverPending = null;
+    if (dropCaret && dropCaret.parentNode) dropCaret.parentNode.removeChild(dropCaret);
+    dropCaret = null;
+  }
 
   if (options.image || options.video) {
     root.addEventListener('dragover', function (e) {
       e.preventDefault();
       if (editingLocked()) return;
-      var idx = indexAtPoint(QuillGlobal, quill, e.clientX, e.clientY);
-      quill.setSelection(idx, 0, 'silent');
+      var types = e.dataTransfer && e.dataTransfer.types;
+      var hasFiles = false;
+      if (types && types.length) {
+        for (var ti = 0; ti < types.length; ti++) {
+          if (types[ti] === 'Files') {
+            hasFiles = true;
+            break;
+          }
+        }
+      }
+      if (!hasFiles) return;
+      if (dragLeaveTimer) {
+        win.clearTimeout(dragLeaveTimer);
+        dragLeaveTimer = 0;
+      }
+      fileDragActive = true;
+      var state = window.__inlineMediaResize;
+      state.dragOverPending = { x: e.clientX, y: e.clientY };
+      if (state.dragOverFrame) return;
+      state.dragOverFrame = win.requestAnimationFrame(function () {
+        state.dragOverFrame = 0;
+        var pending = state.dragOverPending;
+        state.dragOverPending = null;
+        if (!pending || !fileDragActive || editingLocked()) return;
+        var idx = indexAtPoint(QuillGlobal, quill, pending.x, pending.y);
+        quill.setSelection(idx, 0, 'silent');
+        showDropCaret(idx);
+      });
     });
-  }
-
-  function readScaledFiles(accepted, k) {
-    if (!options.onImageDrop || k >= accepted.length) return;
-    var reader = new FileReader();
-    reader.onerror = function () {
-      readScaledFiles(accepted, k + 1);
-    };
-    reader.onload = function (ev) {
-      var img = new Image();
-      img.onload = function () {
-        var scaled = scaledBitmap(img, contentWidthLimit(root));
-        options.onImageDrop(
-          scaled.url,
-          scaled.width,
-          scaled.height,
-          root.clientWidth || scaled.width
-        );
-        readScaledFiles(accepted, k + 1);
-      };
-      img.onerror = function () {
-        readScaledFiles(accepted, k + 1);
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(accepted[k]);
+    // dragleave also fires between child elements, often without a
+    // relatedTarget; the next dragover cancels the pending hide.
+    root.addEventListener('dragleave', function (e) {
+      if (e.relatedTarget && root.contains(e.relatedTarget)) return;
+      if (dragLeaveTimer) win.clearTimeout(dragLeaveTimer);
+      dragLeaveTimer = win.setTimeout(function () {
+        dragLeaveTimer = 0;
+        endFileDrag();
+      }, 100);
+    });
+    root.addEventListener('drop', endFileDrag, true);
+    doc.addEventListener('dragend', endFileDrag);
   }
 
   if (options.image) {
     root.addEventListener('drop', function (e) {
       e.preventDefault();
       if (editingLocked() || !options.onImageDrop) return;
-      readScaledFiles(imageFilesFromClipboard(e.dataTransfer), 0);
+      processScaledFiles(imageFilesFromClipboard(e.dataTransfer), 0, root, options.onImageDrop);
     });
     doc.addEventListener('paste', function (e) {
       if (editingLocked() || !options.onImageDrop) return;
@@ -364,7 +654,7 @@ function installInlineMedia(quill, options) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        readScaledFiles(accepted, 0);
+        processScaledFiles(accepted, 0, root, options.onImageDrop);
         return;
       }
       if (accepted.length || plain) return;
@@ -386,18 +676,47 @@ function installInlineMedia(quill, options) {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      var pasted = new Image();
-      pasted.onload = function () {
-        var scaled = scaledBitmap(pasted, contentWidthLimit(root));
-        options.onImageDrop(
-          scaled.url,
-          scaled.width,
-          scaled.height,
-          root.clientWidth || scaled.width
-        );
-      };
-      pasted.src = match[1];
+      var pastedBlob;
+      try {
+        pastedBlob = dataUrlToBlob(match[1]);
+      } catch (err3) {
+        return;
+      }
+      processScaledFiles([pastedBlob], 0, root, options.onImageDrop);
     }, true);
+
+    // Runs after Quill's own copy handler has filled the clipboard. blob:
+    // URLs only resolve in this page, so other apps must receive data URLs.
+    function expandClipboardHtml(e) {
+      if (!options.expandBlobUrl || !e.clipboardData) return;
+      var html = '';
+      try {
+        html = e.clipboardData.getData('text/html') || '';
+      } catch (err) {
+        return;
+      }
+      if (html.indexOf('blob:') < 0) return;
+      var expanded = html.replace(/(src=["'])(blob:[^"']+)(["'])/gi, function (all, open, url, close) {
+        var data = options.expandBlobUrl(url);
+        return data ? open + data + close : all;
+      });
+      if (expanded !== html) e.clipboardData.setData('text/html', expanded);
+    }
+    root.addEventListener('copy', expandClipboardHtml);
+    root.addEventListener('cut', expandClipboardHtml);
+
+    if (options.collapseDataUrl && quill.clipboard && quill.clipboard.addMatcher) {
+      quill.clipboard.addMatcher('IMG', function (node, delta) {
+        (delta.ops || []).forEach(function (op) {
+          var image = op.insert && op.insert.image;
+          if (typeof image === 'string' && /^data:image\//i.test(image)) {
+            var collapsed = options.collapseDataUrl(image);
+            if (collapsed) op.insert = Object.assign({}, op.insert, { image: collapsed });
+          }
+        });
+        return delta;
+      });
+    }
   }
 
   function embedNodeAtIndex(index) {
@@ -410,17 +729,59 @@ function installInlineMedia(quill, options) {
     return null;
   }
 
+  function finishDrag(commit) {
+    var state = window.__inlineMediaResize;
+    if (!state.drag) return;
+    var d = state.drag;
+    if (d.raf) {
+      win.cancelAnimationFrame(d.raf);
+      d.raf = 0;
+    }
+    // Restore the exact pre-drag attributes so batchEnd sees no net change;
+    // the committed size arrives as one Dart-side change below.
+    if (state.node) {
+      applyEmbedDimensions(state.node, d.storedWidth, d.storedHeight);
+    }
+    if (state.batchOpen && quill.scroll && quill.scroll.batchEnd) {
+      quill.scroll.batchEnd();
+      state.batchOpen = false;
+    }
+    state.drag = null;
+    var moved = d.dx !== 0 || d.dy !== 0;
+    if (commit && moved && options.onResize) {
+      options.onResize(
+        d.index,
+        d.originWidth,
+        d.originHeight,
+        d.dx,
+        d.dy,
+        d.corner,
+        editorContentMaxWidth(root)
+      );
+    }
+    if (state.node) positionResizeOverlay(d.index, state.node);
+  }
+
   function hideResizeOverlay() {
     var state = window.__inlineMediaResize;
+    if (state.drag) finishDrag(false);
+    if (state.scrollFrame) {
+      win.cancelAnimationFrame(state.scrollFrame);
+      state.scrollFrame = 0;
+    }
+    if (state.dragOverFrame) {
+      win.cancelAnimationFrame(state.dragOverFrame);
+      state.dragOverFrame = 0;
+    }
     if (state.overlay && state.overlay.parentNode) {
       state.overlay.parentNode.removeChild(state.overlay);
     }
     state.overlay = null;
     state.frame = null;
     state.handles = [];
-    state.drag = null;
     state.index = null;
     state.node = null;
+    root.classList.remove('ql-media-selected');
   }
 
   function axisSign(corner, axis) {
@@ -440,40 +801,44 @@ function installInlineMedia(quill, options) {
     return Math.round(next);
   }
 
-  function previewSize(originWidth, originHeight, dx, dy, handle) {
-    if (dx === 0 && dy === 0) return { width: originWidth, height: originHeight };
-    if (handle === 'n' || handle === 's') {
-      return { width: originWidth, height: resizedEdge(originHeight, dy) };
-    }
-    if (handle === 'e' || handle === 'w') {
-      return { width: resizedEdge(originWidth, dx), height: originHeight };
-    }
-    var width = originWidth <= 0 ? 48 : originWidth;
-    var height = originHeight <= 0 ? 48 : originHeight;
-    var ratio = width / height;
-    var widthDelta = dx / width;
-    var heightDelta = dy / height;
-    var scaleDelta = Math.abs(widthDelta) >= Math.abs(heightDelta) ? widthDelta : heightDelta;
-    var nextWidth = width * (1 + scaleDelta);
-    var nextHeight = nextWidth / ratio;
-    if (nextWidth < 48 || nextHeight < 48) {
-      if (ratio >= 1) {
-        nextHeight = 48;
-        nextWidth = nextHeight * ratio;
-      } else {
-        nextWidth = 48;
-        nextHeight = nextWidth / ratio;
+  function previewSize(originWidth, originHeight, dx, dy, handle, maxW) {
+    var size;
+    if (dx === 0 && dy === 0) size = { width: originWidth, height: originHeight };
+    else if (handle === 'n' || handle === 's') {
+      size = { width: originWidth, height: resizedEdge(originHeight, dy) };
+    } else if (handle === 'e' || handle === 'w') {
+      size = { width: resizedEdge(originWidth, dx), height: originHeight };
+    } else {
+      var width = originWidth <= 0 ? 48 : originWidth;
+      var height = originHeight <= 0 ? 48 : originHeight;
+      var ratio = width / height;
+      var widthDelta = dx / width;
+      var heightDelta = dy / height;
+      var scaleDelta =
+        Math.abs(widthDelta) >= Math.abs(heightDelta) ? widthDelta : heightDelta;
+      var nextWidth = width * (1 + scaleDelta);
+      var nextHeight = nextWidth / ratio;
+      if (nextWidth < 48 || nextHeight < 48) {
+        if (ratio >= 1) {
+          nextHeight = 48;
+          nextWidth = nextHeight * ratio;
+        } else {
+          nextWidth = 48;
+          nextHeight = nextWidth / ratio;
+        }
       }
+      size = { width: Math.round(nextWidth), height: Math.round(nextHeight) };
     }
-    return { width: Math.round(nextWidth), height: Math.round(nextHeight) };
+    if (maxW && size.width > maxW) {
+      var r = size.width / size.height;
+      size.width = Math.floor(maxW);
+      size.height = Math.max(1, Math.round(size.width / r));
+    }
+    return size;
   }
 
-  function applyPreviewSize(node, size, commit) {
-    node.style.width = size.width + 'px';
-    node.style.height = size.height + 'px';
-    if (!commit) return;
-    node.setAttribute('width', String(size.width));
-    node.setAttribute('height', String(size.height));
+  function applyPreviewSize(node, size) {
+    applyEmbedDimensions(node, size.width, size.height);
   }
 
   function handleCursor(corner) {
@@ -492,6 +857,7 @@ function installInlineMedia(quill, options) {
     overlay.style.pointerEvents = 'none';
     overlay.style.zIndex = '20';
     overlay.style.boxSizing = 'border-box';
+    overlay.style.touchAction = 'none';
 
     var frame = doc.createElement('div');
     frame.className = 'inline-media-resize-frame';
@@ -504,9 +870,11 @@ function installInlineMedia(quill, options) {
     frame.style.boxShadow = '0 0 0 1px #fff';
     frame.style.boxSizing = 'border-box';
     frame.style.pointerEvents = 'none';
+    frame.style.touchAction = 'none';
     overlay.appendChild(frame);
     state.overlay = overlay;
     state.frame = frame;
+    root.classList.add('ql-media-selected');
     state.index = index;
     state.node = node;
 
@@ -524,6 +892,7 @@ function installInlineMedia(quill, options) {
       handle.style.boxSizing = 'border-box';
       handle.style.pointerEvents = 'auto';
       handle.style.cursor = handleCursor(corner);
+      handle.style.touchAction = 'none';
       handle.addEventListener('pointerdown', function (e) {
         if (editingLocked()) return;
         e.preventDefault();
@@ -546,10 +915,16 @@ function installInlineMedia(quill, options) {
           startY: e.clientY,
           originWidth: originWidth,
           originHeight: originHeight,
+          storedWidth: currentNode.getAttribute('width'),
+          storedHeight: currentNode.getAttribute('height'),
           dx: 0,
           dy: 0,
+          raf: 0,
         };
-        if (quill.scroll && quill.scroll.batchStart) quill.scroll.batchStart();
+        if (quill.scroll && quill.scroll.batchStart) {
+          quill.scroll.batchStart();
+          state.batchOpen = true;
+        }
         handle.setPointerCapture(e.pointerId);
       });
       handle.addEventListener('pointermove', function (e) {
@@ -559,46 +934,38 @@ function installInlineMedia(quill, options) {
         state.drag.dx = xSign === 0 ? 0 : xSign * (e.clientX - state.drag.startX);
         state.drag.dy = ySign === 0 ? 0 : ySign * (e.clientY - state.drag.startY);
         if (state.drag.raf) return;
-        state.drag.raf = doc.defaultView.requestAnimationFrame(function () {
+        state.drag.raf = win.requestAnimationFrame(function () {
           if (!state.drag || !state.node) return;
           state.drag.raf = 0;
+          var maxW = editorContentMaxWidth(root);
           var size = previewSize(
             state.drag.originWidth,
             state.drag.originHeight,
             state.drag.dx,
             state.drag.dy,
-            state.drag.corner
+            state.drag.corner,
+            maxW
           );
-          applyPreviewSize(state.node, size, false);
+          applyPreviewSize(state.node, size);
           positionResizeOverlay(state.drag.index, state.node);
         });
       });
-      handle.addEventListener('pointerup', function (e) {
-        if (!state.drag) return;
-        var d = state.drag;
-        if (d.raf) {
-          doc.defaultView.cancelAnimationFrame(d.raf);
-          d.raf = 0;
-        }
-        if (state.node) {
-          applyPreviewSize(state.node, previewSize(d.originWidth, d.originHeight, d.dx, d.dy, d.corner), true);
-        }
-        if (quill.scroll && quill.scroll.batchEnd) quill.scroll.batchEnd();
-        state.drag = null;
-        if (options.onResize) {
-          options.onResize(d.index, d.originWidth, d.originHeight, d.dx, d.dy, d.corner);
-        }
+      function endPointer(e) {
+        if (!state.drag || state.drag.corner !== corner) return;
+        finishDrag(true);
         try {
           handle.releasePointerCapture(e.pointerId);
         } catch (_) {}
-        positionResizeOverlay(d.index, state.node);
-      });
+      }
+      handle.addEventListener('pointerup', endPointer);
+      handle.addEventListener('pointercancel', endPointer);
+      handle.addEventListener('lostpointercapture', endPointer);
       overlay.appendChild(handle);
       return handle;
     });
 
     var host = root.parentNode || root;
-    var hostPosition = doc.defaultView.getComputedStyle(host).position;
+    var hostPosition = win.getComputedStyle(host).position;
     if (hostPosition === 'static') host.style.position = 'relative';
     host.appendChild(overlay);
     positionResizeOverlay(index, node);
@@ -610,7 +977,7 @@ function installInlineMedia(quill, options) {
     var host = state.overlay.parentNode || root.parentNode || root;
     var hostRect = host.getBoundingClientRect();
     var rect = node.getBoundingClientRect();
-    var hostStyle = doc.defaultView.getComputedStyle(host);
+    var hostStyle = win.getComputedStyle(host);
     var borderTop = parseFloat(hostStyle.borderTopWidth) || 0;
     var borderLeft = parseFloat(hostStyle.borderLeftWidth) || 0;
     var top = rect.top - hostRect.top - borderTop + (host.scrollTop || 0);
@@ -623,8 +990,8 @@ function installInlineMedia(quill, options) {
     var shiftX = rect.left - placed.left;
     var shiftY = rect.top - placed.top;
     if (Math.abs(shiftX) > 0.5 || Math.abs(shiftY) > 0.5) {
-      state.overlay.style.left = (left + shiftX) + 'px';
-      state.overlay.style.top = (top + shiftY) + 'px';
+      state.overlay.style.left = left + shiftX + 'px';
+      state.overlay.style.top = top + shiftY + 'px';
     }
     state.handles.forEach(function (handle) {
       var c = handle.dataset.corner;
@@ -679,10 +1046,6 @@ function installInlineMedia(quill, options) {
         else node = null;
       }
     }
-    if (!node) {
-      index = indexAtPoint(QuillGlobal, quill, e.clientX, e.clientY);
-      node = embedNodeAtIndex(index);
-    }
     if (!node) return null;
     var isImage = options.image && node.tagName === 'IMG';
     var isVideo = options.video && node.tagName === 'IFRAME';
@@ -690,82 +1053,145 @@ function installInlineMedia(quill, options) {
     return { index: index, node: node };
   }
 
-  function selectionTouches(sel, index) {
-    if (!sel || index == null) return false;
-    if (sel.index === index) return true;
-    if (sel.length === 0 && sel.index === index + 1) return true;
-    return sel.index < index + 1 && sel.index + sel.length > index;
+  // An embed is selected only by clicking it (showResizeOverlay). Any other
+  // caret position, edit, or click deselects it.
+  function selectionIsOnEmbed(range, index) {
+    if (!range || index == null) return false;
+    return range.index === index && (range.length === 0 || range.length === 1);
   }
 
-  function updateResizeOverlay() {
-    if (editingLocked()) {
-      hideResizeOverlay();
-      return;
+  function changeEditsContent(delta) {
+    var ops = (delta && delta.ops) || [];
+    for (var i = 0; i < ops.length; i++) {
+      if (ops[i].insert != null || ops[i].delete != null) return true;
     }
+    return false;
+  }
+
+  function refreshSelectedEmbed() {
     var state = window.__inlineMediaResize;
-    if (state.drag && state.node) {
-      positionResizeOverlay(state.index, state.node);
-      return;
-    }
-    var sel = quill.getSelection();
-    var index = sel ? sel.index : null;
-    var node = null;
-    if (sel && sel.length === 1) node = embedNodeAtIndex(sel.index);
-    if (!node && state.node && selectionTouches(sel, state.index)) {
-      index = state.index;
-      node = state.node;
-    }
-    if (!node && sel && sel.length === 0) {
-      node = embedNodeAtIndex(sel.index) || embedNodeAtIndex(Math.max(0, sel.index - 1));
-      if (node) index = node === embedNodeAtIndex(sel.index) ? sel.index : sel.index - 1;
-    }
-    if (!node) {
+    if (!state.overlay) return;
+    if (editingLocked() || !state.node || !state.node.isConnected) {
       hideResizeOverlay();
       return;
     }
-    var isImage = options.image && node.tagName === 'IMG';
-    var isVideo = options.video && node.tagName === 'IFRAME';
-    if (!isImage && !isVideo) {
+    var blot = QuillGlobal.find(state.node);
+    if (!blot) {
       hideResizeOverlay();
       return;
     }
-    if (state.overlay && (state.index !== index || state.node !== node)) {
-      hideResizeOverlay();
-    }
-    if (!window.__inlineMediaResize.overlay) {
-      showResizeOverlay(index, node);
+    state.index = quill.getIndex(blot);
+    positionResizeOverlay(state.index, state.node);
+  }
+
+  function rootEmbed(node) {
+    if (!node || node.parentNode !== root) return null;
+    if (options.image && node.tagName === 'IMG') return node;
+    if (options.video && node.tagName === 'IFRAME') return node;
+    return null;
+  }
+
+  // A collapsed caret next to a block embed sits in the editor root, where
+  // the browser paints it against the embed's edge. A caret before an embed
+  // selects it; a caret after one moves to the start of the next line.
+  function repairCaretAtEmbed(range) {
+    if (!range || range.length !== 0) return false;
+    var sel = doc.getSelection ? doc.getSelection() : null;
+    if (!sel || !sel.anchorNode) return false;
+    var anchor = sel.anchorNode;
+    var before = null;
+    var after = null;
+    if (anchor === root) {
+      before = rootEmbed(root.childNodes[sel.anchorOffset - 1]);
+      after = rootEmbed(root.childNodes[sel.anchorOffset]);
     } else {
-      positionResizeOverlay(index, node);
+      after = rootEmbed(anchor);
     }
+    var target = after || before;
+    if (!target) return false;
+    var blot = QuillGlobal.find(target);
+    if (!blot) return false;
+    var index = quill.getIndex(blot);
+    // Keyboard moves from below (ArrowUp/ArrowLeft) select the embed so the
+    // caret can travel past it; anything else continues on the next line.
+    var fromBelow = !caretMovedByPointer && lastCaretIndex != null && lastCaretIndex > index;
+    if (!after && target.nextSibling && !fromBelow) {
+      hideResizeOverlay();
+      quill.setSelection(index + 1, 0, 'silent');
+      return true;
+    }
+    if (index !== range.index) quill.setSelection(index, 0, 'silent');
+    var state = window.__inlineMediaResize;
+    if (state.overlay && state.node === target) return true;
+    showResizeOverlay(index, target);
+    return true;
   }
 
-  window.__inlineMediaApplyAttributes = function (index, alt, width, height) {
-    var leaf = quill.getLeaf(index);
-    if (!leaf || !leaf[0]) return;
-    var blot = leaf[0];
-    if (!blot || !blot.format) return;
-    if (alt != null && alt !== '') blot.format('alt', alt);
-    if (width != null && width !== '') blot.format('width', width);
-    if (height != null && height !== '') blot.format('height', height);
-  };
+  var lastCaretIndex = null;
+  var caretMovedByPointer = false;
+  var pointerIsDown = false;
+  var caretRepairFrame = 0;
 
-  quill.on('selection-change', function () {
-    updateResizeOverlay();
+  // Quill emits no selection-change when a new native caret maps to the same
+  // index, so the native selection itself is checked as well.
+  function scheduleCaretRepair() {
+    if (pointerIsDown || fileDragActive || caretRepairFrame) return;
+    caretRepairFrame = win.requestAnimationFrame(function () {
+      caretRepairFrame = 0;
+      var state = window.__inlineMediaResize;
+      if (pointerIsDown || fileDragActive || state.drag || editingLocked()) return;
+      if (!quill.hasFocus || !quill.hasFocus()) return;
+      var range = quill.getSelection();
+      if (repairCaretAtEmbed(range)) {
+        var current = quill.getSelection();
+        if (current) lastCaretIndex = current.index;
+      }
+    });
+  }
+  doc.addEventListener('selectionchange', scheduleCaretRepair);
+  function endPointer() {
+    if (!pointerIsDown) return;
+    pointerIsDown = false;
+    scheduleCaretRepair();
+  }
+  doc.addEventListener('pointerup', endPointer, true);
+  doc.addEventListener('pointercancel', endPointer, true);
+  doc.addEventListener('mouseup', endPointer, true);
+  win.addEventListener('blur', function () {
+    pointerIsDown = false;
   });
-  quill.on('text-change', function () {
+
+  // editor-change also reports silent selection changes, which the host's
+  // focus handling uses.
+  quill.on('editor-change', function (eventName, first, second, source) {
     var state = window.__inlineMediaResize;
-    if (state && state.node && state.node.isConnected && !state.drag) {
-      var blot = QuillGlobal.find(state.node);
-      if (blot) state.index = quill.getIndex(blot);
+    if (state.drag) return;
+    if (eventName === 'selection-change') {
+      // A null range is a blur (for example the toolbar edit button); keep it.
+      if (first == null) return;
+      var repaired =
+        source === 'user' && !fileDragActive && !editingLocked() && repairCaretAtEmbed(first);
+      var current = repaired ? quill.getSelection() : first;
+      lastCaretIndex = current ? current.index : first.index;
+      if (repaired) return;
+      if (state.overlay && !selectionIsOnEmbed(first, state.index)) hideResizeOverlay();
+      return;
     }
-    updateResizeOverlay();
+    if (!state.overlay) return;
+    if (eventName === 'text-change') {
+      if (source === 'user' && changeEditsContent(first)) {
+        hideResizeOverlay();
+        return;
+      }
+      refreshSelectedEmbed();
+    }
   });
 
   function repositionOverlaySoon() {
     var state = window.__inlineMediaResize;
     if (!state || !state.overlay || !state.node) return;
     if (state.scrollFrame) return;
-    state.scrollFrame = doc.defaultView.requestAnimationFrame(function () {
+    state.scrollFrame = win.requestAnimationFrame(function () {
       state.scrollFrame = 0;
       if (!state.overlay || !state.node || !state.node.isConnected) return;
       positionResizeOverlay(state.index, state.node);
@@ -773,12 +1199,33 @@ function installInlineMedia(quill, options) {
   }
   root.addEventListener('scroll', repositionOverlaySoon);
   if (root.parentNode) root.parentNode.addEventListener('scroll', repositionOverlaySoon);
+  win.addEventListener('resize', repositionOverlaySoon);
+
+  if (typeof ResizeObserver === 'function') {
+    try {
+      var ro = new ResizeObserver(function () {
+        repositionOverlaySoon();
+      });
+      ro.observe(root);
+    } catch (_) {}
+  }
 
   root.addEventListener('mousedown', function (e) {
+    if (editingLocked()) return;
     if (e.target && e.target.classList && e.target.classList.contains('inline-media-resize-handle')) return;
     var hit = embedFromEvent(e);
     if (!hit) return;
     e.preventDefault();
+  }, true);
+
+  root.addEventListener('pointerdown', function (e) {
+    caretMovedByPointer = true;
+    pointerIsDown = true;
+    var state = window.__inlineMediaResize;
+    if (!state.overlay || state.drag) return;
+    if (e.target && e.target.classList && e.target.classList.contains('inline-media-resize-handle')) return;
+    if (embedFromEvent(e)) return;
+    hideResizeOverlay();
   }, true);
 
   root.addEventListener('click', function (e) {
@@ -789,40 +1236,67 @@ function installInlineMedia(quill, options) {
     e.preventDefault();
     window.setTimeout(function () {
       if (quill.focus) quill.focus();
-      quill.setSelection(hit.index, 0, 'silent');
+      quill.setSelection(hit.index, 0, 'user');
       showResizeOverlay(hit.index, hit.node);
     }, 0);
   });
 
-  root.addEventListener('keydown', function (e) {
-    if (editingLocked()) return;
-    if (e.key !== 'Backspace' && e.key !== 'Delete') return;
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+  doc.addEventListener('keydown', function (e) {
+    caretMovedByPointer = false;
+    pointerIsDown = false;
     var state = window.__inlineMediaResize;
+    if (state && state.drag && (e.key === 'Escape' || e.key === 'Esc')) {
+      e.preventDefault();
+      e.stopPropagation();
+      finishDrag(false);
+      return;
+    }
+    if (editingLocked() || e.isComposing) return;
     if (!state || !state.overlay || state.index == null || state.drag) return;
+    if (e.metaKey || e.ctrlKey) return;
     var sel = quill.getSelection();
-    if (!sel) return;
-    var collapsed = sel.length === 0;
-    var exactEmbed = sel.length === 1 && sel.index === state.index;
-    if (!collapsed && !exactEmbed) return;
-    var onEmbed = collapsed && sel.index === state.index;
-    var backspaceAfter = collapsed && sel.index === state.index + 1 && e.key === 'Backspace';
-    if (!exactEmbed && !onEmbed && !backspaceAfter) return;
-    e.preventDefault();
-    e.stopPropagation();
+    if (!selectionIsOnEmbed(sel, state.index)) {
+      hideResizeOverlay();
+      return;
+    }
     var index = state.index;
+    if (e.key === 'Escape' || e.key === 'Esc') {
+      e.preventDefault();
+      e.stopPropagation();
+      hideResizeOverlay();
+      quill.setSelection(index + 1, 0, 'user');
+      return;
+    }
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      if (e.altKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      hideResizeOverlay();
+      quill.deleteText(index, 1, 'user');
+      var length = quill.getLength();
+      quill.setSelection(index >= length ? Math.max(0, length - 1) : index, 0, 'user');
+      return;
+    }
+    var printable = e.key && e.key.length === 1;
+    if (e.key !== 'Enter' && !printable) return;
+    // Text typed at a block embed's index lands on a new line above it.
+    // Continue below the embed instead, reusing an empty line there.
     hideResizeOverlay();
-    quill.deleteText(index, 1, 'user');
-    var length = quill.getLength();
-    var next = index >= length ? Math.max(0, length - 1) : index;
-    quill.setSelection(next, 0, 'silent');
+    var after = quill.getContents(index + 1, 1).ops[0];
+    var nextLineEmpty = !!after && after.insert === '\n';
+    if (!nextLineEmpty) quill.insertText(index + 1, '\n', 'user');
+    quill.setSelection(index + 1, 0, 'user');
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
   }, true);
 
   root.addEventListener('dblclick', function (e) {
     if (editingLocked()) return;
     var hit = embedFromEvent(e);
     if (!hit) return;
-    quill.setSelection(hit.index, 1, 'silent');
+    quill.setSelection(hit.index, 1, 'user');
     if (hit.node.tagName === 'IMG' && options.image && options.onImageDoubleClick) {
       options.onImageDoubleClick();
       return;

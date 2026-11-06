@@ -178,10 +178,21 @@ class QuillJsLinkTooltipStyle {
 /// [height] are pixel sizes. A null size is omitted: a new image then uses
 /// its intrinsic size, and a new video uses 560 by 315.
 class QuillJsMediaValue {
-  const QuillJsMediaValue({required this.source, this.alt, this.width, this.height});
+  const QuillJsMediaValue({
+    required this.source,
+    this.alt,
+    this.width,
+    this.height,
+    this.embedded = false,
+  });
 
   /// Image or video source. A video source must be an `http` or `https` URL.
   final String source;
+
+  /// True when image bytes live in the document (paste/drop). [source] is then
+  /// a short `blob:` URL for in-page preview; returning the same [source] from
+  /// a dialog keeps the image while updating alt or size.
+  final bool embedded;
 
   /// Image alt text, or the video iframe title.
   final String? alt;
@@ -486,6 +497,11 @@ class QuillJsFormatState {
 
   final BlockStyleChoice blockStyle;
 
+  /// True when the selection spans lines with different block styles.
+  /// [blockStyle] is then [BlockStyleChoice.paragraph] and should not be
+  /// shown as the current style.
+  final bool blockStyleMixed;
+
   const QuillJsFormatState({
     this.bold = false,
     this.italic = false,
@@ -493,6 +509,7 @@ class QuillJsFormatState {
     this.list,
     this.link,
     this.blockStyle = BlockStyleChoice.paragraph,
+    this.blockStyleMixed = false,
   });
 
   @override
@@ -504,11 +521,19 @@ class QuillJsFormatState {
           underline == other.underline &&
           list == other.list &&
           link == other.link &&
-          blockStyle == other.blockStyle;
+          blockStyle == other.blockStyle &&
+          blockStyleMixed == other.blockStyleMixed;
 
   @override
-  int get hashCode =>
-      Object.hash(bold, italic, underline, list, link, blockStyle);
+  int get hashCode => Object.hash(
+        bold,
+        italic,
+        underline,
+        list,
+        link,
+        blockStyle,
+        blockStyleMixed,
+      );
 }
 
 /// Controller for the Quill.js web editor.

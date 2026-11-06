@@ -26,6 +26,8 @@ import '../../utils/delta.dart';
 import '../default_styles.dart';
 import 'block_style.dart';
 import 'inline_mark_css.dart';
+import 'inline_image_store.dart';
+import 'inline_image_store_browser.dart';
 import 'inline_media.dart';
 import 'inline_media_iframe.dart';
 import 'link_range_resolution.dart';
@@ -1591,6 +1593,8 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
   @override
   void initState() {
     super.initState();
+    configureInlineImageStoreForBrowser();
+    InlineImageStore.instance.retain();
     _contentForAutoResize =
         widget.configuration.initialContent ?? (Delta()..insert('\n'));
 
@@ -1690,6 +1694,7 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
 
   @override
   void dispose() {
+    InlineImageStore.instance.release();
     _setEditorIgnoresPointers(false);
     _cancelAcquisitionStableFromSelectionSchedule();
     _pendingJsToFlutterFocusSync = null;
@@ -2456,7 +2461,9 @@ $customCss
 
     // Set initial content
     if (config.initialContent != null) {
-      _quill!.setContents(_deltaToJs(config.initialContent!));
+      final collapsed = InlineImageStore.instance.collapse(config.initialContent!);
+      _quill!.setContents(_deltaToJs(collapsed));
+      _contentForAutoResize = collapsed;
     }
 
     _setupEventListeners();
@@ -3081,8 +3088,12 @@ $customCss
               if (changeDeltaObj is! JSObject || oldContentsObj is! JSObject) {
                 _onTextChanged();
               } else {
-                final changeDelta = _jsToDelta(changeDeltaObj);
-                final oldDelta = _jsToDelta(oldContentsObj);
+                final changeDelta = InlineImageStore.instance.expand(
+                  _jsToDelta(changeDeltaObj),
+                );
+                final oldDelta = InlineImageStore.instance.expand(
+                  _jsToDelta(oldContentsObj),
+                );
                 if (!callback(changeDelta, oldDelta)) {
                   _isReverting = true;
                   _suppressContentChanged = true;
@@ -3126,12 +3137,14 @@ $customCss
 
   void _onTextChanged() {
     if (_suppressContentChanged) return;
-    final delta = _getContentsDelta();
-    _contentForAutoResize = delta;
+    final collapsed = _getContentsDelta();
+    _contentForAutoResize = collapsed;
     if (widget.configuration.autoResizeToContent && mounted) {
       setState(() {});
     }
-    widget.configuration.onContentChanged?.call(delta);
+    widget.configuration.onContentChanged?.call(
+      InlineImageStore.instance.expand(collapsed),
+    );
     _scheduleEnsureSelectionVisible();
   }
 
@@ -4312,7 +4325,9 @@ $customCss
           if (selectionLength > 0) {'delete': selectionLength},
           ...pasteOps,
         ];
-        final combined = Delta.fromJson(combinedOps);
+        final combined = InlineImageStore.instance.collapse(
+          Delta.fromJson(combinedOps),
+        );
         _quill!.updateContents(_deltaToJs(combined), 'api'.toJS);
 
         final pasteLength = _deltaLength(pasteDelta);
@@ -4350,10 +4365,12 @@ $customCss
         if (sel == null || sel.length == 0) return;
 
         final plainText = _quill!.getText(sel.index, sel.length);
-        final delta = sliceDeltaForCopy(
-          _jsToDelta(_quill!.getContents()),
-          sel.index,
-          sel.index + sel.length,
+        final delta = InlineImageStore.instance.expand(
+          sliceDeltaForCopy(
+            _jsToDelta(_quill!.getContents()),
+            sel.index,
+            sel.index + sel.length,
+          ),
         );
 
         final result = copyInterceptor(plainText, delta);
@@ -4381,10 +4398,12 @@ $customCss
         if (sel == null || sel.length == 0) return;
 
         final plainText = _quill!.getText(sel.index, sel.length);
-        final delta = sliceDeltaForCopy(
-          _jsToDelta(_quill!.getContents()),
-          sel.index,
-          sel.index + sel.length,
+        final delta = InlineImageStore.instance.expand(
+          sliceDeltaForCopy(
+            _jsToDelta(_quill!.getContents()),
+            sel.index,
+            sel.index + sel.length,
+          ),
         );
 
         final result = copyInterceptor(plainText, delta);
@@ -4418,7 +4437,7 @@ $customCss
     try {
       final decoded = jsonDecode(quillDeltaJson);
       if (decoded is List) {
-        final delta = Delta.fromJson(decoded);
+        final delta = InlineImageStore.instance.collapse(Delta.fromJson(decoded));
         if (!delta.isEmpty) {
           return delta;
         }
@@ -4626,12 +4645,9 @@ $customCss
 
     final currentIndent = (format['indent'] as num?)?.toInt() ?? 0;
 
-    // Find the previous line by locating the last '\n' before the cursor
-    // in the plain text. This avoids fragile Delta op parsing.
-    final textBeforeCursor = _quill!.getText(0, sel.index);
-    final prevNewline = textBeforeCursor.lastIndexOf('\n');
+    final prevNewline = lastNewlineIndexBefore(_getContentsDelta(), sel.index);
 
-    if (prevNewline < 0) {
+    if (prevNewline == null) {
       // Cursor is on the very first line — no parent to nest under.
       return false;
     }
@@ -5382,12 +5398,13 @@ $customCss
         _syncFormatState();
       },
       requestLink: _handleRequestLink,
-      getContents: _getContentsDelta,
+      getContents: () => InlineImageStore.instance.expand(_getContentsDelta()),
       setContents: (delta) {
         _suppressContentChanged = true;
-        _quill!.setContents(_deltaToJs(delta));
+        final collapsed = InlineImageStore.instance.collapse(delta);
+        _quill!.setContents(_deltaToJs(collapsed));
         _suppressContentChanged = false;
-        _contentForAutoResize = delta;
+        _contentForAutoResize = collapsed;
         if (widget.configuration.autoResizeToContent && mounted) {
           setState(() {});
         }
@@ -5396,7 +5413,7 @@ $customCss
       ensureSelectionVisible: _ensureSelectionVisible,
       clear: () {
         _suppressContentChanged = true;
-        final cleared = Delta()..insert('\n');
+        final cleared = InlineImageStore.instance.collapse(Delta()..insert('\n'));
         _quill!.setContents(_deltaToJs(cleared));
         _suppressContentChanged = false;
         _contentForAutoResize = cleared;
@@ -5607,9 +5624,6 @@ $customCss
     final format = _getFormat();
     final sel = _getQuillSelection();
     final isCollapsed = sel == null || sel.length == 0;
-    final blockFormat = sel == null
-        ? const <String, dynamic>{}
-        : _getFormatAt(sel.index, 0);
 
     String? link = format['link'] is String ? format['link'] as String : null;
     if (link != null && isCollapsed) {
@@ -5622,7 +5636,8 @@ $customCss
       underline: format['underline'] == true,
       list: format['list'] is String ? format['list'] as String : null,
       link: link,
-      blockStyle: blockStyleFromFormat(blockFormat),
+      blockStyle: blockStyleFromFormat(format),
+      blockStyleMixed: blockStyleIsMixed(format),
     );
     widget.controller.updateFormatState(state);
   }
@@ -5753,12 +5768,14 @@ $customCss
               'readOnly': widget.configuration.readOnly,
               'onImageDrop':
                   (
+                    JSString blobUrl,
                     JSString dataUrl,
                     JSNumber naturalWidth,
                     JSNumber naturalHeight,
                     JSNumber contentWidth,
                   ) {
                     _handleInlineMediaImageDrop(
+                      blobUrl.toDart,
                       dataUrl.toDart,
                       naturalWidth.toDartInt,
                       naturalHeight.toDartInt,
@@ -5787,6 +5804,7 @@ $customCss
                     JSNumber dx,
                     JSNumber dy,
                     JSString handle,
+                    JSNumber maxWidth,
                   ) {
                     _handleInlineMediaResize(
                       index.toDartInt,
@@ -5795,6 +5813,7 @@ $customCss
                       dx.toDartDouble,
                       dy.toDartDouble,
                       handle.toDart,
+                      maxWidth.toDartDouble,
                     );
                   }.toJS,
               'onImageDoubleClick': () {
@@ -5803,12 +5822,23 @@ $customCss
               'onVideoDoubleClick': () {
                 unawaited(_editMedia(MediaEditKind.video));
               }.toJS,
+              'expandBlobUrl': (JSString blobUrl) {
+                return InlineImageStore.instance
+                    .dataUrlFor(blobUrl.toDart)
+                    ?.toJS;
+              }.toJS,
+              'collapseDataUrl': (JSString dataUrl) {
+                return InlineImageStore.instance
+                    .blobUrlFor(dataUrl.toDart)
+                    .toJS;
+              }.toJS,
             }.jsify()
             as JSObject;
     installFn.callAsFunction(null, jsQuill, options);
   }
 
   void _handleInlineMediaImageDrop(
+    String blobUrl,
     String dataUrl,
     int naturalWidth,
     int naturalHeight,
@@ -5818,6 +5848,7 @@ $customCss
     if (!widget.configuration.effectiveFormats.contains('image')) return;
     final quill = _quill;
     if (quill == null || !mounted) return;
+    InlineImageStore.instance.register(blobUrl, dataUrl);
     final size = fitToContentWidth(
       EmbedSize(naturalWidth, naturalHeight),
       contentWidth,
@@ -5825,11 +5856,11 @@ $customCss
     final selection = _getQuillSelection();
     final docEnd = quill.getLength() - 1;
     final index = selection?.index ?? (docEnd < 0 ? 0 : docEnd);
-    quill.insertEmbed(index, 'image', dataUrl, 'api'.toJS);
-    final attributes = mediaAttributes(width: size.width, height: size.height);
-    attributes?.forEach((name, attributeValue) {
-      quill.formatText(index, 1, name, attributeValue.toString().toJS);
-    });
+    final attrs = mediaAttributes(width: size.width, height: size.height);
+    final delta = Delta()
+      ..retain(index)
+      ..insert({'image': blobUrl}, attrs);
+    quill.updateContents(_deltaToJs(delta), 'user'.toJS);
     quill.setSelection(index + 1, 0);
   }
 
@@ -5856,12 +5887,18 @@ $customCss
     if (missingBoth) {
       resolved = fitToContentWidth(resolved, contentWidth);
     }
+    final formatAttrs = <String, dynamic>{};
     if ((width == null || width <= 0) && resolved.width > 0) {
-      quill.formatText(index, 1, 'width', resolved.width.toString().toJS);
+      formatAttrs['width'] = resolved.width.toString();
     }
     if ((height == null || height <= 0) && resolved.height > 0) {
-      quill.formatText(index, 1, 'height', resolved.height.toString().toJS);
+      formatAttrs['height'] = resolved.height.toString();
     }
+    if (formatAttrs.isEmpty) return;
+    final delta = Delta()
+      ..retain(index)
+      ..retain(1, formatAttrs);
+    quill.updateContents(_deltaToJs(delta), 'silent'.toJS);
   }
 
   void _handleInlineMediaResize(
@@ -5871,6 +5908,7 @@ $customCss
     double dx,
     double dy,
     String handle,
+    double maxWidth,
   ) {
     if (widget.configuration.readOnly) return;
     final quill = _quill;
@@ -5881,9 +5919,15 @@ $customCss
       dx: dx,
       dy: dy,
       handle: handle,
+      maxWidth: maxWidth,
     );
-    quill.formatText(index, 1, 'width', size.width.toString().toJS);
-    quill.formatText(index, 1, 'height', size.height.toString().toJS);
+    final delta = Delta()
+      ..retain(index)
+      ..retain(1, {
+        'width': size.width.toString(),
+        'height': size.height.toString(),
+      });
+    quill.updateContents(_deltaToJs(delta), 'user'.toJS);
   }
 
   Future<void> _editMedia(MediaEditKind kind) async {
@@ -5929,9 +5973,11 @@ $customCss
     if (quill == null) return;
     final docEnd = quill.getLength() - 1;
     final index = selection?.index ?? (docEnd < 0 ? 0 : docEnd);
-    final length = replace ? 1 : (selection?.length ?? 0);
-    if (length > 0) quill.deleteText(index, length);
-    quill.insertEmbed(index, formatName, value.source, 'api'.toJS);
+    final selectionLength = replace ? 1 : (selection?.length ?? 0);
+    var source = value.source;
+    if (formatName == 'image' && InlineImageStore.isDataImageUrl(source)) {
+      source = InlineImageStore.instance.blobUrlFor(source);
+    }
     var width = value.width;
     var height = value.height;
     if (formatName == 'video') {
@@ -5939,21 +5985,29 @@ $customCss
       width = size.width;
       height = size.height;
     }
-    final applyFn =
-        (_iframe.contentWindow as JSObject?)?['__inlineMediaApplyAttributes'];
-    if (applyFn is JSFunction) {
-      applyFn.callAsFunction(
-        null,
-        index.toJS,
-        value.alt?.toJS,
-        width?.toJS,
-        height?.toJS,
-      );
+    final attrs = mediaAttributes(alt: value.alt, width: width, height: height);
+    final delta = Delta();
+    if (index > 0) delta.retain(index);
+    if (replace) {
+      final current = _mediaValueAt(quill, formatName, index);
+      if (current != null && current.source == source) {
+        final formatUpdate = <String, dynamic>{
+          'alt': (value.alt != null && value.alt!.trim().isNotEmpty)
+              ? value.alt!.trim()
+              : null,
+          'width': (width != null && width > 0) ? width.toString() : null,
+          'height': (height != null && height > 0) ? height.toString() : null,
+        };
+        delta.retain(1, formatUpdate);
+      } else {
+        delta.delete(1);
+        delta.insert({formatName: source}, attrs);
+      }
+    } else {
+      if (selectionLength > 0) delta.delete(selectionLength);
+      delta.insert({formatName: source}, attrs);
     }
-    final attributes = mediaAttributes(alt: value.alt, width: width, height: height);
-    attributes?.forEach((name, attributeValue) {
-      quill.formatText(index, 1, name, attributeValue.toString().toJS);
-    });
+    quill.updateContents(_deltaToJs(delta), 'api'.toJS);
     quill.setSelection(index + 1, 0);
   }
 
@@ -5982,14 +6036,21 @@ $customCss
     final op = contents.toList().first;
     final data = op.data;
     if (data is! Map) return null;
-    final source = data[formatName];
-    if (source is! String || source.isEmpty) return null;
+    final raw = data[formatName];
+    if (raw is! String || raw.isEmpty) return null;
     final attrs = op.attributes;
+    final embedded = formatName == 'image' &&
+        (InlineImageStore.isBlobImageUrl(raw) ||
+            InlineImageStore.isDataImageUrl(raw));
+    final source = embedded && InlineImageStore.isDataImageUrl(raw)
+        ? InlineImageStore.instance.blobUrlFor(raw)
+        : raw;
     return QuillJsMediaValue(
       source: source,
       alt: attrs?['alt']?.toString(),
       width: int.tryParse('${attrs?['width'] ?? ''}'),
       height: int.tryParse('${attrs?['height'] ?? ''}'),
+      embedded: embedded,
     );
   }
 

@@ -3,10 +3,12 @@ import 'dart:io';
 import 'package:dart_quill_delta/dart_quill_delta.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter_quill/src/widgets/toolbar/select_block_style_button.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 void main() {
   const labels = <String>[
+    'Insert image',
+    'Insert video',
     'Paragraph',
     'Heading 1',
     'Heading 2',
@@ -17,14 +19,23 @@ void main() {
     'Preformatted',
   ];
 
-  test('every locale map has the eight English labels', () {
-    final source = File('lib/src/translations/toolbar.i18n.dart').readAsStringSync();
+  test('every locale map defines the block-style labels', () {
+    final source =
+        File('lib/src/translations/toolbar.i18n.dart').readAsStringSync();
     for (final label in labels) {
       expect(
-        RegExp("'${RegExp.escape(label)}': '${RegExp.escape(label)}'").allMatches(source).length,
+        RegExp("'${RegExp.escape(label)}': ").allMatches(source).length,
         35,
       );
     }
+    expect(
+      RegExp("'Insert image': 'Insert image'").allMatches(source).length,
+      2,
+    );
+    expect(
+      RegExp("'Insert image': 'Bild einfügen'").allMatches(source).length,
+      1,
+    );
   });
 
   Future<void> pumpToolbar(
@@ -35,6 +46,7 @@ void main() {
     List<String>? enabledFormats,
     Map<ToolbarButtons, String>? tooltips,
     VoidCallback? afterButtonPressed,
+    Locale? locale,
   }) {
     tester.view.physicalSize = const Size(1600, 800);
     tester.view.devicePixelRatio = 1;
@@ -42,14 +54,17 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     return tester.pumpWidget(
       MaterialApp(
+        locale: locale,
         home: Scaffold(
           body: QuillToolbar.basic(
             controller: controller,
             quillJsController: quillJsController,
             showHeaderStyle: showHeaderStyle,
-            enabledFormats: enabledFormats ?? QuillJsEditorConfiguration.defaultFormats,
+            enabledFormats:
+                enabledFormats ?? QuillJsEditorConfiguration.defaultFormats,
             tooltips: tooltips,
             afterButtonPressed: afterButtonPressed,
+            locale: locale,
           ),
         ),
       ),
@@ -112,6 +127,22 @@ void main() {
     expect(find.text('Preformatted'), findsNothing);
   });
 
+  testWidgets('shows only Preformatted when only code-block is enabled', (tester) async {
+    await pumpToolbar(
+      tester,
+      quillJsController: QuillJsEditorController(),
+      enabledFormats: [
+        ...QuillJsEditorConfiguration.defaultFormats,
+        'code-block',
+      ],
+    );
+    expect(find.byTooltip('Header style'), findsOneWidget);
+    await tester.tap(find.text('Paragraph'));
+    await tester.pumpAndSettle();
+    expect(find.text('Heading 1'), findsNothing);
+    expect(find.text('Preformatted'), findsOneWidget);
+  });
+
   testWidgets('shows Preformatted when code-block is enabled', (tester) async {
     await pumpToolbar(
       tester,
@@ -132,7 +163,11 @@ void main() {
       tester,
       quillJsController: QuillJsEditorController(),
       showHeaderStyle: false,
-      enabledFormats: [...QuillJsEditorConfiguration.defaultFormats, 'header', 'code-block'],
+      enabledFormats: [
+        ...QuillJsEditorConfiguration.defaultFormats,
+        'header',
+        'code-block',
+      ],
     );
     expect(find.text('Paragraph'), findsNothing);
   });
@@ -152,11 +187,89 @@ void main() {
     await pumpToolbar(
       tester,
       quillJsController: controller,
-      enabledFormats: [...QuillJsEditorConfiguration.defaultFormats, 'header', 'code-block'],
+      enabledFormats: [
+        ...QuillJsEditorConfiguration.defaultFormats,
+        'header',
+        'code-block',
+      ],
     );
-    controller.updateFormatState(const QuillJsFormatState(blockStyle: BlockStyleChoice.heading3));
+    controller.updateFormatState(
+      const QuillJsFormatState(blockStyle: BlockStyleChoice.heading3),
+    );
     await tester.pump();
     expect(find.text('Heading 3'), findsOneWidget);
+  });
+
+  testWidgets('a mixed selection shows no current style', (tester) async {
+    final controller = QuillJsEditorController();
+    await pumpToolbar(
+      tester,
+      quillJsController: controller,
+      enabledFormats: [...QuillJsEditorConfiguration.defaultFormats, 'header'],
+    );
+    controller.updateFormatState(
+      const QuillJsFormatState(
+        blockStyle: BlockStyleChoice.heading2,
+        blockStyleMixed: true,
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Heading 2'), findsNothing);
+    expect(find.text('Paragraph'), findsNothing);
+  });
+
+  testWidgets('marks the selected style in the open menu', (tester) async {
+    final controller = QuillJsEditorController();
+    await pumpToolbar(
+      tester,
+      quillJsController: controller,
+      enabledFormats: [...QuillJsEditorConfiguration.defaultFormats, 'header'],
+    );
+    controller.updateFormatState(
+      const QuillJsFormatState(blockStyle: BlockStyleChoice.heading2),
+    );
+    await tester.pump();
+    await tester.tap(find.text('Heading 2'));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.check), findsOneWidget);
+  });
+
+  testWidgets('widens the trigger for longer locale labels', (tester) async {
+    await pumpToolbar(
+      tester,
+      quillJsController: QuillJsEditorController(),
+      enabledFormats: [
+        ...QuillJsEditorConfiguration.defaultFormats,
+        'header',
+        'code-block',
+      ],
+      locale: const Locale('de'),
+    );
+    final trigger = tester.widget<SizedBox>(
+      find.ancestor(
+        of: find.text('Absatz'),
+        matching: find.byType(SizedBox),
+      ).first,
+    );
+    expect(trigger.width, greaterThan(148));
+    expect(trigger.width, lessThanOrEqualTo(220));
+  });
+
+  test('skips dropdown rebuild when blockStyle is unchanged', () {
+    expect(
+      blockStyleDropdownNeedsRebuild(
+        BlockStyleChoice.paragraph,
+        BlockStyleChoice.paragraph,
+      ),
+      isFalse,
+    );
+    expect(
+      blockStyleDropdownNeedsRebuild(
+        BlockStyleChoice.paragraph,
+        BlockStyleChoice.heading1,
+      ),
+      isTrue,
+    );
   });
 
   testWidgets('a choice calls applyBlockStyle and afterButtonPressed only when it applies', (tester) async {
