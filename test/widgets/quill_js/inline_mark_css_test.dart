@@ -35,6 +35,29 @@ void main() {
       expect(emRule, contains('"wdth" 95.0'));
     });
 
+    test('marks inside headings keep the heading size and line height', () {
+      const styles = DefaultStyles(
+        bold: TextStyle(fontSize: 16, height: 1.5, fontWeight: FontWeight.bold),
+        italic: TextStyle(fontSize: 16, height: 1.5, fontStyle: FontStyle.italic),
+      );
+      final css = buildQuillJsInlineMarkCss(styles);
+      expect(_extractRule(css, '.ql-editor strong'), contains('font-size: 16.0px;'));
+      expect(
+        css,
+        contains(
+          '.ql-editor :is(h1, h2, h3, h4, h5, h6, li[data-list-block]) '
+          ':is(strong, em) { font-size: inherit; line-height: inherit; }',
+        ),
+      );
+    });
+
+    test('adds no heading rule when the marks set no size', () {
+      const styles = DefaultStyles(
+        bold: TextStyle(fontWeight: FontWeight.bold),
+      );
+      expect(buildQuillJsInlineMarkCss(styles), isNot(contains(':is(')));
+    });
+
     test('keeps non-conflicting inline properties', () {
       const styles = DefaultStyles(
         italic: TextStyle(

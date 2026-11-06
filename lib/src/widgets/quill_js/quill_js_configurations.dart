@@ -427,6 +427,14 @@ class QuillJsEditorConfiguration {
   /// `someFocusNode.requestFocus()`.
   final VoidCallback? onShiftTabPressed;
 
+  /// The Quill formats this editor allows, or null for [defaultFormats]
+  /// (bold, italic, underline, list, link, indent).
+  ///
+  /// Add `header` for Heading 1–6, `code-block` for Preformatted, and
+  /// `image` and `video` for embeds. A format that is not listed is
+  /// stripped from loaded and pasted content. Pass the same list to
+  /// `QuillToolbar.basic(enabledFormats: ...)`: a toolbar control for a
+  /// format missing here does nothing.
   final List<String>? formats;
 
   List<String> get effectiveFormats => formats ?? defaultFormats;

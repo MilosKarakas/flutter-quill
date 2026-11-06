@@ -68,9 +68,42 @@ class InlineImageStore {
 
   static bool isBlobImageUrl(String url) => url.startsWith('blob:');
 
+  /// A raster image data URL. SVG is excluded: the editor blocks SVG
+  /// images, and a `blob:` URL would hide the type from that check.
   static bool isDataImageUrl(String url) {
     final lower = url.toLowerCase();
-    return lower.startsWith('data:image/');
+    return lower.startsWith('data:image/') &&
+        !lower.startsWith('data:image/svg');
+  }
+
+  /// [delta] without images whose `blob:` URL this store does not know.
+  ///
+  /// A `blob:` URL only works in the page that made it, so one pasted from
+  /// another tab or app is a dead image; it would reach the host as a URL
+  /// that never loads.
+  Delta withoutForeignBlobImages(Delta delta) {
+    final ops = delta.toList();
+    bool foreign(Operation op) {
+      if (!op.isInsert || op.data is! Map) return false;
+      final image = (op.data as Map)['image'];
+      return image is String &&
+          isBlobImageUrl(image) &&
+          dataUrlFor(image) == null;
+    }
+
+    if (!ops.any(foreign)) return delta;
+    final out = Delta();
+    for (final op in ops) {
+      if (foreign(op)) continue;
+      if (op.isRetain) {
+        out.retain(op.length!, op.attributes);
+      } else if (op.isInsert) {
+        out.insert(op.data, op.attributes);
+      } else if (op.isDelete) {
+        out.delete(op.length!);
+      }
+    }
+    return out;
   }
 
   /// Returns [delta] itself when no image URL changes, so editors without

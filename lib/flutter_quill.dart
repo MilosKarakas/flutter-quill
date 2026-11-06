@@ -36,7 +36,7 @@ export 'src/widgets/toolbar/enum.dart';
 // Quill.js-based web editor (PlatformView approach)
 export 'src/widgets/quill_js/quill_js_configurations.dart';
 export 'src/widgets/quill_js/block_style.dart'
-    show BlockStyleChoice, BlockStyleCommand, blockStyleCommands, blockStyleFromFormat, blockStyleMenu;
+    show BlockStyleChoice, blockStyleFromFormat, blockStyleMenu;
 export 'src/widgets/quill_js/inline_media.dart'
     show
         EmbedSize,
@@ -50,7 +50,9 @@ export 'src/widgets/quill_js/inline_media.dart'
         isSupportedDroppedImage,
         mediaAttributes,
         minEmbedSide,
+        normalizeVideoEmbedUrl,
         resizeFromCorner,
         resolveFormEmbedSize,
+        resolveImageLoadSize,
         resolveLoadedSize;
 export 'src/widgets/quill_js/quill_js_editor.dart';

@@ -1,6 +1,9 @@
 include: package:pedantic/analysis_options.yaml
 
 analyzer:
+  exclude:
+    # A separate web app with its own pubspec; see its README.
+    - tool/quill_js_browser_checks/**
   errors:
     undefined_prefixed_name: ignore
     unsafe_html: ignore

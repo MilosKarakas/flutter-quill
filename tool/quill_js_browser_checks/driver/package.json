@@ -1,0 +1,12 @@
+{
+  "name": "quill-js-browser-checks",
+  "private": true,
+  "description": "Drives the QuillJsEditorView harness in Chrome.",
+  "scripts": {
+    "features": "node features.js",
+    "regression": "node regression.js"
+  },
+  "dependencies": {
+    "playwright-core": "1.47.2"
+  }
+}

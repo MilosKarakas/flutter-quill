@@ -1,0 +1,18 @@
+name: quill_js_browser_checks
+description: Web app that hosts QuillJsEditorView for the browser checks in ../driver.
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_quill:
+    path: ../../..
+  dart_quill_delta: any
+  web: any
+
+flutter:
+  uses-material-design: true

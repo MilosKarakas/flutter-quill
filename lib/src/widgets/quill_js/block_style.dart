@@ -68,10 +68,7 @@ bool _listHasDifferingValues(List<dynamic> values) {
 bool blockStyleIsMixed(Map<String, dynamic>? format) {
   if (format == null) return false;
   final header = format['header'];
-  if (header is List) {
-    if (_listHasDifferingValues(header)) return true;
-    return header.isNotEmpty;
-  }
+  if (header is List && _listHasDifferingValues(header)) return true;
   final code = format['code-block'];
   if (code is List && _listHasDifferingValues(code)) return true;
   return false;
@@ -106,7 +103,22 @@ BlockStyleChoice blockStyleFromFormat(Map<String, dynamic>? format) {
   if (format == null) return BlockStyleChoice.paragraph;
   final code = format['code-block'];
   if (code != null && code != false) return BlockStyleChoice.preformatted;
-  final header = format['header'];
+  // A list item that is also a heading or Preformatted (`<li><h2>`).
+  final listBlock = format['list-block'];
+  if (listBlock is String && format['list'] != null) {
+    if (listBlock == 'pre') return BlockStyleChoice.preformatted;
+    final level = listBlock.startsWith('h')
+        ? int.tryParse(listBlock.substring(1))
+        : null;
+    if (level != null && level >= 1 && level <= 6) {
+      return _headings[level - 1];
+    }
+  }
+  var header = format['header'];
+  // Quill lists the values of a mixed range; equal values are one style.
+  if (header is List && header.isNotEmpty && !_listHasDifferingValues(header)) {
+    header = header.first;
+  }
   if (header is num) {
     final level = header.round();
     if (header == level && level >= 1 && level <= 6) {
@@ -126,6 +138,75 @@ List<BlockStyleChoice> blockStyleMenu(List<String> enabledFormats) {
   ];
 }
 
+/// The line attributes that apply [choice] to one line, or `null` when the
+/// choice changes nothing there.
+///
+/// A list line keeps its bullet and records the style in `list-block`, so
+/// it is saved as `<li><hN>` or `<li><pre>` the way the TinyMCE editor
+/// writes it; Paragraph clears that style. Any other line takes `header`
+/// or `code-block` as before. Requires `list` in [enabledFormats] for the
+/// list behaviour, plus `header` for headings and `code-block` for
+/// Preformatted.
+Map<String, dynamic>? blockStyleLineAttributes({
+  required BlockStyleChoice choice,
+  required bool isListLine,
+  required bool readOnly,
+  required List<String> enabledFormats,
+}) {
+  if (readOnly) return null;
+  final header = enabledFormats.contains('header');
+  final code = enabledFormats.contains('code-block');
+  final level = _headings.indexOf(choice) + 1;
+  if (isListLine && enabledFormats.contains('list')) {
+    switch (choice) {
+      case BlockStyleChoice.paragraph:
+        return const <String, dynamic>{'list-block': null};
+      case BlockStyleChoice.preformatted:
+        return code ? const <String, dynamic>{'list-block': 'pre'} : null;
+      case BlockStyleChoice.heading1:
+      case BlockStyleChoice.heading2:
+      case BlockStyleChoice.heading3:
+      case BlockStyleChoice.heading4:
+      case BlockStyleChoice.heading5:
+      case BlockStyleChoice.heading6:
+        return header ? <String, dynamic>{'list-block': 'h$level'} : null;
+    }
+  }
+  // Keys are applied in order, so a style is cleared before the new one is
+  // set.
+  switch (choice) {
+    case BlockStyleChoice.paragraph:
+      if (!header && !code) return null;
+      return <String, dynamic>{
+        if (header) 'header': null,
+        if (code) 'code-block': null,
+      };
+    case BlockStyleChoice.preformatted:
+      if (!code) return null;
+      return <String, dynamic>{
+        if (header) 'header': null,
+        'code-block': true,
+      };
+    case BlockStyleChoice.heading1:
+    case BlockStyleChoice.heading2:
+    case BlockStyleChoice.heading3:
+    case BlockStyleChoice.heading4:
+    case BlockStyleChoice.heading5:
+    case BlockStyleChoice.heading6:
+      if (!header) return null;
+      return <String, dynamic>{
+        if (code) 'code-block': null,
+        'header': level,
+      };
+  }
+}
+
+/// The format commands that apply [choice] to a line that is not a list
+/// item, or an empty list when the choice is not available.
+///
+/// The editor applies styles per line with [blockStyleLineAttributes],
+/// which keeps a list item's bullet; this list still says whether a choice
+/// is available at all.
 List<BlockStyleCommand> blockStyleCommands({
   required BlockStyleChoice choice,
   required bool readOnly,

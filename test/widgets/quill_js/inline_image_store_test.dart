@@ -76,6 +76,42 @@ void main() {
     InlineImageStore.instance.release();
   });
 
+  test('an SVG data URL is not collapsed, so the editor can block it', () {
+    InlineImageStore.instance.retain();
+    expect(InlineImageStore.isDataImageUrl('data:image/png;base64,x'), isTrue);
+    expect(
+      InlineImageStore.isDataImageUrl('data:image/svg+xml;base64,x'),
+      isFalse,
+    );
+    final svg = Delta()..insert({'image': 'data:image/svg+xml;base64,x'});
+    expect(identical(InlineImageStore.instance.collapse(svg), svg), isTrue);
+    InlineImageStore.instance.release();
+  });
+
+  test('withoutForeignBlobImages drops blob: images the store does not know', () {
+    InlineImageStore.instance.retain();
+    InlineImageStore.instance.register('blob:known', 'data:image/png;base64,k');
+    final delta = Delta()
+      ..insert('a')
+      ..insert({'image': 'blob:known'})
+      ..insert({'image': 'blob:https://other.example/1'})
+      ..insert({'image': 'https://x.example/a.png'})
+      ..insert('\n');
+    final images = InlineImageStore.instance
+        .withoutForeignBlobImages(delta)
+        .toList()
+        .where((op) => op.data is Map)
+        .map((op) => (op.data as Map)['image'])
+        .toList();
+    expect(images, ['blob:known', 'https://x.example/a.png']);
+    final plain = Delta()..insert('text\n');
+    expect(
+      identical(InlineImageStore.instance.withoutForeignBlobImages(plain), plain),
+      isTrue,
+    );
+    InlineImageStore.instance.release();
+  });
+
   test('lastNewlineIndexBefore counts embeds', () {
     final delta = Delta()
       ..insert('a\n')

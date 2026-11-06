@@ -14,7 +14,10 @@ function isHttpVideoSource(value) {
   return scheme === 'http' || scheme === 'https';
 }
 
-function isSameOriginSource(value) {
+// True when a video source must not get allow-same-origin: it is on the
+// editor's own origin (absolute, relative, or protocol-relative), or it
+// cannot be resolved at all.
+function needsStrictVideoSandbox(value) {
   if (typeof value !== 'string') return false;
   // A srcdoc document reports location.origin as "null"; window.origin
   // is the origin it inherited from the host page.
@@ -26,10 +29,23 @@ function isSameOriginSource(value) {
       return false;
     }
   }
+  // Resolve like the iframe's src does. A srcdoc document's location is
+  // about:srcdoc, which cannot resolve "/path" or "//host/path"; its base
+  // URL is the host page's, so relative sources count as same-origin.
+  var base = document.baseURI;
+  if (!base || base.indexOf('about:') === 0) {
+    try {
+      base = window.parent.location.href;
+    } catch (_) {
+      base = null;
+    }
+  }
   try {
-    return new URL(value.replace(/^\s+|\s+$/g, ''), window.location.href).origin === own;
+    var trimmed = value.replace(/^\s+|\s+$/g, '');
+    return new URL(trimmed, base || undefined).origin === own;
   } catch (_) {
-    return false;
+    // A source that cannot be resolved gets the stricter sandbox.
+    return true;
   }
 }
 
@@ -190,7 +206,7 @@ function registerInlineMedia(Quill) {
       node.setAttribute(
         'sandbox',
         'allow-scripts' +
-          (isSameOriginSource(value) ? '' : ' allow-same-origin') +
+          (needsStrictVideoSandbox(value) ? '' : ' allow-same-origin') +
           ' allow-presentation allow-popups allow-popups-to-escape-sandbox'
       );
       node.classList.add('ql-video');
@@ -756,9 +772,17 @@ function installInlineMedia(quill, options) {
 
     if (options.collapseDataUrl && quill.clipboard && quill.clipboard.addMatcher) {
       quill.clipboard.addMatcher('IMG', function (node, delta) {
-        (delta.ops || []).forEach(function (op) {
+        // A blob: URL from another page or app never loads here; drop it
+        // instead of storing a dead image. SVG stays a data URL so the
+        // image blot can block it.
+        delta.ops = (delta.ops || []).filter(function (op) {
           var image = op.insert && op.insert.image;
-          if (typeof image === 'string' && /^data:image\//i.test(image)) {
+          if (typeof image !== 'string' || image.indexOf('blob:') !== 0) return true;
+          return !!(options.expandBlobUrl && options.expandBlobUrl(image));
+        });
+        delta.ops.forEach(function (op) {
+          var image = op.insert && op.insert.image;
+          if (typeof image === 'string' && /^data:image\/(?!svg)/i.test(image)) {
             var collapsed = options.collapseDataUrl(image);
             if (collapsed) op.insert = Object.assign({}, op.insert, { image: collapsed });
           }

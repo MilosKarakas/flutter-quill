@@ -33,8 +33,23 @@ String buildQuillJsInlineMarkCss(DefaultStyles styles) {
     sb.writeln('.ql-editor em { $emCss }');
   }
 
+  // The bold and italic styles describe body text. Inside a heading, or a
+  // list item that is a heading or Preformatted, the marked text keeps the
+  // heading's size and line height, as in the TinyMCE editor; a fixed size
+  // here would leave it at body size on a taller line.
+  if (_setsSizeOrLineHeight(styles.bold) ||
+      _setsSizeOrLineHeight(styles.italic)) {
+    sb.writeln(
+      '.ql-editor :is(h1, h2, h3, h4, h5, h6, li[data-list-block]) '
+      ':is(strong, em) { font-size: inherit; line-height: inherit; }',
+    );
+  }
+
   return sb.toString();
 }
+
+bool _setsSizeOrLineHeight(TextStyle? style) =>
+    style != null && (style.fontSize != null || style.height != null);
 
 String _inlineMarkTextStyleToCss(
   TextStyle? style, {

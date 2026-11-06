@@ -32,6 +32,7 @@ import 'inline_image_store.dart';
 import 'inline_image_store_browser.dart';
 import 'inline_media.dart';
 import 'inline_media_iframe.dart';
+import 'list_block_iframe.dart';
 import 'link_range_resolution.dart';
 import 'quill_js_configurations.dart';
 import 'quill_js_escape_dismiss.dart';
@@ -69,8 +70,11 @@ extension type _QuillJsInstance._(JSObject _) implements JSObject {
   @JS('getContents')
   external JSObject getContentsRange(int index, int length);
 
-  /// The line blots that intersect the range.
-  external JSArray<JSObject> getLines(int index, int length);
+  /// The line blots that intersect the range, as an iframe-realm array.
+  ///
+  /// Read it with [_jsArrayItems]: casting an array from the iframe's JS
+  /// realm to `JSArray` fails the debug (DDC) runtime type check.
+  external JSObject getLines(int index, int length);
   external void setContents(JSObject delta);
   external JSObject updateContents(JSObject delta, [JSString? source]);
   external _JsRange? getSelection([bool focus]);
@@ -1988,6 +1992,18 @@ class _QuillJsEditorViewState extends State<QuillJsEditorView>
       _appendQuillJsEditorStyleCss(dynamicCss, config.style!);
     }
 
+    // The marker of a styled list item uses the editor's own font; later
+    // sources win, as in the CSS above.
+    var editorFont = 'Helvetica, Arial, sans-serif';
+    final paragraphFont = config.styles?.paragraph == null
+        ? null
+        : _fontFamilyToCss(config.styles!.paragraph!.style);
+    if (paragraphFont != null) editorFont = paragraphFont;
+    if (config.style?.fontFamily != null) editorFont = config.style!.fontFamily!;
+    final listBlockStyles = listBlockValuesFor(config.effectiveFormats).isEmpty
+        ? ''
+        : listBlockCss(markerFontFamily: editorFont);
+
     // --- Build the CSS link tag ---
     final cssLink = config.quillCssUrl != null
         ? '<link rel="stylesheet" href="${_escapeHtml(config.quillCssUrl!)}">'
@@ -2245,6 +2261,8 @@ html, body {
 .ql-snow .ql-editor h4 { font-size: 1em; }
 .ql-snow .ql-editor h5 { font-size: .83em; }
 .ql-snow .ql-editor h6 { font-size: .67em; }
+/* List items that are also headings or Preformatted (<li><h2>). */
+$listBlockStyles
 .ql-snow .ql-editor a { text-decoration: underline; }
 .ql-snow .ql-editor blockquote {
   border-left: 4px solid #ccc;
@@ -2395,6 +2413,32 @@ $customCss
     }
   }
 
+  /// Quill's binding that ends a heading on Enter ignores Shift+Enter, so
+  /// Shift+Enter at the end of a heading would continue the heading. The
+  /// editor has no soft line break; Shift+Enter behaves as Enter.
+  void _shiftEnterLikeEnterForHeadings() {
+    if (!widget.configuration.effectiveFormats.contains('header')) return;
+    try {
+      final keyboard = _quill!['keyboard'] as JSObject?;
+      final bindings = keyboard?['bindings'] as JSObject?;
+      final enter = bindings?['Enter'] as JSObject?;
+      if (enter == null) return;
+      for (final binding in _jsArrayItems(enter)) {
+        final format = binding['format'] as JSObject?;
+        if (format == null) continue;
+        final length = (format['length'] as JSNumber?)?.toDartInt ?? 0;
+        for (var i = 0; i < length; i++) {
+          if ((format[i.toString()] as JSString?)?.toDart == 'header') {
+            binding['shiftKey'] = null;
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to align Shift+Enter in headings: $e');
+    }
+  }
+
   void _applyListAutofillRestriction() {
     final keyboard = _quill!['keyboard'] as JSObject?;
     final bindings = keyboard?['bindings'] as JSObject?;
@@ -2432,7 +2476,12 @@ $customCss
                 if (config.effectiveFormats.contains('image'))
                   'uploader': <String, dynamic>{'mimetypes': null},
               },
-              'formats': config.effectiveFormats,
+              'formats': <String>[
+                ...config.effectiveFormats,
+                // A list item that is also a heading or Preformatted.
+                if (listBlockValuesFor(config.effectiveFormats).isNotEmpty)
+                  'list-block',
+              ],
               if (config.placeholder != null) 'placeholder': config.placeholder,
               'readOnly': config.readOnly,
             }.jsify()
@@ -2461,6 +2510,19 @@ $customCss
     if (inlineMediaInstallsFor(effectiveFormats)) {
       injectAndRegister(inlineMediaIframeScript(), 'registerInlineMedia');
     }
+    final listBlockValues = listBlockValuesFor(effectiveFormats);
+    if (listBlockValues.isNotEmpty) {
+      final iframeDoc = iframeWindow['document'] as web.Document;
+      final script =
+          iframeDoc.createElement('script') as web.HTMLScriptElement;
+      script.text = listBlockIframeScript();
+      iframeDoc.head!.append(script);
+      (iframeWindow['registerListBlock'] as JSFunction).callAsFunction(
+        null,
+        quillConstructor,
+        listBlockValues.jsify(),
+      );
+    }
     final jsQuill = quillConstructor.callAsConstructor<JSObject>(
       _editorDiv!,
       options,
@@ -2469,7 +2531,14 @@ $customCss
     if (inlineMediaInstallsFor(effectiveFormats)) {
       _installInlineMedia(iframeWindow, jsQuill, effectiveFormats);
     }
+    if (listBlockValues.isNotEmpty) {
+      (iframeWindow['installListBlock'] as JSFunction).callAsFunction(
+        null,
+        jsQuill,
+      );
+    }
     _restrictListAutofill();
+    _shiftEnterLikeEnterForHeadings();
 
     // Set initial content
     if (config.initialContent != null) {
@@ -4338,7 +4407,9 @@ $customCss
           ...pasteOps,
         ];
         final combined = InlineImageStore.instance.collapse(
-          Delta.fromJson(combinedOps),
+          InlineImageStore.instance.withoutForeignBlobImages(
+            Delta.fromJson(combinedOps),
+          ),
         );
         _quill!.updateContents(_deltaToJs(combined), 'api'.toJS);
 
@@ -5596,30 +5667,66 @@ $customCss
     );
   }
 
+  /// Applies [choice] to every line in the selection, as one change and one
+  /// undo step.
+  ///
+  /// Each line gets the attributes [blockStyleLineAttributes] gives it: a
+  /// list item keeps its bullet and takes the style as `list-block`, any
+  /// other line takes `header` or `code-block`. Image and video lines are
+  /// left alone.
   bool _applyBlockStyle(BlockStyleChoice choice) {
     final quill = _quill;
     if (quill == null || widget.configuration.readOnly) return false;
-    final commands = blockStyleCommands(
+    final formats = widget.configuration.effectiveFormats;
+    if (blockStyleCommands(
       choice: choice,
-      readOnly: widget.configuration.readOnly,
-      enabledFormats: widget.configuration.effectiveFormats,
-    );
-    if (commands.isEmpty) {
+      readOnly: false,
+      enabledFormats: formats,
+    ).isEmpty) {
       _debugWarnMissingFormat(
         choice == BlockStyleChoice.preformatted ? 'code-block' : 'header',
       );
       return false;
     }
     final before = _getQuillSelection();
-    for (final command in commands) {
-      final Object value = command.value;
-      final JSAny jsValue = value is bool
-          ? value.toJS
-          : value is int
-              ? value.toJS
-              : value.toString().toJS;
-      _formatWithScrollPreservation(command.name, jsValue);
+    final range = before ?? _getQuillSelection(focus: true);
+    if (range == null) return false;
+
+    final delta = Delta();
+    var cursor = 0;
+    // A zero-length range covers no line, so a caret asks for one character.
+    final lines = _jsArrayItems(
+      quill.getLines(range.index, range.length > 0 ? range.length : 1),
+    );
+    for (final line in lines) {
+      final statics = line['statics'] as JSObject?;
+      final blotName = (statics?['blotName'] as JSString?)?.toDart;
+      if (blotName == 'image' || blotName == 'video') continue;
+      final lineFormats = line.callMethod<JSObject?>('formats'.toJS);
+      final attributes = blockStyleLineAttributes(
+        choice: choice,
+        isListLine: lineFormats?['list'] != null,
+        readOnly: false,
+        enabledFormats: formats,
+      );
+      if (attributes == null) continue;
+      final length =
+          (line.callMethod<JSNumber>('length'.toJS)).toDartInt;
+      final newline = quill.getIndex(line) + length - 1;
+      if (newline < cursor) continue;
+      if (newline > cursor) delta.retain(newline - cursor);
+      delta.retain(1, attributes);
+      cursor = newline + 1;
     }
+    if (delta.isEmpty) return false;
+
+    final container = _iframe.contentDocument?.querySelector('.ql-editor');
+    final scrollTop = (container as web.HTMLElement?)?.scrollTop ?? 0;
+    quill.updateContents(_deltaToJs(delta), 'api'.toJS);
+    Future.delayed(const Duration(milliseconds: 10), () {
+      if (container != null && mounted) container.scrollTop = scrollTop;
+    });
+
     _placeCaretAfterBlockStyle(before);
     _syncFormatState();
     return true;
@@ -5727,7 +5834,7 @@ $customCss
     try {
       // Only the two block formats are read from each line, and the walk
       // stops at the first line whose style differs.
-      final lines = quill.getLines(sel.index, sel.length).toDart;
+      final lines = _jsArrayItems(quill.getLines(sel.index, sel.length));
       Map<String, dynamic>? first;
       for (final line in lines) {
         final statics = line['statics'] as JSObject?;
@@ -5738,6 +5845,8 @@ $customCss
           if (lineFormat != null) ...{
             'header': lineFormat['header']?.dartify(),
             'code-block': lineFormat['code-block']?.dartify(),
+            'list': lineFormat['list']?.dartify(),
+            'list-block': lineFormat['list-block']?.dartify(),
           },
         };
         if (first == null) {
@@ -5928,9 +6037,9 @@ $customCss
                     ?.toJS;
               }.toJS,
               'collapseDataUrl': (JSString dataUrl) {
-                return InlineImageStore.instance
-                    .blobUrlFor(dataUrl.toDart)
-                    .toJS;
+                final url = dataUrl.toDart;
+                if (!InlineImageStore.isDataImageUrl(url)) return url.toJS;
+                return InlineImageStore.instance.blobUrlFor(url).toJS;
               }.toJS,
             }.jsify()
             as JSObject;
@@ -5962,30 +6071,74 @@ $customCss
     final docEnd = quill.getLength() - 1;
     final index = selection?.index ?? (docEnd < 0 ? 0 : docEnd);
     final attrs = mediaAttributes(width: size.width, height: size.height);
-    final delta = Delta()
-      ..retain(index)
-      ..insert({'image': blobUrl}, attrs);
-    quill.updateContents(_deltaToJs(delta), 'user'.toJS);
-    quill.setSelection(_indexAfterInsertedEmbed(quill, 'image', index), 0);
+    // A pasted image replaces selected text, as a dialog insert does. A
+    // drop has already collapsed the selection to the drop point.
+    final insert = _blockEmbedInsert(
+      quill,
+      index: index,
+      deleteLength: selection?.length ?? 0,
+      embed: {'image': blobUrl},
+      attributes: attrs,
+    );
+    quill.updateContents(_deltaToJs(insert.delta), 'user'.toJS);
+    quill.setSelection(insert.embedIndex + 1, 0);
   }
 
-  /// The caret position just after an embed inserted at [index].
+  /// The change that inserts a block embed at [index], after deleting
+  /// [deleteLength] characters there, and the index the embed lands at.
   ///
-  /// A block embed inserted inside a line makes Quill end that line first,
-  /// so the embed lands one position later. A caret at the embed's own
-  /// index would select it, and the next toolbar press would edit it.
-  int _indexAfterInsertedEmbed(
-    _QuillJsInstance quill,
-    String formatName,
-    int index,
-  ) {
-    final length = quill.getLength();
-    if (_mediaValueAt(quill, formatName, index) == null &&
-        index + 1 < length &&
-        _mediaValueAt(quill, formatName, index + 1) != null) {
-      return index + 2;
+  /// A block embed must start a line. Inside a line, Quill otherwise ends
+  /// the line itself, puts the embed one position later, and applies the
+  /// embed's attributes to that new line break, so alt, width, and height
+  /// would be lost. The line break is inserted here instead, with the line's
+  /// own block format, so the document matches Quill's split and the
+  /// attributes land on the embed.
+  ({Delta delta, int embedIndex}) _blockEmbedInsert(
+    _QuillJsInstance quill, {
+    required int index,
+    required int deleteLength,
+    required Map<String, dynamic> embed,
+    Map<String, dynamic>? attributes,
+  }) {
+    final delta = Delta();
+    if (index > 0) delta.retain(index);
+    if (deleteLength > 0) delta.delete(deleteLength);
+    var embedIndex = index;
+    if (_isInsideLine(quill, index)) {
+      // After a delete, the line that keeps its line break is the one where
+      // the deleted range ended.
+      delta.insert('\n', _lineBlockFormats(quill, index + deleteLength));
+      embedIndex = index + 1;
     }
-    return index + 1;
+    delta.insert(embed, attributes);
+    return (delta: delta, embedIndex: embedIndex);
+  }
+
+  /// Whether [index] is after a character of the same line, so an embed
+  /// there would not start a line.
+  bool _isInsideLine(_QuillJsInstance quill, int index) {
+    if (index <= 0) return false;
+    final before = _jsToDelta(quill.getContentsRange(index - 1, 1)).toList();
+    if (before.isEmpty) return false;
+    final data = before.first.data;
+    // A block embed ends its own line; text other than a line break does not.
+    return data is String && data.isNotEmpty && !data.endsWith('\n');
+  }
+
+  /// The block formats (header, list, indent, ...) of the line at [index].
+  Map<String, dynamic>? _lineBlockFormats(_QuillJsInstance quill, int index) {
+    try {
+      // A zero-length range covers no line, so one character is asked for.
+      final lines = _jsArrayItems(quill.getLines(index, 1));
+      if (lines.isEmpty) return null;
+      final formats = lines.first.callMethod<JSObject?>('formats'.toJS);
+      if (formats == null) return null;
+      final json = _mainJsonStringify(formats).toDart;
+      final map = (jsonDecode(json) as Map).cast<String, dynamic>();
+      return map.isEmpty ? null : map;
+    } catch (_) {
+      return null;
+    }
   }
 
   void _handleInlineMediaImageLoad(
@@ -6022,7 +6175,19 @@ $customCss
     final delta = Delta()
       ..retain(index)
       ..retain(1, formatAttrs);
-    quill.updateContents(_deltaToJs(delta), 'silent'.toJS);
+    // The fill is not an edit: it is not reported ('silent') and it is kept
+    // out of the undo history, which otherwise records silent changes too.
+    // Quill's own undo and redo set the same flag while they apply a change.
+    // A format-only change moves no index, so the recorded entries stay
+    // valid without being transformed.
+    final history = (quill as JSObject)['history'] as JSObject?;
+    final wasIgnoring = history?['ignoreChange'];
+    history?['ignoreChange'] = true.toJS;
+    try {
+      quill.updateContents(_deltaToJs(delta), 'silent'.toJS);
+    } finally {
+      history?['ignoreChange'] = wasIgnoring ?? false.toJS;
+    }
   }
 
   /// Writes the size the iframe previewed during the drag, so the stored
@@ -6101,29 +6266,37 @@ $customCss
       height = size.height;
     }
     final attrs = mediaAttributes(alt: value.alt, width: width, height: height);
-    final delta = Delta();
-    if (index > 0) delta.retain(index);
-    if (replace) {
-      final current = _mediaValueAt(quill, formatName, index);
-      if (current != null && current.source == source) {
-        final formatUpdate = <String, dynamic>{
-          'alt': (value.alt != null && value.alt!.trim().isNotEmpty)
-              ? value.alt!.trim()
-              : null,
-          'width': (width != null && width > 0) ? width.toString() : null,
-          'height': (height != null && height > 0) ? height.toString() : null,
-        };
-        delta.retain(1, formatUpdate);
-      } else {
-        delta.delete(1);
-        delta.insert({formatName: source}, attrs);
-      }
+    final current = replace ? _mediaValueAt(quill, formatName, index) : null;
+    final Delta delta;
+    final int embedIndex;
+    if (current != null && current.source == source) {
+      // Same source: update the attributes only, so the media does not
+      // reload.
+      delta = Delta();
+      if (index > 0) delta.retain(index);
+      delta.retain(1, <String, dynamic>{
+        'alt': (value.alt != null && value.alt!.trim().isNotEmpty)
+            ? value.alt!.trim()
+            : null,
+        'width': (width != null && width > 0) ? width.toString() : null,
+        'height': (height != null && height > 0) ? height.toString() : null,
+      });
+      embedIndex = index;
     } else {
-      if (selectionLength > 0) delta.delete(selectionLength);
-      delta.insert({formatName: source}, attrs);
+      final insert = _blockEmbedInsert(
+        quill,
+        index: index,
+        deleteLength: selectionLength,
+        embed: {formatName: source},
+        attributes: attrs,
+      );
+      delta = insert.delta;
+      embedIndex = insert.embedIndex;
     }
     quill.updateContents(_deltaToJs(delta), 'api'.toJS);
-    quill.setSelection(_indexAfterInsertedEmbed(quill, formatName, index), 0);
+    // A caret on the embed would select it, and the next toolbar press
+    // would edit it, so the caret goes just after it.
+    quill.setSelection(embedIndex + 1, 0);
   }
 
   ({QuillJsMediaValue value, int index})? _selectedMedia(
@@ -6202,6 +6375,16 @@ $customCss
     } catch (_) {
       return {};
     }
+  }
+
+  /// The objects in an array that lives in the iframe's JS realm, read by
+  /// index (see [_restrictListAutofill]).
+  static List<JSObject> _jsArrayItems(JSObject array) {
+    final length = (array['length'] as JSNumber?)?.toDartInt ?? 0;
+    return <JSObject>[
+      for (var i = 0; i < length; i++)
+        if (array[i.toString()] case final JSObject item) item,
+    ];
   }
 
   Delta _getContentsDelta() {

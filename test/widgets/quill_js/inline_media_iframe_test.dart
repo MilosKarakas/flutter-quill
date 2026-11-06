@@ -2,6 +2,9 @@ import 'package:flutter_quill/src/widgets/quill_js/code_block_iframe.dart';
 import 'package:flutter_quill/src/widgets/quill_js/inline_media_iframe.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+// These tests only check that the injected scripts contain the expected
+// wiring. They cannot run the JavaScript; the behaviour is checked in a real
+// browser by tool/quill_js_browser_checks (see its README).
 void main() {
   test('the script registers both blots and the drop and resize hooks', () {
     final script = inlineMediaIframeScript();
@@ -60,7 +63,7 @@ void main() {
     expect(script.contains('toDataURL'), isFalse);
   });
 
-  test('blob URLs for processed images are made by the host page', () {
+  test('the script hands processed images to Dart as a Blob, not a URL', () {
     final script = inlineMediaIframeScript();
     // A URL made in the iframe is revoked when that editor unloads.
     expect(script, isNot(contains('URL.createObjectURL(result.blob)')));
@@ -68,24 +71,24 @@ void main() {
     expect(script, contains('image.blob,'));
   });
 
-  test('a paste keeps text when the clipboard HTML shows any', () {
+  test('the paste rule is wired to visibleHtmlText', () {
     final script = inlineMediaIframeScript();
     expect(script, contains('function visibleHtmlText(html)'));
     expect(script, contains('? !visibleHtmlText(html)'));
   });
 
-  test('resize commits the previewed size', () {
+  test('onResize is called with the previewed size', () {
     final script = inlineMediaIframeScript();
     expect(script, contains('options.onResize(d.index, size.width, size.height)'));
   });
 
-  test('a same-origin video loses allow-same-origin', () {
+  test('the video sandbox is wired to needsStrictVideoSandbox', () {
     final script = inlineMediaIframeScript();
-    expect(script, contains('function isSameOriginSource(value)'));
-    expect(script, contains("(isSameOriginSource(value) ? '' : ' allow-same-origin')"));
+    expect(script, contains('function needsStrictVideoSandbox(value)'));
+    expect(script, contains("(needsStrictVideoSandbox(value) ? '' : ' allow-same-origin')"));
   });
 
-  test('a code-block script reports Preformatted as true', () {
+  test('the code-block script registers a format reporting true', () {
     final script = plainCodeBlockIframeScript();
     expect(script, contains('function registerPlainCodeBlock(Quill)'));
     expect(script, contains("Quill.import('formats/code-block')"));
