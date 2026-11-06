@@ -14,6 +14,7 @@ import 'dart:ui' show Color;
 import 'dart:ui_web' as ui_web;
 
 import 'package:dart_quill_delta/dart_quill_delta.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/services.dart' show rootBundle;
@@ -25,6 +26,7 @@ import '../../models/structs/copy_data.dart';
 import '../../utils/delta.dart';
 import '../default_styles.dart';
 import 'block_style.dart';
+import 'code_block_iframe.dart';
 import 'inline_mark_css.dart';
 import 'inline_image_store.dart';
 import 'inline_image_store_browser.dart';
@@ -66,6 +68,9 @@ extension type _QuillJsInstance._(JSObject _) implements JSObject {
   external JSObject getContents();
   @JS('getContents')
   external JSObject getContentsRange(int index, int length);
+
+  /// The line blots that intersect the range.
+  external JSArray<JSObject> getLines(int index, int length);
   external void setContents(JSObject delta);
   external JSObject updateContents(JSObject delta, [JSString? source]);
   external _JsRange? getSelection([bool focus]);
@@ -2438,16 +2443,23 @@ $customCss
     final quillConstructor = iframeWindow['Quill'] as JSFunction;
     _quillConstructor = quillConstructor as _QuillJsConstructor;
     final effectiveFormats = config.effectiveFormats;
-    if (inlineMediaInstallsFor(effectiveFormats)) {
+    void injectAndRegister(String source, String registerName) {
       final iframeDoc = iframeWindow['document'] as web.Document;
       final script =
           iframeDoc.createElement('script') as web.HTMLScriptElement;
-      script.text = inlineMediaIframeScript();
+      script.text = source;
       iframeDoc.head!.append(script);
-      (iframeWindow['registerInlineMedia'] as JSFunction).callAsFunction(
+      (iframeWindow[registerName] as JSFunction).callAsFunction(
         null,
         quillConstructor,
       );
+    }
+
+    if (effectiveFormats.contains('code-block')) {
+      injectAndRegister(plainCodeBlockIframeScript(), 'registerPlainCodeBlock');
+    }
+    if (inlineMediaInstallsFor(effectiveFormats)) {
+      injectAndRegister(inlineMediaIframeScript(), 'registerInlineMedia');
     }
     final jsQuill = quillConstructor.callAsConstructor<JSObject>(
       _editorDiv!,
@@ -5511,7 +5523,10 @@ $customCss
     final slotName = platformView.getAttribute('slot');
     final glassPane = platformView.parentElement;
     final shadow = glassPane?.shadowRoot;
-    if (slotName == null || shadow == null) return;
+    if (slotName == null || shadow == null) {
+      _debugWarnNoPointerShield();
+      return;
+    }
     final slots = shadow.querySelectorAll('slot');
     for (var i = 0; i < slots.length; i++) {
       final slot = slots.item(i);
@@ -5519,11 +5534,23 @@ $customCss
         continue;
       }
       final host = slot.parentElement;
-      if (host is! web.HTMLElement) return;
+      if (host is! web.HTMLElement) break;
       _suppressPointerEvents(host);
       _installPointerShield(shadow, host);
       return;
     }
+    _debugWarnNoPointerShield();
+  }
+
+  /// The shield depends on how the Flutter web engine lays out platform
+  /// views. If that layout changes, menu rows over the editor stop taking
+  /// taps, so debug builds report it.
+  void _debugWarnNoPointerShield() {
+    if (!kDebugMode) return;
+    debugPrint(
+      'QuillJsEditorView: could not find the platform-view slot for the '
+      'editor iframe; menu rows drawn over the editor may not receive taps.',
+    );
   }
 
   void _suppressPointerEvents(web.HTMLElement element) {
@@ -5556,6 +5583,19 @@ $customCss
     _pointerShield = shield;
   }
 
+  /// The toolbar and the editor take separate format lists. A toolbar
+  /// control for a format the editor does not enable changes nothing, which
+  /// is easy to miss, so debug builds say so.
+  void _debugWarnMissingFormat(String format) {
+    if (!kDebugMode) return;
+    debugPrint(
+      'QuillJsEditorView: "$format" is not in '
+      'QuillJsEditorConfiguration.formats, so this toolbar action does '
+      'nothing. Pass the same format list to '
+      'QuillToolbar.basic(enabledFormats: ...) and the editor configuration.',
+    );
+  }
+
   bool _applyBlockStyle(BlockStyleChoice choice) {
     final quill = _quill;
     if (quill == null || widget.configuration.readOnly) return false;
@@ -5564,7 +5604,12 @@ $customCss
       readOnly: widget.configuration.readOnly,
       enabledFormats: widget.configuration.effectiveFormats,
     );
-    if (commands.isEmpty) return false;
+    if (commands.isEmpty) {
+      _debugWarnMissingFormat(
+        choice == BlockStyleChoice.preformatted ? 'code-block' : 'header',
+      );
+      return false;
+    }
     final before = _getQuillSelection();
     for (final command in commands) {
       final Object value = command.value;
@@ -5583,20 +5628,33 @@ $customCss
   /// Block formatting replaces the line's element, and the browser then
   /// selects that whole line. The menu also keeps Flutter focus, so the
   /// editor stays blurred and the selection sits there with no caret.
+  ///
+  /// This restores the selection the user had before the menu, so a style
+  /// applied to several lines leaves those lines selected.
   void _placeCaretAfterBlockStyle(_QuillSelection? before) {
     final quill = _quill;
     if (quill == null) return;
     final docLength = quill.getLength();
     final maxIndex = docLength > 0 ? docLength - 1 : 0;
-    final anchor = before ?? _getQuillSelection();
-    final index = anchor == null
-        ? maxIndex
-        : (anchor.index + anchor.length).clamp(0, maxIndex).toInt();
-    _lastKnownSelection = (index: index, length: 0);
-    _lastSelectionLength = 0;
+    // Without a selection from before the menu, the current one is the
+    // whole line the browser selected, so it collapses to a caret at its end.
+    final int index;
+    final int length;
+    if (before != null) {
+      index = before.index.clamp(0, maxIndex).toInt();
+      length = before.length.clamp(0, maxIndex - index).toInt();
+    } else {
+      final after = _getQuillSelection();
+      index = after == null
+          ? maxIndex
+          : (after.index + after.length).clamp(0, maxIndex).toInt();
+      length = 0;
+    }
+    _lastKnownSelection = (index: index, length: length);
+    _lastSelectionLength = length;
     _editorHasFocus = true;
     _didUserInteractWithSelection = true;
-    quill.setSelection(index, 0);
+    quill.setSelection(index, length);
     final node = widget.focusNode;
     if (node != null && node.canRequestFocus) {
       node.requestFocus();
@@ -5606,12 +5664,14 @@ $customCss
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _quill == null) return;
       final current = _getQuillSelection();
-      if (current != null && current.length == 0 && current.index == index) {
+      if (current != null &&
+          current.length == length &&
+          current.index == index) {
         return;
       }
-      _lastKnownSelection = (index: index, length: 0);
-      _lastSelectionLength = 0;
-      _quill!.setSelection(index, 0);
+      _lastKnownSelection = (index: index, length: length);
+      _lastSelectionLength = length;
+      _quill!.setSelection(index, length);
     });
   }
 
@@ -5630,16 +5690,68 @@ $customCss
       final range = sel == null ? null : _findLinkRange(sel.index);
       if (range == null || sel!.index <= range.index) link = null;
     }
+    final block = _selectionBlockStyle(format, sel);
     final state = QuillJsFormatState(
       bold: format['bold'] == true,
       italic: format['italic'] == true,
       underline: format['underline'] == true,
       list: format['list'] is String ? format['list'] as String : null,
       link: link,
-      blockStyle: blockStyleFromFormat(format),
-      blockStyleMixed: blockStyleIsMixed(format),
+      blockStyle: block.style,
+      blockStyleMixed: block.mixed,
     );
     widget.controller.updateFormatState(state);
+  }
+
+  /// The block style of the selection, read per line.
+  ///
+  /// Quill's range format drops a format that is missing on any line, so a
+  /// heading plus a plain line would read as Paragraph. Only editors with a
+  /// block format enabled pay for the per-line read.
+  ({BlockStyleChoice style, bool mixed}) _selectionBlockStyle(
+    Map<String, dynamic> format,
+    _QuillSelection? sel,
+  ) {
+    final fallback = (
+      style: blockStyleFromFormat(format),
+      mixed: blockStyleIsMixed(format),
+    );
+    final formats = widget.configuration.effectiveFormats;
+    final quill = _quill;
+    if (quill == null ||
+        sel == null ||
+        sel.length == 0 ||
+        (!formats.contains('header') && !formats.contains('code-block'))) {
+      return fallback;
+    }
+    try {
+      // Only the two block formats are read from each line, and the walk
+      // stops at the first line whose style differs.
+      final lines = quill.getLines(sel.index, sel.length).toDart;
+      Map<String, dynamic>? first;
+      for (final line in lines) {
+        final statics = line['statics'] as JSObject?;
+        final blotName = (statics?['blotName'] as JSString?)?.toDart;
+        if (blotName == 'image' || blotName == 'video') continue;
+        final lineFormat = line.callMethod<JSObject?>('formats'.toJS);
+        final blockFormat = <String, dynamic>{
+          if (lineFormat != null) ...{
+            'header': lineFormat['header']?.dartify(),
+            'code-block': lineFormat['code-block']?.dartify(),
+          },
+        };
+        if (first == null) {
+          first = blockFormat;
+          continue;
+        }
+        final result = blockStyleForLines([first, blockFormat])!;
+        if (result.mixed) return result;
+      }
+      if (first == null) return fallback;
+      return blockStyleForLines([first])!;
+    } catch (_) {
+      return fallback;
+    }
   }
 
   // ------------------------------------------------------------------
@@ -5768,14 +5880,14 @@ $customCss
               'readOnly': widget.configuration.readOnly,
               'onImageDrop':
                   (
-                    JSString blobUrl,
+                    web.Blob blob,
                     JSString dataUrl,
                     JSNumber naturalWidth,
                     JSNumber naturalHeight,
                     JSNumber contentWidth,
                   ) {
                     _handleInlineMediaImageDrop(
-                      blobUrl.toDart,
+                      blob,
                       dataUrl.toDart,
                       naturalWidth.toDartInt,
                       naturalHeight.toDartInt,
@@ -5797,23 +5909,11 @@ $customCss
                     );
                   }.toJS,
               'onResize':
-                  (
-                    JSNumber index,
-                    JSNumber originWidth,
-                    JSNumber originHeight,
-                    JSNumber dx,
-                    JSNumber dy,
-                    JSString handle,
-                    JSNumber maxWidth,
-                  ) {
+                  (JSNumber index, JSNumber width, JSNumber height) {
                     _handleInlineMediaResize(
                       index.toDartInt,
-                      originWidth.toDartInt,
-                      originHeight.toDartInt,
-                      dx.toDartDouble,
-                      dy.toDartDouble,
-                      handle.toDart,
-                      maxWidth.toDartDouble,
+                      width.toDartDouble.round(),
+                      height.toDartDouble.round(),
                     );
                   }.toJS,
               'onImageDoubleClick': () {
@@ -5838,7 +5938,7 @@ $customCss
   }
 
   void _handleInlineMediaImageDrop(
-    String blobUrl,
+    web.Blob blob,
     String dataUrl,
     int naturalWidth,
     int naturalHeight,
@@ -5848,7 +5948,12 @@ $customCss
     if (!widget.configuration.effectiveFormats.contains('image')) return;
     final quill = _quill;
     if (quill == null || !mounted) return;
-    InlineImageStore.instance.register(blobUrl, dataUrl);
+    // The URL is created in the host page so it outlives this editor's
+    // iframe. The same bytes dropped twice reuse one URL.
+    final blobUrl = InlineImageStore.instance.adopt(
+      dataUrl,
+      () => web.URL.createObjectURL(blob),
+    );
     final size = fitToContentWidth(
       EmbedSize(naturalWidth, naturalHeight),
       contentWidth,
@@ -5861,7 +5966,26 @@ $customCss
       ..retain(index)
       ..insert({'image': blobUrl}, attrs);
     quill.updateContents(_deltaToJs(delta), 'user'.toJS);
-    quill.setSelection(index + 1, 0);
+    quill.setSelection(_indexAfterInsertedEmbed(quill, 'image', index), 0);
+  }
+
+  /// The caret position just after an embed inserted at [index].
+  ///
+  /// A block embed inserted inside a line makes Quill end that line first,
+  /// so the embed lands one position later. A caret at the embed's own
+  /// index would select it, and the next toolbar press would edit it.
+  int _indexAfterInsertedEmbed(
+    _QuillJsInstance quill,
+    String formatName,
+    int index,
+  ) {
+    final length = quill.getLength();
+    if (_mediaValueAt(quill, formatName, index) == null &&
+        index + 1 < length &&
+        _mediaValueAt(quill, formatName, index + 1) != null) {
+      return index + 2;
+    }
+    return index + 1;
   }
 
   void _handleInlineMediaImageLoad(
@@ -5901,31 +6025,19 @@ $customCss
     quill.updateContents(_deltaToJs(delta), 'silent'.toJS);
   }
 
-  void _handleInlineMediaResize(
-    int index,
-    int originWidth,
-    int originHeight,
-    double dx,
-    double dy,
-    String handle,
-    double maxWidth,
-  ) {
+  /// Writes the size the iframe previewed during the drag, so the stored
+  /// size is exactly what the user saw when releasing the handle.
+  void _handleInlineMediaResize(int index, int width, int height) {
     if (widget.configuration.readOnly) return;
     final quill = _quill;
     if (quill == null || !mounted) return;
-    final size = resizeFromCorner(
-      originWidth: originWidth,
-      originHeight: originHeight,
-      dx: dx,
-      dy: dy,
-      handle: handle,
-      maxWidth: maxWidth,
-    );
+    if (width < 1 || height < 1) return;
+    if (index < 0 || index >= quill.getLength()) return;
     final delta = Delta()
       ..retain(index)
       ..retain(1, {
-        'width': size.width.toString(),
-        'height': size.height.toString(),
+        'width': width.toString(),
+        'height': height.toString(),
       });
     quill.updateContents(_deltaToJs(delta), 'user'.toJS);
   }
@@ -5936,7 +6048,10 @@ $customCss
     if (widget.configuration.readOnly) return;
     final formats = widget.configuration.effectiveFormats;
     final formatName = kind == MediaEditKind.image ? 'image' : 'video';
-    if (!formats.contains(formatName)) return;
+    if (!formats.contains(formatName)) {
+      _debugWarnMissingFormat(formatName);
+      return;
+    }
     final callback = kind == MediaEditKind.image
         ? widget.configuration.onImageCreate
         : widget.configuration.onVideoCreate;
@@ -6008,21 +6123,21 @@ $customCss
       delta.insert({formatName: source}, attrs);
     }
     quill.updateContents(_deltaToJs(delta), 'api'.toJS);
-    quill.setSelection(index + 1, 0);
+    quill.setSelection(_indexAfterInsertedEmbed(quill, formatName, index), 0);
   }
 
   ({QuillJsMediaValue value, int index})? _selectedMedia(
     String formatName,
     _QuillSelection? selection,
   ) {
+    // A selected embed has the caret at its own index: a click, a keyboard
+    // move onto it, and a double-click all put it there. A caret at the
+    // start of the line after an embed is not on it, so the toolbar then
+    // inserts a new embed instead of editing the one above.
     final quill = _quill;
     if (quill == null || selection == null) return null;
     final atCaret = _mediaValueAt(quill, formatName, selection.index);
     if (atCaret != null) return (value: atCaret, index: selection.index);
-    if (selection.length == 0 && selection.index > 0) {
-      final before = _mediaValueAt(quill, formatName, selection.index - 1);
-      if (before != null) return (value: before, index: selection.index - 1);
-    }
     return null;
   }
 

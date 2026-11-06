@@ -77,6 +77,31 @@ bool blockStyleIsMixed(Map<String, dynamic>? format) {
   return false;
 }
 
+/// The block style of a selection from the formats of each text line in it.
+///
+/// Quill's range `getFormat` keeps only formats present on every line, so a
+/// heading plus a plain line reports no `header` at all. Reading each line
+/// shows the mix. Lines that are block embeds (an image or a video) carry
+/// no block style and should not be passed in.
+///
+/// Returns `null` when [lineFormats] is empty, so the caller can fall back to
+/// the range format.
+({BlockStyleChoice style, bool mixed})? blockStyleForLines(
+  Iterable<Map<String, dynamic>?> lineFormats,
+) {
+  BlockStyleChoice? first;
+  for (final format in lineFormats) {
+    final style = blockStyleFromFormat(format);
+    if (first == null) {
+      first = style;
+    } else if (style != first) {
+      return (style: BlockStyleChoice.paragraph, mixed: true);
+    }
+  }
+  if (first == null) return null;
+  return (style: first, mixed: false);
+}
+
 BlockStyleChoice blockStyleFromFormat(Map<String, dynamic>? format) {
   if (format == null) return BlockStyleChoice.paragraph;
   final code = format['code-block'];

@@ -121,22 +121,44 @@ String? normalizeVideoEmbedUrl(String input) {
   }
 
   if (host == 'vimeo.com' || host == 'www.vimeo.com') {
-    String? id;
-    for (final segment in uri.pathSegments) {
-      if (RegExp(r'^\d+$').hasMatch(segment)) {
-        id = segment;
+    // The video id is the number after a `video`/`videos` segment
+    // (`/showcase/111/video/222`), otherwise the first numeric segment.
+    // A later number is not the id: an unlisted hash can be all digits
+    // (`/123/0123456789`).
+    final segments = uri.pathSegments;
+    bool isNumeric(String s) => RegExp(r'^\d+$').hasMatch(s);
+    var idIndex = -1;
+    for (var i = 0; i + 1 < segments.length; i++) {
+      if ((segments[i] == 'video' || segments[i] == 'videos') &&
+          isNumeric(segments[i + 1])) {
+        idIndex = i + 1;
         break;
       }
     }
-    if (id == null) return null;
-    return Uri.https('player.vimeo.com', '/video/$id').toString();
+    if (idIndex < 0) idIndex = segments.indexWhere(isNumeric);
+    if (idIndex < 0) return null;
+    final id = segments[idIndex];
+    // An unlisted video carries its privacy hash as the next segment
+    // (`/123/abcdef`) or as `?h=`. The player needs it as `?h=`.
+    String? hash = uri.queryParameters['h'];
+    if (idIndex + 1 < segments.length &&
+        RegExp(r'^[0-9a-fA-F]+$').hasMatch(segments[idIndex + 1])) {
+      hash = segments[idIndex + 1];
+    }
+    return Uri.https(
+      'player.vimeo.com',
+      '/video/$id',
+      hash == null || hash.isEmpty ? null : {'h': hash},
+    ).toString();
   }
 
   if (host == 'www.loom.com' || host == 'loom.com') {
-    final shareIdx = uri.pathSegments.indexOf('share');
-    if (shareIdx >= 0 && shareIdx + 1 < uri.pathSegments.length) {
-      final id = uri.pathSegments[shareIdx + 1];
-      return Uri.https('www.loom.com', '/embed/$id').toString();
+    final segments = uri.pathSegments;
+    for (final kind in const ['share', 'embed']) {
+      final idx = segments.indexOf(kind);
+      if (idx >= 0 && idx + 1 < segments.length && segments[idx + 1].isNotEmpty) {
+        return Uri.https('www.loom.com', '/embed/${segments[idx + 1]}').toString();
+      }
     }
     return null;
   }

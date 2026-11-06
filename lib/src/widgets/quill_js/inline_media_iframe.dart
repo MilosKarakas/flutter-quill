@@ -14,6 +14,25 @@ function isHttpVideoSource(value) {
   return scheme === 'http' || scheme === 'https';
 }
 
+function isSameOriginSource(value) {
+  if (typeof value !== 'string') return false;
+  // A srcdoc document reports location.origin as "null"; window.origin
+  // is the origin it inherited from the host page.
+  var own = window.origin;
+  if (!own || own === 'null') {
+    try {
+      own = window.parent.location.origin;
+    } catch (_) {
+      return false;
+    }
+  }
+  try {
+    return new URL(value.replace(/^\s+|\s+$/g, ''), window.location.href).origin === own;
+  } catch (_) {
+    return false;
+  }
+}
+
 function applyEmbedDimensions(node, width, height) {
   var w = width != null && width !== '' ? String(width).replace(/px$/, '') : null;
   var h = height != null && height !== '' ? String(height).replace(/px$/, '') : null;
@@ -28,13 +47,24 @@ function applyEmbedDimensions(node, width, height) {
   }
   if (h) {
     node.setAttribute('height', h);
-    node.style.height = 'auto';
-    if (w) node.style.aspectRatio = w + ' / ' + h;
-    else node.style.removeProperty('aspect-ratio');
+    if (w) {
+      node.style.height = 'auto';
+      node.style.aspectRatio = w + ' / ' + h;
+      node.style.removeProperty('object-fit');
+    } else {
+      // Height alone: keep that height and let the width follow the
+      // intrinsic ratio. If the column is narrower, contain the picture
+      // instead of stretching it.
+      node.style.height = h + 'px';
+      node.style.maxWidth = '100%';
+      node.style.objectFit = 'contain';
+      node.style.removeProperty('aspect-ratio');
+    }
   } else {
     node.removeAttribute('height');
     node.style.removeProperty('height');
     node.style.removeProperty('aspect-ratio');
+    node.style.removeProperty('object-fit');
   }
 }
 
@@ -155,10 +185,13 @@ function registerInlineMedia(Quill) {
         'allow',
         'autoplay; encrypted-media; picture-in-picture; fullscreen'
       );
+      // allow-scripts with allow-same-origin is no sandbox for a page on the
+      // editor's own origin, so such a page loses allow-same-origin.
       node.setAttribute(
         'sandbox',
-        'allow-scripts allow-same-origin allow-presentation allow-popups ' +
-          'allow-popups-to-escape-sandbox'
+        'allow-scripts' +
+          (isSameOriginSource(value) ? '' : ' allow-same-origin') +
+          ' allow-presentation allow-popups allow-popups-to-escape-sandbox'
       );
       node.classList.add('ql-video');
       node.style.border = '0';
@@ -260,6 +293,18 @@ function imageFilesFromClipboard(data) {
     if (isSupportedDroppedImageFile(file)) accepted.push(file);
   }
   return accepted;
+}
+
+// The text a clipboard HTML fragment would show, without images, markup,
+// style sheets, comments, or whitespace.
+function visibleHtmlText(html) {
+  return String(html || '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<(style|script|head|title)\b[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<img\b[^>]*>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;|&#160;|&#xa0;/gi, '')
+    .replace(/\s+/g, '');
 }
 
 function displaySizeForBitmap(nw, nh, cssWidth) {
@@ -381,9 +426,12 @@ function processImageFile(file, cssWidth) {
     return encodeProcessedImage(bitmap, file, cssWidth).then(
       function (result) {
         if (bitmap.close) bitmap.close();
+        // The blob: URL is made by the host page: one made here would be
+        // revoked when this editor's iframe unloads, while the shared image
+        // store keeps handing it to other editors.
         return readBlobAsDataUrl(result.blob).then(function (dataUrl) {
           return {
-            blobUrl: URL.createObjectURL(result.blob),
+            blob: result.blob,
             dataUrl: dataUrl,
             width: result.displayW,
             height: result.displayH,
@@ -406,7 +454,7 @@ function processScaledFiles(accepted, k, root, onDrop) {
   processImageFile(accepted[k], editorContentMaxWidth(root))
     .then(function (image) {
       onDrop(
-        image.blobUrl,
+        image.blob,
         image.dataUrl,
         image.width,
         image.height,
@@ -649,28 +697,29 @@ function installInlineMedia(quill, options) {
         rawPlain = '';
       }
       var plain = rawPlain.replace(/\s+/g, '');
-      var plainIsDocument = /[\r\n]/.test(rawPlain) || plain.length > 180;
-      if (accepted.length && !plainIsDocument) {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        processScaledFiles(accepted, 0, root, options.onImageDrop);
-        return;
-      }
-      if (accepted.length || plain) return;
       var html = '';
       try {
         html = data.getData('text/html') || '';
       } catch (err2) {
         html = '';
       }
+      if (accepted.length) {
+        // Office apps put a picture of the copied text next to the text, so
+        // the file wins only when the HTML shows nothing but images. With no
+        // HTML, a short single line is a file name (a Finder copy).
+        var imageOnly = html
+          ? !visibleHtmlText(html)
+          : !(/[\r\n]/.test(rawPlain) || plain.length > 180);
+        if (!imageOnly) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        processScaledFiles(accepted, 0, root, options.onImageDrop);
+        return;
+      }
+      if (plain) return;
       if (!/src=["']data:image\/(?:png|jpe?g|webp);base64,/i.test(html)) return;
-      var stripped = html
-        .replace(/<img\b[^>]*>/gi, '')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&nbsp;|&#160;/gi, '')
-        .replace(/\s+/g, '');
-      if (stripped) return;
+      if (visibleHtmlText(html)) return;
       var match = html.match(/src=["'](data:image\/(?:png|jpe?g|webp);base64,[^"']+)["']/i);
       if (!match) return;
       e.preventDefault();
@@ -749,8 +798,8 @@ function installInlineMedia(quill, options) {
     state.drag = null;
     var moved = d.dx !== 0 || d.dy !== 0;
     if (commit && moved && options.onResize) {
-      options.onResize(
-        d.index,
+      // The size written is the one the preview showed, computed once here.
+      var size = previewSize(
         d.originWidth,
         d.originHeight,
         d.dx,
@@ -758,6 +807,7 @@ function installInlineMedia(quill, options) {
         d.corner,
         editorContentMaxWidth(root)
       );
+      options.onResize(d.index, size.width, size.height);
     }
     if (state.node) positionResizeOverlay(d.index, state.node);
   }

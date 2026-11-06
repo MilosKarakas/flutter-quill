@@ -209,13 +209,14 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
     // work with QuillController are hidden when it is null.
     final hasClassic = controller != null;
 
-    final showClassicHeader = showHeaderStyle &&
-        controller != null &&
-        quillJsController == null;
     final showWebBlockMenu = showHeaderStyle &&
         quillJsController != null &&
         (enabledFormats.contains('header') ||
             enabledFormats.contains('code-block'));
+    // The web menu replaces the classic H1–H3 buttons only where it is
+    // built, so a toolbar given both controllers keeps its classic buttons.
+    final showClassicHeader =
+        showHeaderStyle && controller != null && !showWebBlockMenu;
 
     final isButtonGroupShown = [
       (showFontFamily && hasClassic) ||

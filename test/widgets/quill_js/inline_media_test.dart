@@ -1,4 +1,5 @@
 import 'package:flutter_quill/src/widgets/quill_js/inline_media.dart';
+import 'package:flutter_quill/src/widgets/quill_js/quill_js_configurations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -60,6 +61,61 @@ void main() {
         normalizeVideoEmbedUrl('https://www.loom.com/share/abc123'),
         'https://www.loom.com/embed/abc123',
       );
+    });
+
+    test('keeps an already-embedded Loom URL', () {
+      expect(
+        normalizeVideoEmbedUrl('https://www.loom.com/embed/abc123'),
+        'https://www.loom.com/embed/abc123',
+      );
+      expect(
+        normalizeVideoEmbedUrl('https://loom.com/embed/abc123?sid=x'),
+        'https://www.loom.com/embed/abc123',
+      );
+      expect(normalizeVideoEmbedUrl('https://www.loom.com/looms'), isNull);
+    });
+
+    test('keeps the privacy hash of an unlisted Vimeo video', () {
+      expect(
+        normalizeVideoEmbedUrl('https://vimeo.com/123456/abcdef1234'),
+        'https://player.vimeo.com/video/123456?h=abcdef1234',
+      );
+      expect(
+        normalizeVideoEmbedUrl('https://vimeo.com/123456?h=abc'),
+        'https://player.vimeo.com/video/123456?h=abc',
+      );
+      // A hash can be all digits; the first number is still the id.
+      expect(
+        normalizeVideoEmbedUrl('https://vimeo.com/123456789/0123456789'),
+        'https://player.vimeo.com/video/123456789?h=0123456789',
+      );
+    });
+
+    test('takes the video id, not the album id, from Vimeo paths', () {
+      expect(
+        normalizeVideoEmbedUrl('https://vimeo.com/showcase/111/video/222'),
+        'https://player.vimeo.com/video/222',
+      );
+      expect(
+        normalizeVideoEmbedUrl('https://vimeo.com/channels/staffpicks/333'),
+        'https://player.vimeo.com/video/333',
+      );
+      expect(
+        normalizeVideoEmbedUrl('https://vimeo.com/groups/name/videos/444'),
+        'https://player.vimeo.com/video/444',
+      );
+    });
+
+    test('an unchanged Loom embed passes the edit decision', () {
+      final decision = MediaEditDecision.fromResult(
+        kind: MediaEditKind.video,
+        result: const QuillJsMediaValue(
+          source: 'https://www.loom.com/embed/abc123',
+          alt: 'Demo',
+        ),
+      );
+      expect(decision.apply, isTrue);
+      expect(decision.value!.source, 'https://www.loom.com/embed/abc123');
     });
 
     test('rejects non-http schemes', () {

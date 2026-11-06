@@ -105,6 +105,27 @@ void main() {
     expect(find.text('Paragraph'), findsNothing);
   });
 
+  testWidgets('keeps the classic H1 buttons when both controllers are given and the web menu is off', (tester) async {
+    await pumpToolbar(
+      tester,
+      controller: QuillController.basic(),
+      quillJsController: QuillJsEditorController(),
+    );
+    expect(find.text('H1'), findsOneWidget);
+    expect(find.text('Paragraph'), findsNothing);
+  });
+
+  testWidgets('the web menu replaces the classic H1 buttons when both controllers are given', (tester) async {
+    await pumpToolbar(
+      tester,
+      controller: QuillController.basic(),
+      quillJsController: QuillJsEditorController(),
+      enabledFormats: const [...QuillJsEditorConfiguration.defaultFormats, 'header'],
+    );
+    expect(find.text('H1'), findsNothing);
+    expect(find.text('Paragraph'), findsOneWidget);
+  });
+
   testWidgets('hides both header controls on the default web toolbar', (tester) async {
     await pumpToolbar(tester, quillJsController: QuillJsEditorController());
     expect(find.text('Paragraph'), findsNothing);

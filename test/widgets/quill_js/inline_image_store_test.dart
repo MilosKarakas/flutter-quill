@@ -36,6 +36,46 @@ void main() {
     InlineImageStore.instance.release();
   });
 
+  test('a Delta without a URL to change is returned as the same object', () {
+    InlineImageStore.instance.retain();
+    final text = Delta()
+      ..insert('hello', {'bold': true})
+      ..insert('\n');
+    expect(identical(InlineImageStore.instance.expand(text), text), isTrue);
+    expect(identical(InlineImageStore.instance.collapse(text), text), isTrue);
+    final remote = Delta()
+      ..insert({'image': 'https://x.example/a.png'})
+      ..insert('\n');
+    expect(identical(InlineImageStore.instance.expand(remote), remote), isTrue);
+    expect(identical(InlineImageStore.instance.collapse(remote), remote), isTrue);
+    final unknownBlob = Delta()..insert({'image': 'blob:unknown'});
+    expect(
+      identical(InlineImageStore.instance.expand(unknownBlob), unknownBlob),
+      isTrue,
+    );
+    InlineImageStore.instance.release();
+  });
+
+  test('adopt registers a caller-made URL once and reuses it', () {
+    InlineImageStore.instance.retain();
+    const dataUrl = 'data:image/png;base64,adopt';
+    var created = 0;
+    final first = InlineImageStore.instance.adopt(dataUrl, () {
+      created++;
+      return 'blob:host-made';
+    });
+    final second = InlineImageStore.instance.adopt(dataUrl, () {
+      created++;
+      return 'blob:other';
+    });
+    expect(first, 'blob:host-made');
+    expect(second, 'blob:host-made');
+    expect(created, 1);
+    expect(InlineImageStore.instance.dataUrlFor('blob:host-made'), dataUrl);
+    expect(InlineImageStore.instance.blobUrlFor(dataUrl), 'blob:host-made');
+    InlineImageStore.instance.release();
+  });
+
   test('lastNewlineIndexBefore counts embeds', () {
     final delta = Delta()
       ..insert('a\n')

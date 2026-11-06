@@ -1,3 +1,4 @@
+import 'package:flutter_quill/src/widgets/quill_js/code_block_iframe.dart';
 import 'package:flutter_quill/src/widgets/quill_js/inline_media_iframe.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -57,6 +58,38 @@ void main() {
     expect(script, contains('if (editingLocked()) return'));
     expect(script.contains('__inlineMediaApplyAttributes'), isFalse);
     expect(script.contains('toDataURL'), isFalse);
+  });
+
+  test('blob URLs for processed images are made by the host page', () {
+    final script = inlineMediaIframeScript();
+    // A URL made in the iframe is revoked when that editor unloads.
+    expect(script, isNot(contains('URL.createObjectURL(result.blob)')));
+    expect(script, contains('blob: result.blob'));
+    expect(script, contains('image.blob,'));
+  });
+
+  test('a paste keeps text when the clipboard HTML shows any', () {
+    final script = inlineMediaIframeScript();
+    expect(script, contains('function visibleHtmlText(html)'));
+    expect(script, contains('? !visibleHtmlText(html)'));
+  });
+
+  test('resize commits the previewed size', () {
+    final script = inlineMediaIframeScript();
+    expect(script, contains('options.onResize(d.index, size.width, size.height)'));
+  });
+
+  test('a same-origin video loses allow-same-origin', () {
+    final script = inlineMediaIframeScript();
+    expect(script, contains('function isSameOriginSource(value)'));
+    expect(script, contains("(isSameOriginSource(value) ? '' : ' allow-same-origin')"));
+  });
+
+  test('a code-block script reports Preformatted as true', () {
+    final script = plainCodeBlockIframeScript();
+    expect(script, contains('function registerPlainCodeBlock(Quill)'));
+    expect(script, contains("Quill.import('formats/code-block')"));
+    expect(script, contains('return true;'));
   });
 
   test('installation follows the enabled formats', () {

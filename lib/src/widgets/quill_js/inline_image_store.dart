@@ -32,10 +32,19 @@ class InlineImageStore {
     }
   }
 
-  String blobUrlFor(String dataUrl) {
+  String blobUrlFor(String dataUrl) =>
+      adopt(dataUrl, () => blobUrlCreator(dataUrl));
+
+  /// Returns the `blob:` URL already mapped to [dataUrl], or registers the
+  /// one [createBlobUrl] makes.
+  ///
+  /// The URL must be created in the host page, not in an editor iframe. The
+  /// browser revokes a `blob:` URL when the document that created it
+  /// unloads, and this store outlives any single editor.
+  String adopt(String dataUrl, String Function() createBlobUrl) {
     final existing = _dataToBlob[dataUrl];
     if (existing != null) return existing;
-    final blobUrl = blobUrlCreator(dataUrl);
+    final blobUrl = createBlobUrl();
     register(blobUrl, dataUrl);
     return blobUrl;
   }
@@ -64,12 +73,27 @@ class InlineImageStore {
     return lower.startsWith('data:image/');
   }
 
+  /// Returns [delta] itself when no image URL changes, so editors without
+  /// images pay no copy and observe the exact Delta Quill produced.
   static Delta _mapImageUrls(
     Delta delta,
     String? Function(String url) mapUrl,
   ) {
+    final ops = delta.toList();
+    var changes = false;
+    for (final op in ops) {
+      if (!op.isInsert || op.data is! Map) continue;
+      final image = (op.data as Map)['image'];
+      if (image is! String) continue;
+      final mapped = mapUrl(image);
+      if (mapped != null && mapped != image) {
+        changes = true;
+        break;
+      }
+    }
+    if (!changes) return delta;
     final out = Delta();
-    for (final op in delta.toList()) {
+    for (final op in ops) {
       if (op.isInsert && op.data is Map) {
         final data = Map<String, dynamic>.from(op.data as Map);
         final image = data['image'];

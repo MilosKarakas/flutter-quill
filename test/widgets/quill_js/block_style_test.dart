@@ -75,6 +75,56 @@ void main() {
     });
   });
 
+  group('blockStyleForLines', () {
+    test('is null for no text lines, so the caller keeps the range format', () {
+      expect(blockStyleForLines(const []), isNull);
+    });
+
+    test('lines with one style report it and are not mixed', () {
+      final result = blockStyleForLines(const [
+        {'header': 2},
+        {'header': 2, 'indent': 1},
+      ]);
+      expect(result!.style, BlockStyleChoice.heading2);
+      expect(result.mixed, isFalse);
+    });
+
+    test('a heading with a plain line is mixed', () {
+      final result = blockStyleForLines(const [
+        {'header': 1},
+        null,
+      ]);
+      expect(result!.mixed, isTrue);
+      expect(result.style, BlockStyleChoice.paragraph);
+    });
+
+    test('a heading with Preformatted is mixed', () {
+      final result = blockStyleForLines(const [
+        {'header': 3},
+        {'code-block': true},
+      ]);
+      expect(result!.mixed, isTrue);
+    });
+
+    test('a list line and a plain line are both Paragraph', () {
+      final result = blockStyleForLines(const [
+        {'list': 'bullet'},
+        <String, dynamic>{},
+      ]);
+      expect(result!.style, BlockStyleChoice.paragraph);
+      expect(result.mixed, isFalse);
+    });
+
+    test('code lines reported as a language string are Preformatted', () {
+      final result = blockStyleForLines(const [
+        {'code-block': 'plain'},
+        {'code-block': true},
+      ]);
+      expect(result!.style, BlockStyleChoice.preformatted);
+      expect(result.mixed, isFalse);
+    });
+  });
+
   group('blockStyleCommands', () {
     const enabled = ['header', 'code-block', 'list'];
 
