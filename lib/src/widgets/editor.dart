@@ -1962,6 +1962,7 @@ class RenderEditor extends RenderEditableContainerBox
       _floatingCursorRect = null;
       _cursorController.setFloatingCursorTextPosition(null);
     }
+    markNeedsPaint();
   }
 
   void _paintFloatingCursor(PaintingContext context, Offset offset) {
