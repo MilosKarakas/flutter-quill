@@ -5806,8 +5806,25 @@ $customCss
       link: link,
       blockStyle: block.style,
       blockStyleMixed: block.mixed,
+      embed: _selectedEmbedName(sel),
     );
     widget.controller.updateFormatState(state);
+  }
+
+  /// `'image'` or `'video'` when the caret sits on that embed, which is how
+  /// the editor selects one; otherwise null. Only editors with embeds
+  /// enabled read the document for it.
+  String? _selectedEmbedName(_QuillSelection? sel) {
+    final quill = _quill;
+    if (quill == null || sel == null || sel.length > 1) return null;
+    final formats = widget.configuration.effectiveFormats;
+    for (final name in const ['image', 'video']) {
+      if (formats.contains(name) &&
+          _mediaValueAt(quill, name, sel.index) != null) {
+        return name;
+      }
+    }
+    return null;
   }
 
   /// The block style of the selection, read per line.

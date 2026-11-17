@@ -98,7 +98,11 @@ void main() {
   final w = web.window as JSObject;
   w['hFormat2'] = (() {
     final s = controller.formatState;
-    return jsonEncode({'blockStyle': s.blockStyle.name, 'mixed': s.blockStyleMixed}).toJS;
+    return jsonEncode({
+      'blockStyle': s.blockStyle.name,
+      'mixed': s.blockStyleMixed,
+      'embed': s.embed,
+    }).toJS;
   }).toJS;
   w['hGetB'] = (() => jsonEncode(controllerB.contents.toJson()).toJS).toJS;
   w['hSetB'] = ((JSString json) {

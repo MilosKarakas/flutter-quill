@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:flutter_quill/src/widgets/toolbar/media_embed_button.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -38,6 +39,39 @@ void main() {
     );
     expect(find.byTooltip('Insert image'), findsOneWidget);
     expect(find.byTooltip('Insert video'), findsNothing);
+  });
+
+  testWidgets('the button of the selected embed shows as active', (tester) async {
+    final controller = QuillJsEditorController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: QuillToolbar.basic(
+            quillJsController: controller,
+            showImage: true,
+            showVideo: true,
+            enabledFormats: [...QuillJsEditorConfiguration.defaultFormats, 'image', 'video'],
+          ),
+        ),
+      ),
+    );
+    List<bool> selected() => tester
+        .widgetList<MediaEmbedButton>(find.byType(MediaEmbedButton))
+        .map((b) => b.isSelected)
+        .toList();
+    expect(selected(), [false, false]);
+
+    controller.updateFormatState(const QuillJsFormatState(embed: 'image'));
+    await tester.pump();
+    expect(selected(), [true, false]);
+
+    controller.updateFormatState(const QuillJsFormatState(embed: 'video'));
+    await tester.pump();
+    expect(selected(), [false, true]);
+
+    controller.updateFormatState(const QuillJsFormatState());
+    await tester.pump();
+    expect(selected(), [false, false]);
   });
 
   testWidgets('uses the default tooltip when a custom map omits the media keys', (tester) async {

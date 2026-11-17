@@ -525,34 +525,46 @@ class QuillToolbar extends StatelessWidget implements PreferredSizeWidget {
         if (showImage &&
             quillJsController != null &&
             enabledFormats.contains('image'))
-          MediaEmbedButton(
-            icon: Icons.image_outlined,
-            tooltip:
-                buttonTooltips[ToolbarButtons.image] ?? 'Insert image'.i18n,
-            iconSize: toolbarIconSize,
-            iconTheme: iconTheme,
-            afterButtonPressed: afterButtonPressed,
-            semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.image],
-            focusNode: focusOf(ToolbarButtons.image),
-            onPressed: () {
-              quillJsController.requestImageEmbed();
-            },
+          // Rebuilt from the controller, so the button shows a selected
+          // image as active.
+          ListenableBuilder(
+            listenable: quillJsController,
+            builder: (context, _) => MediaEmbedButton(
+              icon: Icons.image_outlined,
+              tooltip:
+                  buttonTooltips[ToolbarButtons.image] ?? 'Insert image'.i18n,
+              iconSize: toolbarIconSize,
+              iconTheme: iconTheme,
+              afterButtonPressed: afterButtonPressed,
+              semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.image],
+              focusNode: focusOf(ToolbarButtons.image),
+              isSelected: quillJsController.formatState.embed == 'image',
+              onPressed: () {
+                quillJsController.requestImageEmbed();
+              },
+            ),
           ),
         if (showVideo &&
             quillJsController != null &&
             enabledFormats.contains('video'))
-          MediaEmbedButton(
-            icon: Icons.videocam_outlined,
-            tooltip:
-                buttonTooltips[ToolbarButtons.video] ?? 'Insert video'.i18n,
-            iconSize: toolbarIconSize,
-            iconTheme: iconTheme,
-            afterButtonPressed: afterButtonPressed,
-            semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.video],
-            focusNode: focusOf(ToolbarButtons.video),
-            onPressed: () {
-              quillJsController.requestVideoEmbed();
-            },
+          // Rebuilt from the controller, so the button shows a selected
+          // video as active.
+          ListenableBuilder(
+            listenable: quillJsController,
+            builder: (context, _) => MediaEmbedButton(
+              icon: Icons.videocam_outlined,
+              tooltip:
+                  buttonTooltips[ToolbarButtons.video] ?? 'Insert video'.i18n,
+              iconSize: toolbarIconSize,
+              iconTheme: iconTheme,
+              afterButtonPressed: afterButtonPressed,
+              semanticsIdentifier: semanticsIdentifiers?[ToolbarButtons.video],
+              focusNode: focusOf(ToolbarButtons.video),
+              isSelected: quillJsController.formatState.embed == 'video',
+              onPressed: () {
+                quillJsController.requestVideoEmbed();
+              },
+            ),
           ),
         if (showSearchButton && controller != null)
           SearchButton(

@@ -510,6 +510,13 @@ class QuillJsFormatState {
   /// shown as the current style.
   final bool blockStyleMixed;
 
+  /// The selected embed, `'image'` or `'video'`, or `null`.
+  ///
+  /// An embed is selected while the caret sits on it, which is how clicking
+  /// it, moving onto it with the keyboard, or double-clicking it selects it.
+  /// The toolbar's image and video buttons show it as their active state.
+  final String? embed;
+
   const QuillJsFormatState({
     this.bold = false,
     this.italic = false,
@@ -518,6 +525,7 @@ class QuillJsFormatState {
     this.link,
     this.blockStyle = BlockStyleChoice.paragraph,
     this.blockStyleMixed = false,
+    this.embed,
   });
 
   @override
@@ -530,7 +538,8 @@ class QuillJsFormatState {
           list == other.list &&
           link == other.link &&
           blockStyle == other.blockStyle &&
-          blockStyleMixed == other.blockStyleMixed;
+          blockStyleMixed == other.blockStyleMixed &&
+          embed == other.embed;
 
   @override
   int get hashCode => Object.hash(
@@ -541,6 +550,7 @@ class QuillJsFormatState {
         link,
         blockStyle,
         blockStyleMixed,
+        embed,
       );
 }
 

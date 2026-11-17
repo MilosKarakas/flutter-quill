@@ -16,6 +16,7 @@ class MediaEmbedButton extends StatelessWidget {
     this.afterButtonPressed,
     this.semanticsIdentifier,
     this.focusNode,
+    this.isSelected = false,
     super.key,
   });
 
@@ -28,6 +29,10 @@ class MediaEmbedButton extends StatelessWidget {
   final String? semanticsIdentifier;
   final FocusNode? focusNode;
 
+  /// Whether an embed of this button's kind is selected in the editor. The
+  /// button then uses the selected colors, like the other toggle buttons.
+  final bool isSelected;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -39,9 +44,13 @@ class MediaEmbedButton extends StatelessWidget {
       icon: Icon(
         icon,
         size: iconSize,
-        color: iconTheme?.iconUnselectedColor ?? theme.iconTheme.color,
+        color: isSelected
+            ? iconTheme?.iconSelectedColor ?? theme.primaryIconTheme.color
+            : iconTheme?.iconUnselectedColor ?? theme.iconTheme.color,
       ),
-      fillColor: iconTheme?.iconUnselectedFillColor ?? theme.canvasColor,
+      fillColor: isSelected
+          ? iconTheme?.iconSelectedFillColor ?? theme.primaryColor
+          : iconTheme?.iconUnselectedFillColor ?? theme.canvasColor,
       borderRadius: iconTheme?.borderRadius ?? 2,
       afterPressed: afterButtonPressed,
       semanticsIdentifier: semanticsIdentifier,

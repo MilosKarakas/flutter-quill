@@ -943,6 +943,34 @@ const checks = {
     return { ok: quillWarnings.length === before, warnings: quillWarnings.slice(before) };
   },
 
+  async 'a selected image or video is reported to the toolbar'(b) {
+    const e = await open(b, '?mode=full');
+    await e.set([
+      { insert: 'a\n' },
+      { insert: { image: PNG }, attributes: { width: '80', height: '80' } },
+      { insert: { video: 'https://www.youtube.com/embed/abc' }, attributes: { width: '200', height: '100' } },
+      { insert: 'b\n' },
+    ]);
+    await sleep(400);
+    const states = {};
+    await e.frame.click('.ql-editor img');
+    await sleep(400);
+    states.image = (await e.block()).embed;
+    // While editing, a video iframe ignores the pointer so a click selects
+    // it instead of playing it; click where it is, as a person would.
+    await e.frame.click('.ql-editor iframe', { force: true });
+    await sleep(400);
+    states.video = (await e.block()).embed;
+    await e.focusAt(0);
+    await sleep(400);
+    states.text = (await e.block()).embed;
+    // The line right after the embeds is not a selection of them.
+    await e.focusAt(4);
+    await sleep(400);
+    states.after = (await e.block()).embed;
+    return { ok: states.image === 'image' && states.video === 'video' && states.text == null && states.after == null, states };
+  },
+
 };
 
 (async () => {
